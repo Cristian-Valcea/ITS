@@ -1,0 +1,62 @@
+# config/risk_limits.yaml
+# Configuration for risk management parameters.
+# Used by RiskAgent for live trading and can inform IntradayTradingEnv for training/backtesting.
+
+# --- Drawdown Limits ---
+# Maximum percentage of capital that can be lost before risk intervention.
+max_daily_drawdown_pct: 0.02  # e.g., 2% of start-of-day capital.
+                               # If current_equity < start_of_day_equity * (1 - max_daily_drawdown_pct), limit is breached.
+
+# Optional: A harder, absolute drawdown limit if needed.
+# max_absolute_drawdown_value: 5000 # e.g., Stop if total loss exceeds $5000 from initial capital ever.
+
+# --- Turnover Limits ---
+# Turnover is defined as: Total Value of Trades / Capital (usually start-of-day capital).
+# Helps control trading frequency and associated costs/slippage.
+
+# Hourly Turnover Cap:
+# Maximum turnover allowed within any rolling 1-hour window.
+max_hourly_turnover_ratio: 5.0  # e.g., Cannot trade more than 5x the start-of-day capital in any hour.
+
+# Daily Turnover Cap:
+# Maximum total turnover allowed for the entire trading day.
+max_daily_turnover_ratio: 20.0 # e.g., Total value of trades in a day cannot exceed 20x start-of-day capital.
+
+
+# --- Position Limits (Conceptual - More for portfolio management) ---
+# max_position_size_pct_capital: 0.25 # e.g., No single position to exceed 25% of current capital.
+# max_leverage: 2.0 # e.g., Max leverage allowed (Total Position Value / Net Liquidation Value)
+
+# --- Order Controls (Conceptual - For execution) ---
+# max_order_size_pct_volume: 0.01 # e.g., Single order not to exceed 1% of asset's average daily volume.
+#                                 # Helps prevent excessive market impact.
+# slippage_tolerance_pct: 0.001 # e.g., 0.1% slippage allowed from target price.
+
+# --- General Risk Behavior ---
+# Action to take when a critical limit (like drawdown or hard turnover cap) is breached.
+halt_on_breach: true      # If true, RiskAgent signals to stop all new trading activity for the day (or relevant period).
+                          # If false, it might just log a warning (not recommended for critical limits).
+
+liquidate_on_halt: false  # If true, RiskAgent also signals to liquidate all open positions when a halt is triggered.
+                          # If false, existing positions might be held until end-of-day or manual intervention.
+
+# --- Specific Limit Actions (More Granular Control - Conceptual) ---
+# This allows defining different responses for different limit breaches.
+# limit_actions:
+#   daily_drawdown:
+#     action: "HALT_AND_LIQUIDATE" # Options: "WARN_ONLY", "HALT_TRADING", "HALT_AND_LIQUIDATE"
+#     message: "Daily drawdown limit breached. Halting trading and liquidating positions."
+#   hourly_turnover:
+#     action: "WARN_ONLY" # Could be less strict, e.g., warn first, then halt if repeatedly breached.
+#     threshold_warn_ratio: 0.8 # Warn if turnover reaches 80% of the hourly cap.
+#     message_warn: "Approaching hourly turnover limit."
+#     message_breach: "Hourly turnover limit breached. No new trades this hour."
+#   daily_turnover:
+#     action: "HALT_TRADING"
+#     message: "Daily turnover limit breached. No new trades today."
+
+# Note: The IntradayTradingEnv in the skeleton primarily implements `max_daily_drawdown_pct`.
+# Turnover limits in the environment are more complex to implement accurately without
+# awareness of capital and precise trade values per step, but can be approximated.
+# The RiskAgent is the primary enforcer of these during live operations.
+```

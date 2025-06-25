@@ -1,0 +1,169 @@
+# config/main_config.yaml
+# Main configuration for the RL Trading Platform
+
+# --- General Settings ---
+project_name: "IntradayRLTrader"
+version: "0.1.0"
+# Global seed for reproducibility, can be overridden by specific component seeds
+global_seed: 42
+
+# --- Paths ---
+# Define base directories; can be absolute or relative to project root.
+# OrchestratorAgent and other agents will use these.
+paths:
+  data_dir_raw: "data/raw/"          # For raw market data (CSV, PKL) from DataAgent
+  data_dir_processed: "data/processed/" # For engineered features (NumPy arrays, CSV) from FeatureAgent
+  scalers_dir: "data/scalers/"      # For saved feature scalers (e.g., StandardScaler pickles)
+  model_save_dir: "models/"         # For saved trained RL models (SB3 .zip files)
+  tensorboard_log_dir: "logs/tensorboard/" # For TensorBoard training logs
+  application_log_dir: "logs/"      # For general application text logs (app.log)
+  reports_dir: "reports/"           # For evaluation reports and backtest trade logs
+
+# --- Data Source Configuration (Example for IBKR) ---
+# DataAgent will use this.
+ibkr_connection:
+  host: "127.0.0.1"
+  port: 7497  # 7497 for TWS Paper, 7496 for TWS Live, 4002 for Gateway Paper, 4001 for Gateway Live
+  clientId: 100 # Client ID for IBKR connection
+  timeout_seconds: 10 # Connection timeout
+  # account_number: "DU123456" # Optional: IBKR Account number if needed by specific API calls
+
+# Default data parameters for fetching (can be overridden by CLI args)
+default_data_params:
+  symbol: "SPY" # Default symbol if not specified
+  # start_date: "2022-01-01" # Default start, often better to specify dynamically
+  # end_date: "2023-01-01"   # Default end, often better to specify dynamically
+  interval: "1min" # Default bar interval ("1min", "5mins", "1hour", "1day")
+  what_to_show: "TRADES" # TRADES, MIDPOINT, BID, ASK
+  use_rth: true # Regular Trading Hours only
+
+# --- Feature Engineering Configuration ---
+# FeatureAgent will use this.
+feature_engineering:
+  # List of features to compute. Options: 'RSI', 'EMA', 'VWAP', 'OB_Imbalance', 'Time'.
+  features_to_calculate: ['RSI', 'EMA', 'VWAP', 'Time']
+  
+  rsi:
+    window: 14 # Lookback period for RSI
+  
+  ema:
+    windows: [10, 20, 50] # List of EMA windows to calculate (e.g., EMA10, EMA20, EMA50)
+    ema_diff: # Optional: calculate difference between two EMAs (e.g., for a MACD-like feature)
+      fast_ema_idx: 0 # Index from 'windows' list (e.g., EMA10)
+      slow_ema_idx: 1 # Index from 'windows' list (e.g., EMA20)
+      # Resulting feature name could be 'ema_diff_10_20'
+  
+  vwap:
+    # For daily VWAP, no window needed here if FeatureAgent handles daily reset.
+    # For rolling VWAP, specify window:
+    # window: 20 # e.g., 20-period rolling VWAP
+    calculate_deviation: true # Calculate (close - VWAP) / VWAP
+
+  order_book_imbalance: # Optional, if order book data is available
+    levels_to_consider: 5 # Number of bid/ask levels for imbalance calculation
+    # Requires DataAgent to provide order book snapshots.
+
+  time_features: # Which time components to encode
+    - "hour_of_day"       # Integer hour
+    - "minute_of_hour"    # Integer minute
+    - "day_of_week"       # Integer day of week (Monday=0)
+    # - "month_of_year"
+    sin_cos_encode: # Apply sin/cos transformation for cyclical features
+      - "hour_of_day"
+      - "minute_of_hour"
+      # - "day_of_week" # If treating week as cyclical
+
+  lookback_window: 5 # For creating sequences for the RL agent (e.g., LSTM or CNN input)
+                     # If 1, observations are just the current timestep's features.
+                     # Must be consistent with EnvAgent and TrainerAgent policy.
+
+  # Columns to be scaled by StandardScaler (subset of all computed features)
+  # If empty or not provided, FeatureAgent might try to scale all numeric non-OHLCV columns.
+  feature_cols_to_scale:
+    - "rsi_14"
+    - "ema_10"
+    - "ema_20"
+    - "ema_50"
+    # - "ema_diff_10_20" # If calculated
+    - "vwap_deviation" # If VWAP and deviation are calculated
+    # - "ob_imbalance_5" # If calculated
+    # - "hour_of_day_sin" # If using sin/cos encoded time features
+    # - "hour_of_day_cos"
+    # - "minute_of_hour_sin"
+    # - "minute_of_hour_cos"
+
+  # Final features to be included in the observation space for the RL model
+  # This is the list of columns from the processed DataFrame (after scaling)
+  # that will form the input to the RL agent.
+  # If empty, FeatureAgent might use all scaled columns + selected unscaled (like 'close', 'volume').
+  observation_feature_cols:
+    - "rsi_14"
+    - "ema_10"
+    - "ema_20"
+    # - "ema_diff_10_20"
+    - "vwap_deviation"
+    # - "hour_of_day_sin"
+    # - "hour_of_day_cos"
+    # - "close" # Example: including normalized close price directly
+    # - "volume" # Example: including normalized volume
+
+# --- Environment Configuration ---
+# EnvAgent and IntradayTradingEnv will use this.
+environment:
+  initial_capital: 100000.0
+  transaction_cost_pct: 0.0005 # 0.05% per trade (applied on entry and exit)
+  reward_scaling: 1.0 # Multiplier for P&L rewards
+  # max_daily_drawdown_pct is defined in risk_limits.yaml but also used by env for training.
+  # hourly_turnover_cap also in risk_limits.yaml, harder for simple env.
+  max_episode_steps: null # Set to an integer for fixed episode length, or null to run through all data.
+  log_trades_in_env: true # Whether the environment itself should log trades (EvaluatorAgent relies on this)
+
+# --- Training Configuration ---
+# TrainerAgent will use this for controlling the training loop.
+training:
+  total_timesteps: 1000000 # Total steps for model training
+  log_interval: 100     # Log TensorBoard scalars every N training steps (SB3 logs per episode by default)
+  checkpoint_freq: 50000 # Save a model checkpoint every N training steps
+  eval_freq: 100000      # Evaluate model on a validation set every N training steps (requires EvalCallback)
+  use_eval_callback: false # Whether to set up EvalCallback (requires separate eval_env)
+  data_duration_for_fetch: "365 D" # Default duration for DataAgent when fetching training data (e.g., "90 D", "1 Y")
+
+# --- Evaluation Configuration ---
+# EvaluatorAgent will use this.
+evaluation:
+  metrics: # List of metrics to compute and report
+    - "total_return_pct"
+    - "sharpe_ratio"
+    - "max_drawdown_pct"
+    - "sortino_ratio"
+    - "calmar_ratio"
+    - "avg_win_loss_ratio"
+    - "profit_factor"
+    - "num_trades"
+    - "win_rate_pct"
+    - "avg_trade_duration" # In steps or time units
+    - "turnover_ratio_period" # Turnover for the evaluation period
+  
+  data_duration_for_fetch: "90 D" # Default duration for DataAgent when fetching evaluation data
+  # Walk-forward configuration (conceptual, Orchestrator would manage this)
+  # walk_forward:
+  #   enabled: false
+  #   train_window_days: 252 # Approx 1 trading year
+  #   eval_window_days: 63  # Approx 1 quarter
+  #   step_days: 63         # How much to slide the windows
+  #   initial_start_date: "2020-01-01"
+  #   final_end_date: "2023-12-31"
+
+# --- Scheduling (Conceptual) ---
+# For OrchestratorAgent's scheduling features.
+scheduling:
+  retrain_cron_schedule: "0 0 * * 0" # Example: Every Sunday at midnight
+  # Parameters for scheduled retraining runs:
+  retrain_symbol: "SPY"
+  retrain_data_start_offset_days: 730 # Fetch data starting 2 years ago from current date
+  retrain_data_end_offset_days: 1     # Fetch data up to yesterday
+  retrain_interval: "1day" # Or "1hour" for more frequent intraday models
+  # Similar params for scheduled evaluation window after retraining.
+  evaluate_after_retrain_start_offset_days: 0 # Start eval data from today (if model is for future)
+  evaluate_after_retrain_duration_days: 90  # Evaluate on next 3 months (simulated if data available)
+```
