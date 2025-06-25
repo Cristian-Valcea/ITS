@@ -67,72 +67,75 @@ class OrchestratorAgent: # Not inheriting BaseAgent for this skeleton, could if 
         }
         self.feature_agent = FeatureAgent(config=feature_agent_cfg)
 
-        # EnvAgent config: env parameters (initial_capital, etc.), lookback_window
-        # Some env params can come from main_config, some from risk_limits_config
+        # EnvAgent config: build the complete 'env_config' sub-dictionary for IntradayTradingEnv
+        env_specific_params = self.main_config.get('environment', {})
         env_agent_env_cfg = {
-            'initial_capital': self.main_config.get('environment', {}).get('initial_capital', 100000.0),
-            'transaction_cost_pct': self.main_config.get('environment', {}).get('transaction_cost_pct', 0.001),
-            'reward_scaling': self.main_config.get('environment', {}).get('reward_scaling', 1.0),
-            'max_episode_steps': self.main_config.get('environment', {}).get('max_episode_steps', None),
-            'log_trades': self.main_config.get('environment', {}).get('log_trades_in_env', True),
-            # Drawdown from risk_limits, but env needs its own for training/backtesting
-            'max_daily_drawdown_pct': self.risk_limits_config.get('max_daily_drawdown_pct', 0.02) 
-            # TODO: Hourly turnover cap is harder to implement directly in a simple Gym step-based env
+            'initial_capital': env_specific_params.get('initial_capital', 100000.0),
+            'transaction_cost_pct': env_specific_params.get('transaction_cost_pct', 0.001),
+            'reward_scaling': env_specific_params.get('reward_scaling', 1.0),
+            'max_episode_steps': env_specific_params.get('max_episode_steps', None),
+            'log_trades': env_specific_params.get('log_trades_in_env', True),
+            'lookback_window': self.main_config.get('feature_engineering', {}).get('lookback_window', 1),
+            'max_daily_drawdown_pct': self.risk_limits_config.get('max_daily_drawdown_pct', 0.02),
+            'hourly_turnover_cap': self.risk_limits_config.get('max_hourly_turnover_ratio', 5.0),
+            'turnover_penalty_factor': self.risk_limits_config.get('env_turnover_penalty_factor', 0.01) 
         }
-        env_agent_cfg = {
-            'env_config': env_agent_env_cfg,
-            'lookback_window': self.main_config.get('feature_engineering', {}).get('lookback_window', 1)
-        }
+        # EnvAgent config dictionary itself (passed to EnvAgent constructor)
+        env_agent_cfg = {'env_config': env_agent_env_cfg}
         self.env_agent = EnvAgent(config=env_agent_cfg)
 
-        # TrainerAgent config: model_save_dir, log_dir, algorithm name, algo_params, training_params
+        # TrainerAgent config
         trainer_agent_cfg = {
             'model_save_dir': self.main_config.get('paths', {}).get('model_save_dir', 'models/'),
             'log_dir': self.main_config.get('paths', {}).get('tensorboard_log_dir', 'logs/tensorboard/'),
             'algorithm': self.model_params_config.get('algorithm_name', 'DQN'),
-            'algo_params': self.model_params_config.get('algorithm_params', {}), # learning_rate, buffer_size etc.
-            'training_params': self.main_config.get('training', {}), # total_timesteps, checkpoint_freq etc.
-            # C51 specific flags from model_params_config
-            'dueling_nets': self.model_params_config.get('c51_features', {}).get('dueling_nets', False),
-            'use_per': self.model_params_config.get('c51_features', {}).get('use_per', False),
-            'n_step_returns': self.model_params_config.get('c51_features', {}).get('n_step_returns', 1),
-            'use_noisy_nets': self.model_params_config.get('c51_features', {}).get('use_noisy_nets', False),
+            'algo_params': self.model_params_config.get('algorithm_params', {}), # For SB3 model
+            'c51_features': self.model_params_config.get('c51_features', {}),   # For specific feature flags like PER, Dueling
+            'training_params': self.main_config.get('training', {}),            # For learn loop (total_timesteps, etc.)
         }
-        self.trainer_agent = TrainerAgent(config=trainer_agent_cfg) # Env will be set during pipeline
+        self.trainer_agent = TrainerAgent(config=trainer_agent_cfg)
 
-        # EvaluatorAgent config: reports_dir, metrics to compute
+        # EvaluatorAgent config
         eval_agent_cfg = {
             'reports_dir': self.main_config.get('paths', {}).get('reports_dir', 'reports/'),
             'eval_metrics': self.main_config.get('evaluation', {}).get('metrics', ['sharpe', 'max_drawdown'])
         }
-        self.evaluator_agent = EvaluatorAgent(config=eval_agent_cfg) # Env and model set during pipeline
+        self.evaluator_agent = EvaluatorAgent(config=eval_agent_cfg)
 
-        # RiskAgent config (primarily for live trading)
+        # RiskAgent config
         self.risk_agent = RiskAgent(config=self.risk_limits_config)
         
-        self.logger.info("All specialized agents initialized by Orchestrator.")
+        self.logger.info("All specialized agents initialized by Orchestrator with refined configurations.")
 
 
-    def _load_yaml_config(self, config_path: str, config_name: str) -> dict | None:
+    def _load_yaml_config(self, config_path: str, config_name: str) -> dict:
         """Loads a YAML configuration file."""
         try:
             with open(config_path, 'r') as f:
                 cfg = yaml.safe_load(f)
             self.logger.info(f"{config_name} loaded successfully from {config_path}")
+            if cfg is None: # Handle empty YAML file case
+                self.logger.warning(f"{config_name} file at {config_path} is empty. Returning empty dict.")
+                return {}
             return cfg
         except FileNotFoundError:
-            self.logger.error(f"{config_name} file not found at {config_path}")
-            return None
+            self.logger.error(f"{config_name} file not found at {config_path}. Critical error.")
+            raise
         except yaml.YAMLError as e:
-            self.logger.error(f"Error parsing {config_name} YAML file {config_path}: {e}")
-            return None
+            self.logger.error(f"Error parsing {config_name} YAML file {config_path}: {e}. Critical error.")
+            raise
         except Exception as e:
-            self.logger.error(f"An unexpected error occurred while loading {config_name} from {config_path}: {e}")
-            return None
+            self.logger.error(f"An unexpected error occurred while loading {config_name} from {config_path}: {e}. Critical error.")
+            raise
 
     def run_training_pipeline(self, symbol: str, start_date: str, end_date: str, interval: str,
-                              use_cached_data: bool = False, use_cached_features: bool = False,
-                              continue_from_model: str = None) -> str | None:
+                              use_cached_data: bool = False, # No use_cached_features yet
+                              continue_from_model: str = None,
+                              run_evaluation_after_train: bool = True, # New flag
+                              eval_start_date: str = None, # For post-train eval
+                              eval_end_date: str = None,   # For post-train eval
+                              eval_interval: str = None    # For post-train eval
+                              ) -> str | None:
         """
         Executes the full data processing and model training pipeline.
 

@@ -1,295 +1,256 @@
 # src/agents/trainer_agent.py
+# src/agents/trainer_agent.py
 import os
 import logging
 from datetime import datetime
-# import stable_baselines3 as sb3 # pip install stable-baselines3[extra]
-# from stable_baselines3.common.vec_env import DummyVecEnv
-# from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
-# from stable_baselines3.common.monitor import Monitor
-# from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise # For continuous actions
 
-# For C51 specifically (Categorical DQN)
-# from stable_baselines3 import C51 # C51 is part of DQN in SB3 v1.x, separate in SB3 Contrib or built on DQN
-# SB3's core DQN can be configured for C51-like properties (categorical output)
-# However, a true C51 with distributional RL might require sb3_contrib or custom implementation.
-# For this skeleton, let's assume we are using a standard DQN and will note where C51 specifics apply.
-# If a dedicated C51 is available (e.g. from a contrib package), that would be used.
-# For SB3 v2.x, C51 is not directly in core. Let's use DQN as a base.
-# If we must use C51, we'd need to confirm its availability in the chosen SB3 version or use sb3_contrib.
-# For now, let's use DQN and note where C51 features like Dueling nets, PER, n-step, noisy nets would be configured.
-# from stable_baselines3 import DQN # Standard DQN
+# Attempt to import Stable-Baselines3 components
+try:
+    from stable_baselines3 import DQN # Using DQN as the base for C51-like features
+    # from stable_baselines3.dqn import CnnPolicy, MlpPolicy # Policies
+    # from sb3_contrib import QRDQN, C51 # If using sb3_contrib for true C51 or QRDQN
+    from stable_baselines3.common.monitor import Monitor
+    from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
+    from stable_baselines3.common.vec_env import DummyVecEnv
+    # For PER, SB3's DQN has built-in support via a parameter.
+    # If a custom ReplayBuffer is needed:
+    # from stable_baselines3.common.buffers import ReplayBuffer, PrioritizedReplayBuffer # (PrioritizedReplayBuffer might be in contrib or custom)
+    SB3_AVAILABLE = True
+except ImportError:
+    SB3_AVAILABLE = False
+    logging.warning("Stable-Baselines3 components not found. TrainerAgent will use dummy implementations.")
+    # Define dummy classes if SB3 is not available, to allow skeleton to run
+    class DummySB3Model:
+        def __init__(self, policy, env, **kwargs): self.logger = logging.getLogger("DummySB3Model"); self.env = env; self.kwargs = kwargs
+        def learn(self, total_timesteps, callback=None, tb_log_name="DummyRun", **kwargs):
+            self.logger.info(f"Dummy learn for {total_timesteps} timesteps. TB log: {tb_log_name}. Callbacks: {callback}")
+            if callback: callback.init_callback(self) # Mimic SB3 callback init
+            for i in range(0, int(total_timesteps), 1000): # Simulate steps
+                if callback:
+                    if hasattr(callback, 'on_step'):
+                         if not callback.on_step(): break # Callback signals to stop
+                if (i/1000) % self.kwargs.get('log_interval', 100) == 0:
+                    self.logger.info(f"Dummy learn: Timestep {i+1000}/{total_timesteps}")
+            if callback and hasattr(callback, 'on_training_end'): callback.on_training_end()
+
+        def save(self, path): self.logger.info(f"Dummy save model to {path}"); os.makedirs(os.path.dirname(path), exist_ok=True); open(path + ".dummy", "w").write("dummy")
+        @classmethod
+        def load(cls, path, env=None, **kwargs): logger = logging.getLogger("DummySB3Model"); logger.info(f"Dummy load model from {path}"); return cls(None,env) # Simplified
+    
+    class Monitor: # Dummy Monitor
+        def __init__(self, env, filename=None, **kwargs): self.env = env; self.logger = logging.getLogger("DummyMonitor") ; self.logger.info(f"Dummy Monitor initialized for env. Log: {filename}")
+        def __getattr__(self, name): return getattr(self.env, name) # Pass through attributes
+        def reset(self, **kwargs): self.logger.debug("Dummy Monitor reset called"); return self.env.reset(**kwargs)
+        def step(self, action): self.logger.debug(f"Dummy Monitor step with action {action}"); return self.env.step(action)
+        def close(self): self.env.close()
+
+    class CheckpointCallback: # Dummy CheckpointCallback
+         def __init__(self, save_freq, save_path, name_prefix="rl_model", **kwargs): self.sf=save_freq; self.sp=save_path; self.np=name_prefix; self.logger=logging.getLogger("DummyCheckpointCb"); self.num_timesteps=0; os.makedirs(save_path, exist_ok=True)
+         def init_callback(self, model): self.model = model # SB3 style
+         def _on_step(self) -> bool: self.num_timesteps+=1; self.logger.debug(f"Dummy CB step {self.num_timesteps}"); return True
+         def on_step(self) -> bool: # For the dummy model's loop
+             self.num_timesteps+=1
+             if self.num_timesteps % self.sf == 0: model_path=os.path.join(self.sp,f"{self.np}_{self.num_timesteps}_steps.zip"); self.logger.info(f"Dummy Checkpoint: Saving model to {model_path}"); self.model.save(model_path)
+             return True
+    class EvalCallback: # Dummy EvalCallback
+        def __init__(self, eval_env, **kwargs): self.logger = logging.getLogger("DummyEvalCallback"); self.logger.info("Dummy EvalCallback initialized.")
+        def init_callback(self, model): self.model = model
+        def _on_step(self) -> bool: return True
+        def on_step(self) -> bool: return True # Simplified for dummy loop
+
+    # Assign dummy if real ones not available
+    if not SB3_AVAILABLE:
+        DQN = DummySB3Model 
+        # MlpPolicy = "MlpPolicy" # Keep as string for DummySB3Model
+        # CnnPolicy = "CnnPolicy"
+
 
 from .base_agent import BaseAgent
 from src.gym_env.intraday_trading_env import IntradayTradingEnv
-# from ..utils.config_loader import load_model_params # Example
+
 
 class TrainerAgent(BaseAgent):
     """
     TrainerAgent is responsible for:
-    1. Instantiating the RL algorithm (e.g., C51, DQN) from Stable-Baselines3.
+    1. Instantiating the RL algorithm (e.g., C51-like DQN) from Stable-Baselines3.
     2. Training the RL model using the environment provided by EnvAgent.
     3. Saving model checkpoints and TensorBoard logs.
-    4. Optionally, handling hyperparameter tuning (e.g., with Optuna).
     """
     def __init__(self, config: dict, training_env: IntradayTradingEnv = None):
-        """
-        Initializes the TrainerAgent.
-
-        Args:
-            config (dict): Configuration dictionary. Expected keys:
-                           'model_save_dir': Path to save trained models.
-                           'log_dir': Path for TensorBoard logs.
-                           'algorithm': Name of the algorithm (e.g., 'C51', 'DQN').
-                           'algo_params': Dictionary of parameters for the SB3 algorithm.
-                                          (e.g., learning_rate, buffer_size, policy_kwargs for dueling).
-                           'training_params': {'total_timesteps', 'log_interval', 'checkpoint_freq', 'eval_freq'}.
-                           'use_per': bool (Prioritized Experience Replay)
-                           'n_step_returns': int or None
-                           'use_noisy_nets': bool
-            training_env (IntradayTradingEnv, optional): Pre-initialized training environment.
-                                                        If None, it's expected to be set later via `set_env`.
-        """
         super().__init__(agent_name="TrainerAgent", config=config)
         
         self.model_save_dir = self.config.get('model_save_dir', 'models/')
-        self.log_dir = self.config.get('log_dir', 'logs/tensorboard/')
-        self.algorithm_name = self.config.get('algorithm', 'DQN') # Default to DQN
-        self.algo_params = self.config.get('algo_params', {})
-        self.training_params = self.config.get('training_params', {})
+        self.log_dir = self.config.get('log_dir', 'logs/tensorboard/') # For TensorBoard itself
+        self.monitor_log_dir = os.path.join(self.log_dir, "monitor_logs") # For Monitor CSV files
+        
+        self.algorithm_name = self.config.get('algorithm', 'DQN').upper()
+        self.algo_params_config = self.config.get('algo_params', {}) # From model_params.yaml:algorithm_params
+        self.c51_features_config = self.config.get('c51_features', {}) # From model_params.yaml:c51_features
+        self.training_run_params = self.config.get('training_params', {}) # From main_config.yaml:training
 
         os.makedirs(self.model_save_dir, exist_ok=True)
         os.makedirs(self.log_dir, exist_ok=True)
+        os.makedirs(self.monitor_log_dir, exist_ok=True)
 
         self.model = None
-        self.training_env = None
+        self.training_env_monitor = None # This will be the Monitor-wrapped env
         if training_env:
             self.set_env(training_env)
 
-        self.logger.info(f"TrainerAgent initialized for algorithm: {self.algorithm_name}")
+        self.logger.info(f"TrainerAgent initialized for algorithm: {self.algorithm_name}. SB3 Available: {SB3_AVAILABLE}")
         self.logger.info(f"Models will be saved to: {self.model_save_dir}")
-        self.logger.info(f"TensorBoard logs will be saved to: {self.log_dir}")
+        self.logger.info(f"TensorBoard logs to: {self.log_dir}; Monitor logs to: {self.monitor_log_dir}")
 
     def set_env(self, env: IntradayTradingEnv):
-        """
-        Sets the training environment. The environment should be wrapped with Monitor for SB3 logging.
-        """
-        if not isinstance(env, IntradayTradingEnv):
+        if not isinstance(env, IntradayTradingEnv) and not isinstance(env, Monitor): # Allow already monitored env
             self.logger.error("Invalid environment type provided to TrainerAgent.")
-            raise ValueError("Environment must be an instance of IntradayTradingEnv.")
+            raise ValueError("Environment must be an instance of IntradayTradingEnv or Monitor.")
         
-        # It's good practice to wrap the environment with Monitor for SB3 to log episode rewards, lengths etc.
-        # log_subdir = os.path.join(self.log_dir, f"{self.algorithm_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_monitor")
-        # os.makedirs(log_subdir, exist_ok=True)
-        # self.training_env = Monitor(env, filename=log_subdir)
-        # For simplicity in the skeleton, we'll use the raw env first. Monitor is crucial for full SB3 integration.
-        self.training_env = env
-        self.logger.info("Training environment set for TrainerAgent.")
+        if isinstance(env, Monitor):
+            self.training_env_monitor = env
+            self.logger.info("Pre-monitored training environment set.")
+        else:
+            # Wrap the environment with Monitor for SB3 to log episode rewards, lengths etc.
+            # Ensure unique log file for this monitor instance if multiple runs happen in one session.
+            monitor_file_path = os.path.join(self.monitor_log_dir, f"{self.algorithm_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+            self.training_env_monitor = Monitor(env, filename=monitor_file_path, allow_early_resets=True)
+            self.logger.info(f"Training environment wrapped with Monitor. Log file: {monitor_file_path}.csv")
+        
+        # If using VecEnvs (e.g. for parallel training), wrap with DummyVecEnv or SubprocVecEnv
+        # self.training_env_monitor = DummyVecEnv([lambda: self.training_env_monitor])
 
 
     def _create_model(self):
-        """
-        Creates an RL model instance based on the configuration.
-        This is where C51 specific configurations (Dueling, PER, NoisyNets, n-step) would be applied.
-        """
-        if self.training_env is None:
-            self.logger.error("Cannot create model: Training environment is not set.")
+        if self.training_env_monitor is None:
+            self.logger.error("Cannot create model: Training environment (Monitor-wrapped) is not set.")
             return None
 
-        policy_kwargs = self.algo_params.get('policy_kwargs', {})
-        
-        # --- C51 / Advanced DQN Features ---
-        # Dueling Networks: Often enabled via policy_kwargs in SB3's DQN.
-        # e.g., policy_kwargs=dict(net_arch=[...], features_extractor=..., dueling=True) -> This depends on SB3 version.
-        # SB3's DQN has `dueling_network` in `policy_kwargs` for some policies.
-        # For C51, 'dueling' might be a direct parameter or within policy_kwargs.
-        if self.config.get('dueling_nets', False): # Assuming a config flag 'dueling_nets'
-            # This is highly dependent on how the chosen SB3 model (DQN or a specific C51) implements it.
-            # For SB3's DQN, you might specify a policy that supports dueling or pass it in policy_kwargs.
-            # policy_kwargs['dueling'] = True # Hypothetical, check SB3 docs for chosen model.
-            # For a MlpPolicy in DQN, dueling is not a direct toggle. It's part of specific architectures.
-            # If using CnnPolicy, it might have a dueling option.
-            # Let's assume policy_kwargs = dict(net_arch=dict(qf=[64,64], vf=[64,64])) for dueling if supported.
-            # Or, if the policy itself is 'DuelingMlpPolicy', etc.
-            self.logger.info("Dueling networks requested (configuration depends on SB3 model).")
-            # For SB3 DQN, there isn't a simple `dueling=True`. It's structural.
-            # If C51 implies Dueling by default or has a specific policy, that's different.
+        # Start with base algo_params from config
+        current_algo_params = self.algo_params_config.copy()
+        policy_kwargs = current_algo_params.get('policy_kwargs', {})
+        if policy_kwargs is None: policy_kwargs = {} # Ensure it's a dict
 
-        # Prioritized Experience Replay (PER):
-        # SB3's DQN has `prioritized_replay` boolean parameter.
-        if self.config.get('use_per', False):
-            if 'prioritized_replay' in self.algo_params: # Check if already set
-                 self.algo_params['prioritized_replay'] = True
-                 self.logger.info("Prioritized Experience Replay (PER) enabled via algo_params.")
-            # else: # Add it if not, assuming DQN model
-            #    if self.algorithm_name.upper() == 'DQN': # Only for DQN like models
-            #        self.algo_params['prioritized_replay'] = True
-            #        self.logger.info("Prioritized Experience Replay (PER) enabled for DQN.")
+        # --- Configure C51-like features for DQN ---
+        if self.algorithm_name == 'DQN': # Only apply these if base is DQN
+            # Dueling Networks
+            # SB3's MlpPolicy/CnnPolicy do not have a simple `dueling=True`.
+            # Dueling is an architectural choice. If `net_arch` in policy_kwargs specifies separate streams (e.g., for qf and vf),
+            # it implies dueling. Some custom policies might expose a `dueling` flag.
+            # For this skeleton, we assume `policy_kwargs.net_arch` would be structured for dueling if desired.
+            if self.c51_features_config.get('dueling_nets', False):
+                self.logger.info("Dueling networks requested. Ensure 'policy_kwargs.net_arch' is configured for dueling streams if using standard policies.")
+                # Example: policy_kwargs['net_arch'] = dict(qf=[64, 64], vf=[64, 64]) # For SB3 default DQN MlpPolicy, this is how value/advantage streams are defined.
+                # This depends on the specific policy used. The default MlpPolicy for DQN is already dueling if net_arch is not specified or is a simple list.
+                # The default `net_arch` for DQN's MlpPolicy is `[64, 64]`, which SB3 interprets for a dueling structure.
+                # So, explicit configuration might only be needed for custom architectures.
 
-
-        # Noisy Nets:
-        # For SB3's DQN, this is typically enabled by setting `policy_kwargs=dict(noisy_net=True)` or similar.
-        # Or by choosing a policy that inherently uses noisy nets.
-        if self.config.get('use_noisy_nets', False):
-            # policy_kwargs['noisy_net'] = True # Hypothetical for SB3 DQN
-            self.logger.info("Noisy Nets requested (configuration depends on SB3 model).")
+            # Prioritized Experience Replay (PER)
+            if self.c51_features_config.get('use_per', False):
+                current_algo_params['prioritized_replay'] = True
+                # PER specific params (alpha, beta, eps) can be in `algo_params_config`
+                for per_param in ['prioritized_replay_alpha', 'prioritized_replay_beta', 'prioritized_replay_eps']:
+                    if per_param in self.algo_params_config:
+                        current_algo_params[per_param] = self.algo_params_config[per_param]
+                self.logger.info(f"Prioritized Experience Replay (PER) enabled for DQN with params: "
+                                 f"alpha={current_algo_params.get('prioritized_replay_alpha')}, "
+                                 f"beta={current_algo_params.get('prioritized_replay_beta')}, "
+                                 f"eps={current_algo_params.get('prioritized_replay_eps')}.")
+            else:
+                current_algo_params['prioritized_replay'] = False
 
 
-        # N-step Returns:
-        # For SB3's DQN, this is `n_steps_target_update` or similar, or part of how target Q is calculated.
-        # More directly, `train_freq` and `gradient_steps` interact with how often updates happen.
-        # True n-step learning is often a direct parameter if supported.
-        # SB3 DQN's `target_update_interval` relates to target network sync, not directly n-step returns.
-        # `n_episodes_rollout` or similar in OffPolicyAlgorithm controls data collection.
-        # For n-step returns, one might need to look at `gamma` and how returns are bootstrapped.
-        # Some algorithms (like A2C/PPO) inherently use n-step returns. For DQN/C51, it's an extension.
-        # If `n_step_returns` (e.g., 3 or 5) is a parameter for the chosen model:
-        n_step = self.config.get('n_step_returns')
-        if n_step and 'n_step_returns' not in self.algo_params: # Assuming a param name
-             # self.algo_params['n_step_returns'] = n_step # Hypothetical
-             self.logger.info(f"{n_step}-step returns requested (configuration depends on SB3 model).")
+            # Noisy Nets
+            # For SB3 DQN, this is often enabled by setting `use_noisy_net=True` inside `policy_kwargs`.
+            # Or by selecting a specific NoisyNet policy.
+            if self.c51_features_config.get('use_noisy_nets', False):
+                if SB3_AVAILABLE: # Only if using real SB3
+                    if 'net_arch' not in policy_kwargs: # SB3 NoisyLinear needs explicit net_arch
+                         policy_kwargs['net_arch'] = [64,64] # Default, or get from config
+                    policy_kwargs['noisy_net'] = True # This is a conceptual flag, SB3 might need specific NoisyLinear layers.
+                    # For SB3, exploration_fraction/eps become irrelevant if NoisyNets are properly used for exploration.
+                    # The actual implementation of NoisyNets in SB3 requires using NoisyLinear layers in the network definition.
+                    # Standard MlpPolicy for DQN does not automatically switch to NoisyLinear layers with a simple flag.
+                    # This would typically require a custom policy or a policy that explicitly supports noisy nets.
+                    # For now, we log the intent. A full implementation would modify the policy or use a NoisyNet-specific one.
+                    self.logger.info("Noisy Nets requested for DQN. This requires a policy with NoisyLinear layers (e.g., custom policy or specific SB3 Contrib policy).")
+                else:
+                    self.logger.info("Noisy Nets requested (using DummyModel).")
 
+
+            # N-step Returns
+            # SB3's DQN does 1-step TD learning by default.
+            # For n-step returns with DQN, you might need to use a wrapper or a version of DQN that supports it (e.g., from sb3_contrib or custom).
+            # Some algorithms like A3C/A2C use n-step returns naturally.
+            # If `n_step_returns` is a direct parameter of the chosen SB3 DQN variant:
+            n_step = self.c51_features_config.get('n_step_returns')
+            if n_step and n_step > 1:
+                # current_algo_params['n_steps'] = n_step # Example if the model took 'n_steps'
+                self.logger.info(f"{n_step}-step returns requested. Standard SB3 DQN is 1-step. This feature might require a custom DQN variant or specific configuration not covered by standard SB3 DQN.")
 
         # --- Model Instantiation ---
-        # This part needs actual SB3 imports and calls.
-        self.logger.info(f"Attempting to create model: {self.algorithm_name} with params: {self.algo_params}")
-        self.logger.info(f"Policy kwargs: {policy_kwargs}")
-
-        # Placeholder for actual model creation
-        # Example for DQN:
-        # if self.algorithm_name.upper() == 'DQN':
-        #     try:
-        #         from stable_baselines3 import DQN
-        #         self.model = DQN(
-        #             policy=self.algo_params.get('policy', 'MlpPolicy'), # e.g., 'MlpPolicy', 'CnnPolicy'
-        #             env=self.training_env,
-        #             learning_rate=self.algo_params.get('learning_rate', 1e-4),
-        #             buffer_size=self.algo_params.get('buffer_size', 50000),
-        #             learning_starts=self.algo_params.get('learning_starts', 1000),
-        #             batch_size=self.algo_params.get('batch_size', 32),
-        #             tau=self.algo_params.get('tau', 1.0),
-        #             gamma=self.algo_params.get('gamma', 0.99),
-        #             train_freq=self.algo_params.get('train_freq', 4), # (4, "step")
-        #             gradient_steps=self.algo_params.get('gradient_steps', 1),
-        #             # replay_buffer_class= # For PER, might need custom or from sb3_contrib
-        #             # replay_buffer_kwargs= # For PER settings
-        #             optimize_memory_usage=self.algo_params.get('optimize_memory_usage', False),
-        #             target_update_interval=self.algo_params.get('target_update_interval', 10000),
-        #             exploration_fraction=self.algo_params.get('exploration_fraction', 0.1),
-        #             exploration_initial_eps=self.algo_params.get('exploration_initial_eps', 1.0),
-        #             exploration_final_eps=self.algo_params.get('exploration_final_eps', 0.05),
-        #             # prioritized_replay=self.algo_params.get('prioritized_replay', False), # If using PER
-        #             policy_kwargs=policy_kwargs if policy_kwargs else None,
-        #             tensorboard_log=self.log_dir,
-        #             verbose=self.algo_params.get('verbose', 1),
-        #             seed=self.algo_params.get('seed', None)
-        #         )
-        #         self.logger.info(f"DQN model created successfully.")
-        #     except ImportError:
-        #         self.logger.error("Stable Baselines3 DQN not found. Please install it.")
-        #         return None
-        #     except Exception as e:
-        #         self.logger.error(f"Error creating DQN model: {e}", exc_info=True)
-        #         return None
-
-        # elif self.algorithm_name.upper() == 'C51':
-        #     # This assumes C51 is available, possibly from sb3_contrib or a specific SB3 version.
-        #     # The parameters for C51 would be different from DQN.
-        #     # E.g., number of atoms, v_min, v_max for the distribution.
-        #     # policy_kwargs for C51 might include `dueling=True`, `noisy=True` more directly.
-        #     self.logger.warning("C51 model creation is a placeholder. Requires specific C51 implementation.")
-        #     # Example structure if C51 was like DQN:
-        #     # self.model = C51('MlpPolicy', self.training_env, policy_kwargs=policy_kwargs, verbose=1, ...)
-        #     pass
-
-        # else:
-        #     self.logger.error(f"Unsupported algorithm: {self.algorithm_name}")
-        #     return None
+        self.logger.info(f"Attempting to create model: {self.algorithm_name} with effective params: {current_algo_params}")
+        if policy_kwargs: # Update algo_params with potentially modified policy_kwargs
+            current_algo_params['policy_kwargs'] = policy_kwargs
         
-        # SKELETON: For now, we won't instantiate a real SB3 model to avoid mandatory dependency.
-        # We'll simulate its creation.
-        if self.algorithm_name.upper() in ['DQN', 'C51']: # Assuming C51 is handled similarly
-            self.logger.info(f"Skeleton: Successfully created a placeholder for {self.algorithm_name} model.")
-            # Simulate a model object with a learn() method and save/load
-            class DummySB3Model:
-                def __init__(self, name, env, tb_log_dir):
-                    self.name = name
-                    self.env = env
-                    self.tb_log_dir = tb_log_dir
-                    self.logger = logging.getLogger(f"RLTradingPlatform.DummyModel.{name}")
+        try:
+            if self.algorithm_name == 'DQN':
+                self.model = DQN(
+                    env=self.training_env_monitor, # Use the Monitor-wrapped environment
+                    tensorboard_log=self.log_dir, # Base directory for TensorBoard logs
+                    **current_algo_params # Unpack all other configured parameters
+                )
+            # elif self.algorithm_name == 'C51':
+            #     # If using a true C51 model (e.g., from sb3_contrib)
+            #     # from sb3_contrib import C51
+            #     # distributional_params = self.c51_features_config.get('distributional_rl_params', {})
+            #     # self.model = C51(env=self.training_env_monitor, tensorboard_log=self.log_dir,
+            #     #                  **distributional_params, **current_algo_params)
+            #     self.logger.warning("True C51 model not used in this skeleton; DQN with C51 features configured instead if SB3_AVAILABLE.")
+            #     # Fallback to DQN for dummy if C51 is selected but not truly available
+            #     if not SB3_AVAILABLE: self.model = DQN(policy=current_algo_params.get('policy','MlpPolicy'), env=self.training_env_monitor, **current_algo_params)
+            #     else: self.logger.error("C51 selected but no SB3 Contrib C51 implementation linked."); return None
 
-                def learn(self, total_timesteps, callback=None, log_interval=4, tb_log_name="run"):
-                    self.logger.info(f"DummyModel ({self.name}) starting 'learn' for {total_timesteps} timesteps.")
-                    self.logger.info(f"TensorBoard log name: {tb_log_name}, Log interval: {log_interval}")
-                    if callback:
-                        self.logger.info(f"Callbacks: {callback}")
-                        # Simulate callback interaction
-                        if hasattr(callback, 'on_training_start'): callback.on_training_start(locals(), globals())
-                        for i in range(0, int(total_timesteps), 1000): # Simulate steps
-                            if hasattr(callback, 'on_step'): 
-                                if not callback.on_step(): break # Callback signals to stop
-                            if (i/1000) % log_interval == 0:
-                                self.logger.info(f"Dummy learn: Timestep {i+1000}/{total_timesteps}")
-                        if hasattr(callback, 'on_training_end'): callback.on_training_end()
-                    self.logger.info(f"DummyModel ({self.name}) 'learn' complete.")
-
-                def save(self, path):
-                    self.logger.info(f"DummyModel ({self.name}) 'save' called for path: {path}. (Simulated save)")
-                    # Create a dummy file to signify saving
-                    os.makedirs(os.path.dirname(path), exist_ok=True)
-                    with open(path + ".dummy", "w") as f: f.write("dummy model data")
-                
-                @classmethod
-                def load(cls, path, env=None):
-                    logger = logging.getLogger(f"RLTradingPlatform.DummyModel.Load")
-                    logger.info(f"DummyModel 'load' called for path: {path}. (Simulated load)")
-                    # Check if dummy file exists
-                    if os.path.exists(path + ".dummy"):
-                        # Return a new instance, mimicking SB3 load
-                        # The name of the model isn't stored in the dummy file, so we use a generic one
-                        model_name = os.path.basename(path).replace('.zip', '').replace('.dummy', '')
-                        loaded_model = cls(name=f"Loaded_{model_name}", env=env, tb_log_dir=None)
-                        logger.info(f"DummyModel loaded successfully from {path}")
-                        return loaded_model
-                    else:
-                        logger.error(f"Dummy model file {path}.dummy not found.")
-                        raise FileNotFoundError(f"No dummy model found at {path}.dummy")
-
-
-            self.model = DummySB3Model(self.algorithm_name, self.training_env, self.log_dir)
+            else:
+                self.logger.error(f"Unsupported algorithm: {self.algorithm_name}")
+                return None
+            
+            self.logger.info(f"{self.algorithm_name} model created successfully.")
             return self.model
-        else:
-            self.logger.error(f"Unsupported algorithm in skeleton: {self.algorithm_name}")
+
+        except Exception as e:
+            self.logger.error(f"Error creating {self.algorithm_name} model: {e}", exc_info=True)
             return None
 
 
     def train(self, existing_model_path: str = None) -> str | None:
-        """
-        Trains the RL model.
-
-        Args:
-            existing_model_path (str, optional): Path to an existing model to continue training.
-                                                 If None, a new model is created.
-
-        Returns:
-            str or None: Path to the saved trained model, or None if training failed.
-        """
-        if self.training_env is None:
-            self.logger.error("Cannot train: Training environment is not set.")
+        if self.training_env_monitor is None:
+            self.logger.error("Cannot train: Training environment (Monitor-wrapped) is not set.")
             return None
+
+        run_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        run_name = f"{self.algorithm_name}_{run_timestamp}"
 
         if existing_model_path and os.path.exists(existing_model_path):
             self.logger.info(f"Loading existing model from: {existing_model_path}")
-            # self.model = self.algorithm_class.load(existing_model_path, env=self.training_env)
-            # Placeholder for load:
             try:
-                self.model = DummySB3Model.load(existing_model_path, env=self.training_env) # Use the dummy class method
-                self.logger.info(f"Model loaded. Continuing training.")
+                # Use the class method of the specific algorithm for loading
+                if self.algorithm_name == 'DQN':
+                    self.model = DQN.load(existing_model_path, env=self.training_env_monitor, tensorboard_log=self.log_dir)
+                # elif self.algorithm_name == 'C51': # if using a specific C51 class
+                #     self.model = C51.load(existing_model_path, env=self.training_env_monitor, tensorboard_log=self.log_dir)
+                else:
+                    self.logger.error(f"Loading not implemented for algorithm {self.algorithm_name}"); return None
+                
+                # If continuing training, reset TensorBoard log name to avoid conflicts or append to existing.
+                # SB3 model.learn() with a new tb_log_name will create a new subdirectory.
+                self.model.set_logger(self.logger) # SB3 logger, not python logging. Reconfigure tensorboard path for new run.
+                self.logger.info(f"Model loaded. Continuing training. New TensorBoard logs under: {run_name}")
             except Exception as e:
-                self.logger.error(f"Failed to load model from {existing_model_path}: {e}. Starting new training.")
+                self.logger.error(f"Failed to load model from {existing_model_path}: {e}. Starting new training.", exc_info=True)
                 self.model = self._create_model()
         else:
             if existing_model_path:
-                 self.logger.warning(f"Existing model path {existing_model_path} not found. Creating new model.")
+                 self.logger.warning(f"Existing model path {existing_model_path} not found or invalid. Creating new model.")
             self.model = self._create_model()
 
         if self.model is None:
@@ -297,67 +258,84 @@ class TrainerAgent(BaseAgent):
             return None
 
         # --- Callbacks ---
-        # 1. Checkpoint Callback: Saves the model periodically.
-        checkpoint_freq = self.training_params.get('checkpoint_freq', 10000) # Timesteps
-        run_name = f"{self.algorithm_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        checkpoint_save_path = os.path.join(self.model_save_dir, run_name, "checkpoints")
-        # checkpoint_callback = CheckpointCallback(save_freq=checkpoint_freq, save_path=checkpoint_save_path,
-        #                                         name_prefix='rl_model')
-        # Placeholder callback:
-        class DummyCheckpointCallback: # Mimics CheckpointCallback
-            def __init__(self, save_freq, save_path, name_prefix):
-                self.save_freq = save_freq
-                self.save_path = save_path
-                self.name_prefix = name_prefix
-                self.logger = logging.getLogger("RLTradingPlatform.DummyCheckpointCallback")
-                self.num_timesteps = 0
-                os.makedirs(self.save_path, exist_ok=True)
-            def on_step(self) -> bool:
-                self.num_timesteps +=1
-                if self.num_timesteps % self.save_freq == 0:
-                    model_path = os.path.join(self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps.zip")
-                    self.logger.info(f"Dummy Checkpoint: Saving model to {model_path} (simulated)")
-                    # In real SB3, self.model.save(model_path) would be here or implicitly handled
-                    # For dummy model, we can call its save:
-                    if hasattr(self.model, 'save'): self.model.save(model_path) 
-                return True # Continue training
-            def __str__(self): return f"DummyCheckpointCallback(save_freq={self.save_freq})"
-
-        checkpoint_callback = DummyCheckpointCallback(save_freq=checkpoint_freq, save_path=checkpoint_save_path, name_prefix='rl_model')
-        checkpoint_callback.model = self.model # SB3 callbacks get self.model from training loop
-
-        # TODO: 2. Eval Callback: Evaluates the model on a separate environment periodically.
-        # eval_env = Monitor(self.training_env) # Ideally a separate validation env
-        # eval_freq = self.training_params.get('eval_freq', 20000)
-        # eval_callback = EvalCallback(eval_env, best_model_save_path=os.path.join(self.model_save_dir, run_name, 'best_model'),
-        #                              log_path=os.path.join(self.model_save_dir, run_name, 'eval_logs'),
-        #                              eval_freq=eval_freq, deterministic=True, render=False)
-        # For skeleton, we'll just use checkpoint callback.
-        # callbacks_list = [checkpoint_callback, eval_callback]
-        callbacks_list = [checkpoint_callback] # Simplified for skeleton
-        self.logger.info(f"Using callbacks: {callbacks_list}")
+        callbacks_list = []
+        # 1. Checkpoint Callback
+        if SB3_AVAILABLE: # Only use real callbacks if SB3 is available
+            checkpoint_freq = self.training_run_params.get('checkpoint_freq', 10000)
+            checkpoint_save_path = os.path.join(self.model_save_dir, run_name, "checkpoints")
+            # No need to os.makedirs here, CheckpointCallback does it.
+            checkpoint_callback = CheckpointCallback(
+                save_freq=checkpoint_freq,
+                save_path=checkpoint_save_path,
+                name_prefix=f"{self.algorithm_name.lower()}_model",
+                save_replay_buffer=True, # Save replay buffer with model for off-policy algos
+                save_vecnormalize=True # If using VecNormalize wrapper
+            )
+            callbacks_list.append(checkpoint_callback)
+            self.logger.info(f"CheckpointCallback configured: Freq={checkpoint_freq}, Path={checkpoint_save_path}")
+        
+        # 2. Eval Callback (Optional)
+        if SB3_AVAILABLE and self.training_run_params.get('use_eval_callback', False):
+            eval_freq = self.training_run_params.get('eval_freq', 20000)
+            # EvalCallback needs a separate evaluation environment.
+            # For simplicity, we might reuse the training_env_monitor or a copy.
+            # Ideally, create a new EnvAgent instance with validation data.
+            # eval_env_for_callback = Monitor(self.training_env_monitor.env, ...) # Wrap the original env if no separate eval data
+            # This is complex to set up here without Orchestrator providing a dedicated eval_env for this.
+            # For now, if enabled, it will use the training_env_monitor for evaluation.
+            eval_log_path = os.path.join(self.model_save_dir, run_name, "eval_logs")
+            best_model_save_path = os.path.join(self.model_save_dir, run_name, "best_model")
+            
+            # Ensure the eval_env is also vectorized if the training_env is.
+            # For now, assuming self.training_env_monitor is a single Monitor-wrapped env.
+            # If it were a VecEnv: eval_env_for_callback = self.training_env_monitor
+            # else: eval_env_for_callback = DummyVecEnv([lambda: self.training_env_monitor]) # Wrap if not VecEnv
+            
+            eval_callback = EvalCallback(
+                self.training_env_monitor, # Use the monitored training env for eval in this simplified setup
+                best_model_save_path=best_model_save_path,
+                log_path=eval_log_path,
+                eval_freq=eval_freq,
+                deterministic=True,
+                render=False
+            )
+            callbacks_list.append(eval_callback)
+            self.logger.info(f"EvalCallback configured: Freq={eval_freq}, BestModelPath={best_model_save_path}")
+        
+        if not SB3_AVAILABLE and not callbacks_list: # Fallback to dummy if SB3 not there and no real callbacks
+            class DummyCallbackForLearn:
+                def __init__(self, model_ref): self.model = model_ref; self.num_timesteps = 0; self.logger = logging.getLogger("DummyLearnCB")
+                def init_callback(self, model): pass # model already set for dummy
+                def on_step(self): self.num_timesteps+=1; return True
+                def on_training_end(self): self.logger.info("DummyLearnCB: Training ended.")
+            dummy_cb_for_learn = DummyCallbackForLearn(self.model)
+            callbacks_list = dummy_cb_for_learn # Dummy learn expects single callback obj
+            self.logger.info("Using DummyCallbackForLearn as SB3 is not available.")
 
 
         # --- Start Training ---
-        total_timesteps = self.training_params.get('total_timesteps', 100000)
-        log_interval = self.training_params.get('log_interval', 100) # For TensorBoard logging (episodes)
-        tb_log_name = f"{self.algorithm_name}_{run_name}"
+        total_timesteps = self.training_run_params.get('total_timesteps', 100000)
+        # SB3's model.learn `log_interval` is for console print of episode stats (default 100 episodes for DQN).
+        # TensorBoard logging happens more frequently based on internal model logic.
+        learn_log_interval = self.training_run_params.get('console_log_interval_episodes', 100) 
+        tb_log_name_for_run = run_name # This creates a subfolder in self.log_dir (tensorboard_log path)
 
-        self.logger.info(f"Starting training for {total_timesteps} timesteps...")
+        self.logger.info(f"Starting training for {total_timesteps} timesteps. TB sub-log: {tb_log_name_for_run}")
         try:
             self.model.learn(
                 total_timesteps=total_timesteps,
-                callback=callbacks_list, # Pass the list of callbacks
-                log_interval=log_interval, # This is for console logging of episode stats by SB3
-                tb_log_name=tb_log_name # This is the sub-directory within self.log_dir for this run
+                callback=callbacks_list if callbacks_list else None,
+                log_interval=learn_log_interval, 
+                tb_log_name=tb_log_name_for_run, # Subdirectory for this run's TB logs
+                reset_num_timesteps= (existing_model_path is None) # Reset timesteps if new model
             )
         except Exception as e:
             self.logger.error(f"Error during model training: {e}", exc_info=True)
             return None
 
         # --- Save Final Model ---
-        final_model_filename = f"{self.algorithm_name}_final_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-        final_model_path = os.path.join(self.model_save_dir, final_model_filename)
+        final_model_filename = f"{self.algorithm_name.lower()}_final_{run_timestamp}.zip"
+        final_model_path = os.path.join(self.model_save_dir, run_name, final_model_filename) # Save inside run_name folder
         try:
             self.model.save(final_model_path)
             self.logger.info(f"Training complete. Final model saved to: {final_model_path}")
@@ -367,120 +345,93 @@ class TrainerAgent(BaseAgent):
             return None
 
     def run(self, training_env: IntradayTradingEnv, existing_model_path: str = None) -> str | None:
-        """
-        Main method for TrainerAgent: sets environment and starts training.
-
-        Args:
-            training_env (IntradayTradingEnv): The environment to train on.
-            existing_model_path (str, optional): Path to continue training from.
-
-        Returns:
-            str or None: Path to the saved trained model, or None if failed.
-        """
         self.logger.info("TrainerAgent run: Setting up environment and starting training.")
-        self.set_env(training_env)
+        self.set_env(training_env) # This will wrap with Monitor
         
-        if self.training_env is None:
-            self.logger.error("TrainerAgent: Environment not provided or failed to set. Aborting training.")
+        if self.training_env_monitor is None: # Check the monitored env
+            self.logger.error("TrainerAgent: Environment not provided or failed to set up with Monitor. Aborting training.")
             return None
             
         return self.train(existing_model_path=existing_model_path)
 
 
 if __name__ == '__main__':
+    # This __main__ block will use DummySB3Model if SB3 is not installed.
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logger_main = logging.getLogger(__name__)
+    logger_main.info(f"SB3_AVAILABLE: {SB3_AVAILABLE} for TrainerAgent __main__ demo.")
 
-    # --- Mock Training Environment (from EnvAgent or IntradayTradingEnv directly) ---
-    # This would typically be provided by EnvAgent.
-    num_env_steps = 200
-    lookback = 5 
-    num_market_features = 4
-    if lookback > 1:
-        mock_feature_data = np.random.rand(num_env_steps, lookback, num_market_features).astype(np.float32)
-    else:
-        mock_feature_data = np.random.rand(num_env_steps, num_market_features).astype(np.float32)
+    # --- Mock Training Environment ---
+    num_env_steps = 200; lookback = 1; num_market_features = 5 # Simplified: lookback=1, 5 market features + 1 pos feature
+    
+    # For lookback=1, market_feature_data is (num_steps, num_market_features)
+    mock_market_feature_data = np.random.rand(num_env_steps, num_market_features).astype(np.float32)
+    
     mock_prices = 100 + np.cumsum(np.random.randn(num_env_steps))
     mock_dates = pd.to_datetime(pd.date_range(start='2023-03-01', periods=num_env_steps, freq='1min'))
     mock_price_series = pd.Series(mock_prices, index=mock_dates, name='close')
 
     mock_env = IntradayTradingEnv(
-        processed_feature_data=mock_feature_data,
+        processed_feature_data=mock_market_feature_data, # Market features only
         price_data=mock_price_series,
         initial_capital=10000,
-        lookback_window=lookback,
-        max_daily_drawdown_pct=0.1, # Higher for faster testing if it hits
+        lookback_window=lookback, # Env adds position feature, so obs is (num_market_features + 1)
+        max_daily_drawdown_pct=0.1,
         transaction_cost_pct=0.001,
-        max_episode_steps=50 # Short episodes for testing
+        max_episode_steps=50 
     )
-    print(f"Mock training environment created: {mock_env}")
-    print(f"Mock env observation space: {mock_env.observation_space}, action space: {mock_env.action_space}")
-
+    logger_main.info(f"Mock training environment created: {mock_env}")
+    logger_main.info(f"Mock env observation space: {mock_env.observation_space} (shape: {mock_env.observation_space.shape}), action space: {mock_env.action_space}")
 
     # --- TrainerAgent Configuration ---
     trainer_config = {
-        'model_save_dir': 'models/test_trainer',
-        'log_dir': 'logs/tensorboard_test_trainer',
-        'algorithm': 'DQN', # Could be 'C51' if available
-        'algo_params': { # Parameters for the SB3 model (DQN example)
-            'policy': 'MlpPolicy', # Assuming features are flat or handled by MlpPolicy
-            'learning_rate': 5e-4,
-            'buffer_size': 10000, # Smaller for quick test
-            'learning_starts': 200, # Start learning quickly
-            'batch_size': 64,
-            'target_update_interval': 500,
-            'exploration_fraction': 0.3,
-            'exploration_final_eps': 0.05,
-            'verbose': 0, # Less verbose for dummy model
+        'model_save_dir': 'models/test_trainer_enhanced',
+        'log_dir': 'logs/tensorboard_test_trainer_enhanced', # Base TB dir
+        'algorithm': 'DQN',
+        'algo_params': { 
+            'policy': 'MlpPolicy', 
+            'learning_rate': 5e-4, 'buffer_size': 1000, 'learning_starts': 100,
+            'batch_size': 32, 'target_update_interval': 200,
+            'exploration_fraction': 0.2, 'exploration_final_eps': 0.05,
+            'verbose': 1 if SB3_AVAILABLE else 0, # SB3 verbose
             'seed': 42,
-            # 'prioritized_replay': True, # Example for PER
+            # For PER with real SB3 DQN:
+            # 'prioritized_replay_alpha': 0.6, 'prioritized_replay_beta': 0.4, 
+        },
+        'c51_features': { # Flags to control DQN enhancements
+            'dueling_nets': True, # Will try to configure if applicable
+            'use_per': True,      # Will set prioritized_replay=True in DQN params
+            'n_step_returns': 1,  # Standard DQN is 1-step. >1 needs special handling/model.
+            'use_noisy_nets': False # Requires policy with NoisyLinear layers
         },
         'training_params': {
-            'total_timesteps': 5000, # Short training for test
-            'log_interval': 10, # Log every 10 episodes (dummy model logs per N steps)
-            'checkpoint_freq': 1000, # Save checkpoint every 1000 steps
-            # 'eval_freq': 2000, # Evaluate every 2000 steps
-        },
-        # 'use_per': True, # Example flag for PER
-        # 'dueling_nets': True, # Example flag for Dueling
-        # 'n_step_returns': 3, # Example for n-step
+            'total_timesteps': 1000, # Short for test
+            'console_log_interval_episodes': 10, # SB3 model.learn log_interval
+            'checkpoint_freq': 200, 
+            'use_eval_callback': False # Keep false for this simple test
+        }
     }
 
-    # --- Initialize and Run TrainerAgent ---
     trainer_agent = TrainerAgent(config=trainer_config)
     
-    # The "run" method sets the env and starts training
-    print("\nStarting TrainerAgent run...")
+    logger_main.info("\nStarting TrainerAgent run (enhanced)...")
     saved_model_filepath = trainer_agent.run(training_env=mock_env)
 
     if saved_model_filepath:
-        print(f"\nTrainerAgent run completed. Model saved to: {saved_model_filepath}")
-        # Verify dummy model file exists
-        if os.path.exists(saved_model_filepath + ".dummy"):
-            print(f"Dummy model file found at {saved_model_filepath}.dummy")
-        
-        # Verify checkpoint files (simulated)
-        run_name_part = [d for d in os.listdir(os.path.join(trainer_config['model_save_dir'])) if d.startswith(trainer_config['algorithm'])][0]
-        checkpoint_dir = os.path.join(trainer_config['model_save_dir'], run_name_part, "checkpoints")
-        if os.path.exists(checkpoint_dir):
-            print(f"Checkpoints directory found: {checkpoint_dir}")
-            ckpts = [f for f in os.listdir(checkpoint_dir) if f.endswith('.zip.dummy')]
-            if ckpts:
-                print(f"Found dummy checkpoint files: {ckpts}")
-            else:
-                print("No dummy checkpoint files found.")
-        else:
-            print(f"Checkpoints directory NOT found: {checkpoint_dir}")
-            
-        # Verify TensorBoard log directory (simulated structure)
-        tb_main_log_dir = trainer_config['log_dir']
-        tb_run_dirs = [d for d in os.listdir(tb_main_log_dir) if d.startswith(trainer_config['algorithm'])]
-        if tb_run_dirs:
-            print(f"TensorBoard run directory found: {os.path.join(tb_main_log_dir, tb_run_dirs[0])}")
-        else:
-            print(f"TensorBoard run directory NOT found under {tb_main_log_dir}")
+        logger_main.info(f"\nTrainerAgent run completed. Model saved to: {saved_model_filepath}")
+        # Verification for dummy model
+        if not SB3_AVAILABLE and os.path.exists(saved_model_filepath + ".dummy"):
+            logger_main.info(f"Dummy model file found: {saved_model_filepath}.dummy")
+        elif SB3_AVAILABLE and os.path.exists(saved_model_filepath):
+             logger_main.info(f"SB3 model file found: {saved_model_filepath}")
+
+        # Check for Monitor logs
+        monitor_files = [f for f in os.listdir(trainer_agent.monitor_log_dir) if f.endswith('.csv')]
+        if monitor_files: logger_main.info(f"Monitor log(s) found in {trainer_agent.monitor_log_dir}: {monitor_files[:2]}") # Show first two
+        else: logger_main.warning(f"No Monitor logs found in {trainer_agent.monitor_log_dir}")
 
     else:
-        print("\nTrainerAgent run failed or no model was saved.")
+        logger_main.error("\nTrainerAgent run failed or no model was saved.")
 
     mock_env.close()
-    print("\nTrainerAgent example run complete.")
+    logger_main.info("\nTrainerAgent example run complete (enhanced).")
