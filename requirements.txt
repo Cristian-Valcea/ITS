@@ -16,6 +16,8 @@ stable-baselines3>=1.5.0
 yfinance>=0.1.70
 alpha-vantage>=2.3.1
 pandas-ta>=0.3.14b
+ib_insync>=0.9.70
+ta>=0.10.2
 
 # Configuration
 PyYAML>=6.0
