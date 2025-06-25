@@ -1,13 +1,41 @@
 # src/agents/evaluator_agent.py
+# src/agents/evaluator_agent.py
 import os
 import logging
 import pandas as pd
 import numpy as np
-# from stable_baselines3.common.base_class import BaseAlgorithm # For type hinting loaded model
+
+# Attempt to import Stable-Baselines3 components if needed for model loading
+try:
+    from stable_baselines3 import DQN # Example, replace with actual algorithms used
+    # from sb3_contrib import C51 # If C51 is from contrib
+    SB3_MODEL_CLASSES = {
+        'DQN': DQN,
+        # 'C51': C51, # Add if used
+    }
+    SB3_AVAILABLE = True
+except ImportError:
+    SB3_AVAILABLE = False
+    SB3_MODEL_CLASSES = {} # No real models can be loaded if SB3 is not available
+    logging.warning("Stable-Baselines3 not found. EvaluatorAgent can only work with dummy models if SB3 is unavailable.")
 
 from .base_agent import BaseAgent
-from src.gym_env.intraday_trading_env import IntradayTradingEnv # For running backtests
-# from ..utils.performance_metrics import calculate_sharpe_ratio, calculate_max_drawdown, calculate_turnover # Example
+from src.gym_env.intraday_trading_env import IntradayTradingEnv 
+# Assuming performance_metrics.py will be created in src/utils/
+# from ..utils import performance_metrics as pm
+
+# Placeholder for performance metrics until utils.performance_metrics is created
+def calculate_sharpe_ratio(returns_series, risk_free_rate=0.0, periods_per_year=252):
+    if returns_series.std() == 0: return 0.0 # Avoid division by zero
+    excess_returns = returns_series - risk_free_rate / periods_per_year
+    return (excess_returns.mean() / excess_returns.std()) * np.sqrt(periods_per_year)
+
+def calculate_max_drawdown(portfolio_values: pd.Series) -> float:
+    if portfolio_values.empty: return 0.0
+    peak = portfolio_values.expanding(min_periods=1).max()
+    drawdown = (portfolio_values - peak) / peak
+    return drawdown.min() # Returns as a negative value or zero
+
 
 class EvaluatorAgent(BaseAgent):
     """
@@ -15,105 +43,86 @@ class EvaluatorAgent(BaseAgent):
     1. Running backtests of a trained model on a held-out (evaluation) dataset.
     2. Computing performance metrics: Sharpe ratio, max drawdown, total return, turnover.
     3. Generating evaluation reports and logging full trade history from the backtest.
-    4. Supporting walk-forward validation by evaluating on different time windows.
     """
     def __init__(self, config: dict, eval_env: IntradayTradingEnv = None):
-        """
-        Initializes the EvaluatorAgent.
-
-        Args:
-            config (dict): Configuration dictionary. Expected keys:
-                           'reports_dir': Path to save evaluation reports and trade logs.
-                           'eval_metrics': List of metrics to compute (e.g., ['sharpe', 'max_drawdown']).
-                           'model_load_path': Default path to load model if not provided in run().
-            eval_env (IntradayTradingEnv, optional): Pre-initialized evaluation environment.
-                                                     If None, it's expected to be created or set.
-        """
         super().__init__(agent_name="EvaluatorAgent", config=config)
         
         self.reports_dir = self.config.get('reports_dir', 'reports/')
-        self.eval_metrics_config = self.config.get('eval_metrics', ['sharpe', 'max_drawdown', 'total_return', 'turnover'])
+        # Default metrics if not specified in config
+        default_metrics = ['total_return_pct', 'sharpe_ratio', 'max_drawdown_pct', 'num_trades', 'turnover_ratio_period']
+        self.eval_metrics_config = self.config.get('eval_metrics', default_metrics)
         self.default_model_load_path = self.config.get('model_load_path', None)
         
         os.makedirs(self.reports_dir, exist_ok=True)
 
-        self.evaluation_env = eval_env # Can be set via set_env or created with data
+        self.evaluation_env = eval_env 
         self.model_to_evaluate = None
 
         self.logger.info("EvaluatorAgent initialized.")
         self.logger.info(f"Evaluation reports will be saved to: {self.reports_dir}")
+        self.logger.info(f"Metrics to calculate: {self.eval_metrics_config}")
 
     def set_env(self, env: IntradayTradingEnv):
-        """Sets the environment to be used for evaluation."""
         if not isinstance(env, IntradayTradingEnv):
             self.logger.error("Invalid environment type provided to EvaluatorAgent.")
             raise ValueError("Environment must be an instance of IntradayTradingEnv.")
         self.evaluation_env = env
-        # Ensure the eval env does not log trades itself if EvaluatorAgent handles it, or ensure coordination.
-        # The env's log_trades_flag might be set to False if EvaluatorAgent wants to control logging.
-        # Or, EvaluatorAgent can just retrieve the log from the env after the run.
         self.logger.info("Evaluation environment set for EvaluatorAgent.")
 
     def load_model(self, model_path: str, algorithm_name: str = "DQN"):
-        """
-        Loads a trained SB3 model for evaluation.
-        
-        Args:
-            model_path (str): Path to the saved model (.zip file).
-            algorithm_name (str): The name of the algorithm the model was trained with (e.g., 'DQN', 'C51').
-                                  Used to call the correct SB3 load method.
-        """
-        if not os.path.exists(model_path) and not os.path.exists(model_path + ".dummy"): # Check for dummy too
-            self.logger.error(f"Model file not found at {model_path}")
+        # Convert algorithm_name to upper for case-insensitive matching
+        algo_name_upper = algorithm_name.upper()
+
+        if not os.path.exists(model_path) and not os.path.exists(model_path + ".dummy"):
+            self.logger.error(f"Model file not found at {model_path} or {model_path}.dummy")
             self.model_to_evaluate = None
             return False
         
-        self.logger.info(f"Loading model for evaluation from: {model_path} (Algorithm: {algorithm_name})")
-        try:
-            # Actual SB3 model loading:
-            # if algorithm_name.upper() == 'DQN':
-            #     from stable_baselines3 import DQN
-            #     self.model_to_evaluate = DQN.load(model_path, env=self.evaluation_env) # Env can be optional for predict
-            # elif algorithm_name.upper() == 'C51':
-            #     from stable_baselines3 import C51 # Or from contrib
-            #     self.model_to_evaluate = C51.load(model_path, env=self.evaluation_env)
-            # else:
-            #     self.logger.error(f"Unsupported algorithm '{algorithm_name}' for loading.")
-            #     return False
-
-            # SKELETON: Using the DummySB3Model.load from TrainerAgent for consistency
-            from .trainer_agent import TrainerAgent # Access DummySB3Model
-            # This creates a circular dependency for the __main__ block, handle carefully.
-            # In a real project, DummySB3Model might be in a common utils/testing module.
-            # For this skeleton structure, this import is problematic if running evaluator_agent.py directly
-            # unless trainer_agent.py defines DummySB3Model at the global scope without its own __main__ causing issues.
-            # Let's redefine a minimal DummyModel here for Evaluator's __main__ to work standalone.
-            class DummyEvalModel:
-                def __init__(self, path): self.path = path; self.logger = logging.getLogger("DummyEvalModel")
+        self.logger.info(f"Loading model for evaluation from: {model_path} (Algorithm: {algo_name_upper})")
+        
+        if SB3_AVAILABLE and algo_name_upper in SB3_MODEL_CLASSES:
+            ModelClass = SB3_MODEL_CLASSES[algo_name_upper]
+            try:
+                # Pass self.evaluation_env if the model needs env details for loading some policies
+                # For prediction, env is often not strictly needed at load time if observation/action spaces match.
+                self.model_to_evaluate = ModelClass.load(model_path, env=None) # Pass env if model policy needs it for setup
+                self.logger.info(f"Successfully loaded SB3 model {algo_name_upper} from {model_path}")
+                return True
+            except Exception as e:
+                self.logger.error(f"Error loading SB3 model {algo_name_upper} from {model_path}: {e}", exc_info=True)
+                self.model_to_evaluate = None
+                return False
+        elif os.path.exists(model_path + ".dummy"): # Fallback to dummy model loading if SB3 not available or algo unknown to SB3 list
+            self.logger.warning(f"SB3 model class for {algo_name_upper} not available or SB3 itself not installed. Attempting to load as dummy.")
+            class DummyEvalModel: # Minimal dummy model for predict()
+                def __init__(self, path_loaded_from): self.path = path_loaded_from; self.logger = logging.getLogger("DummyEvalModel")
                 def predict(self, obs, deterministic=True):
-                    self.logger.debug(f"DummyEvalModel predicting for obs of shape {obs.shape if isinstance(obs, np.ndarray) else 'dict'}. Deterministic: {deterministic}")
-                    # Based on observation space of IntradayTradingEnv (can be Box or Dict)
-                    # Action is Discrete(3). Return a random action.
-                    # This needs to know the action space. Assume Discrete(3) for now.
-                    return np.random.randint(0, 3), None # action, state (state is for recurrent)
+                    # Assuming action space is Discrete(3) from IntradayTradingEnv
+                    return self.logger.parent.evaluation_env.action_space.sample(), None # Sample a random action
                 @classmethod
-                def load(cls, path, env=None): # env is optional for predict, but good for consistency
+                def load(cls, path, env=None): 
                     logger = logging.getLogger("DummyEvalModel.Load")
-                    if os.path.exists(path + ".dummy"): # Check for dummy file from TrainerAgent
+                    if os.path.exists(path + ".dummy"):
                         logger.info(f"DummyEvalModel loaded (simulated) from {path}")
                         return cls(path)
-                    logger.error(f"Dummy model file {path}.dummy not found for loading.")
+                    logger.error(f"Dummy model file {path}.dummy not found.")
                     raise FileNotFoundError(f"No dummy model found at {path}.dummy")
-
-            self.model_to_evaluate = DummyEvalModel.load(model_path, env=self.evaluation_env)
-            self.logger.info("Model loaded successfully for evaluation.")
-            return True
-        except Exception as e:
-            self.logger.error(f"Error loading model from {model_path}: {e}", exc_info=True)
+            try:
+                # Pass self to the dummy model so it can access self.evaluation_env for action_space.sample()
+                self.model_to_evaluate = DummyEvalModel.load(model_path, env=self) 
+                self.logger.info("Dummy model loaded successfully for evaluation.")
+                return True
+            except Exception as e:
+                self.logger.error(f"Error loading dummy model from {model_path}.dummy: {e}", exc_info=True)
+                self.model_to_evaluate = None
+                return False
+        else:
+            self.logger.error(f"Cannot load model: SB3 is not available for algorithm '{algo_name_upper}' and no dummy file found at {model_path}.dummy")
             self.model_to_evaluate = None
             return False
 
-    def run_backtest(self, deterministic: bool = True) -> pd.DataFrame | None:
+
+    def run_backtest(self, deterministic: bool = True) -> tuple[pd.DataFrame | None, pd.Series | None]:
         """
         Runs the loaded model on the evaluation environment.
 
@@ -121,14 +130,17 @@ class EvaluatorAgent(BaseAgent):
             deterministic (bool): Whether to use deterministic actions from the model. True for evaluation.
 
         Returns:
-            pd.DataFrame or None: DataFrame of trade history from the backtest, or None if failed.
+            tuple[pd.DataFrame | None, pd.Series | None]: 
+                - DataFrame of trade history from the backtest.
+                - Series of portfolio values over time.
+                Returns (None, None) if failed.
         """
         if self.model_to_evaluate is None:
             self.logger.error("No model loaded. Cannot run backtest.")
-            return None
+            return None, None
         if self.evaluation_env is None:
             self.logger.error("Evaluation environment not set. Cannot run backtest.")
-            return None
+            return None, None
 
         self.logger.info(f"Starting backtest on evaluation environment. Deterministic: {deterministic}")
         
@@ -137,115 +149,123 @@ class EvaluatorAgent(BaseAgent):
         truncated = False
         total_steps = 0
 
+        # Ensure the environment's portfolio_history is reset/cleared if it's not done in env.reset()
+        # self.evaluation_env.portfolio_history = [self.evaluation_env.initial_capital] # Already done in env.reset()
+
         while not (terminated or truncated):
             action, _states = self.model_to_evaluate.predict(obs, deterministic=deterministic)
             obs, reward, terminated, truncated, info = self.evaluation_env.step(action)
             total_steps += 1
             if total_steps % 100 == 0: # Log progress
-                 self.logger.debug(f"Backtest step {total_steps}, Action: {action}, Reward: {reward:.2f}, Capital: {info['current_capital']:.2f}")
+                 self.logger.debug(f"Backtest step {total_steps}, Action: {action}, Reward: {reward:.3f}, Portfolio Value: {info.get('portfolio_value', 'N/A'):.2f}")
 
         self.logger.info(f"Backtest finished after {total_steps} steps.")
-        self.logger.info(f"Final capital: {self.evaluation_env.current_capital:.2f}")
+        self.logger.info(f"Final portfolio value: {self.evaluation_env.portfolio_value:.2f}")
         
         trade_log_df = self.evaluation_env.get_trade_log()
+        portfolio_history_s = self.evaluation_env.get_portfolio_history()
+
         if trade_log_df.empty:
             self.logger.warning("Backtest completed, but no trades were logged by the environment.")
         else:
-            self.logger.info(f"Retrieved trade log with {len(trade_log_df)} entries from environment.")
+            self.logger.info(f"Retrieved trade log with {len(trade_log_df)} entries.")
         
-        return trade_log_df
+        if portfolio_history_s.empty:
+            self.logger.warning("Portfolio history is empty after backtest.")
+        else:
+            self.logger.info(f"Retrieved portfolio history with {len(portfolio_history_s)} entries.")
+            
+        return trade_log_df, portfolio_history_s
 
-    def _calculate_metrics(self, trade_log_df: pd.DataFrame, initial_capital: float, prices_df: pd.Series = None) -> dict:
+    def _calculate_metrics(self, trade_log_df: pd.DataFrame, portfolio_history: pd.Series, initial_capital: float) -> dict:
         """
-        Calculates performance metrics from the trade log and environment state.
+        Calculates performance metrics.
         
         Args:
-            trade_log_df (pd.DataFrame): Log of trades from the backtest.
-            initial_capital (float): Initial capital from the environment.
-            prices_df (pd.Series): Series of prices during the backtest period, if needed for some metrics.
-                                   The environment itself tracks capital, so this might be redundant
-                                   if all metrics can be derived from final capital and trade log.
-
+            trade_log_df (pd.DataFrame): Log of trades.
+            portfolio_history (pd.Series): Series of portfolio values over time, indexed by datetime.
+            initial_capital (float): Initial capital.
+            
         Returns:
             dict: Dictionary of calculated metrics.
         """
         metrics = {}
-        final_capital = self.evaluation_env.current_capital # Get from env after run
+        if portfolio_history.empty:
+            self.logger.warning("Portfolio history is empty, cannot calculate most metrics.")
+            metrics['total_return_pct'] = 0.0
+            metrics['initial_capital'] = round(initial_capital, 2)
+            metrics['final_capital'] = round(initial_capital,2) # Assume no change if no history
+            metrics['num_trades'] = len(trade_log_df)
+            return metrics
+
+        final_capital = portfolio_history.iloc[-1]
 
         # 1. Total Return
-        if 'total_return' in self.eval_metrics_config:
-            total_return_pct = ((final_capital - initial_capital) / initial_capital) * 100
+        if 'total_return_pct' in self.eval_metrics_config:
+            total_return_pct = ((final_capital - initial_capital) / initial_capital) * 100 if initial_capital else 0
             metrics['total_return_pct'] = round(total_return_pct, 4)
             metrics['initial_capital'] = round(initial_capital, 2)
             metrics['final_capital'] = round(final_capital, 2)
-            self.logger.info(f"Calculated Total Return: {total_return_pct:.2f}%")
+            self.logger.info(f"Calculated Total Return: {metrics['total_return_pct']:.2f}%")
 
-        # TODO: Implement other metrics. These are placeholders.
-        # Requires prices_df (portfolio value over time) for accurate Sharpe and Max Drawdown.
-        # The IntradayTradingEnv could be modified to log portfolio value at each step.
-        # Or, reconstruct portfolio value history from trade_log_df and price_data.
-        
-        # For simplicity, let's assume we have a series of portfolio values.
-        # This would ideally be logged by the environment or reconstructed.
-        # For skeleton, we'll use dummy values or skip complex metrics.
-        
-        # Placeholder: Get portfolio history (list of capital values at each step)
-        # This should be a proper output from the environment run or reconstructed.
-        # portfolio_history = getattr(self.evaluation_env, 'capital_history', [initial_capital, final_capital])
-        # For now, let's assume the trade_log_df contains enough info or these are simplified.
-        
-        # 2. Sharpe Ratio (Simplified: using daily/periodic returns)
-        if 'sharpe' in self.eval_metrics_config:
-            # TODO: Need daily/periodic returns. From trade_log or env's capital history.
-            # Placeholder:
-            # returns_series = pd.Series(portfolio_history).pct_change().dropna()
-            # if not returns_series.empty and returns_series.std() != 0:
-            #     sharpe = (returns_series.mean() / returns_series.std()) * np.sqrt(252) # Annualized (if daily)
-            #     metrics['sharpe_ratio'] = round(sharpe, 4)
-            # else:
-            #     metrics['sharpe_ratio'] = 0.0
-            metrics['sharpe_ratio'] = "TODO: Implement Sharpe Ratio"
+        # Calculate daily returns if possible (assuming DatetimeIndex for portfolio_history)
+        daily_returns = pd.Series([]) # Default to empty
+        if isinstance(portfolio_history.index, pd.DatetimeIndex):
+            # Resample to daily, then calculate percentage change.
+            # Use 'B' (business day) or 'D' (calendar day) depending on data frequency.
+            # If data is intraday, resample to daily first.
+            # Assuming 'price_data' (and thus portfolio_history) index has sufficient frequency for daily resample.
+            daily_portfolio_values = portfolio_history.resample('D').last().ffill()
+            daily_returns = daily_portfolio_values.pct_change().dropna()
+        else:
+            self.logger.warning("Portfolio history does not have a DatetimeIndex. Cannot calculate daily returns for Sharpe/Sortino.")
+
+
+        # 2. Sharpe Ratio
+        if 'sharpe_ratio' in self.eval_metrics_config:
+            if not daily_returns.empty:
+                # Assuming risk_free_rate_annual = 0 for simplicity, can be configured
+                risk_free_rate_annual = self.config.get('risk_free_rate_annual', 0.0) 
+                # Assuming 252 trading days in a year
+                periods_per_year = self.config.get('periods_per_year_for_sharpe', 252) 
+                metrics['sharpe_ratio'] = round(calculate_sharpe_ratio(daily_returns, risk_free_rate_annual, periods_per_year), 4)
+            else:
+                metrics['sharpe_ratio'] = 0.0
             self.logger.info(f"Calculated Sharpe Ratio: {metrics['sharpe_ratio']}")
 
-
         # 3. Max Drawdown
-        if 'max_drawdown' in self.eval_metrics_config:
-            # TODO: Need portfolio value history.
-            # Placeholder:
-            # p_values = pd.Series(portfolio_history)
-            # peak = p_values.expanding(min_periods=1).max()
-            # drawdown = (p_values - peak) / peak
-            # max_dd = drawdown.min() * 100 # Percentage
-            # metrics['max_drawdown_pct'] = round(max_dd, 4)
-            metrics['max_drawdown_pct'] = "TODO: Implement Max Drawdown"
-            self.logger.info(f"Calculated Max Drawdown: {metrics['max_drawdown_pct']}")
+        if 'max_drawdown_pct' in self.eval_metrics_config:
+            max_dd = calculate_max_drawdown(portfolio_history) * 100 # Convert to percentage
+            metrics['max_drawdown_pct'] = round(max_dd, 4)
+            self.logger.info(f"Calculated Max Drawdown: {metrics['max_drawdown_pct']:.2f}%")
 
         # 4. Turnover
-        if 'turnover' in self.eval_metrics_config and not trade_log_df.empty:
-            # Sum of absolute value of all trades / (Number of days * Average Capital) -> Annualized
-            # Simplified: Total traded value / initial capital for the period
-            # `trade_value` should be calculated correctly in `record_trade` of RiskAgent/Env.
-            # Assuming trade_log_df has 'entry_price' and some quantity, or direct 'trade_value'.
-            # Let's assume the env's trade log has a 'cost_entry' or 'cost_exit' that reflects value.
-            # For simplicity, let's sum up 'profit' and 'cost' columns if they exist,
-            # though 'profit' is not trade value. This needs a proper 'trade_value' column.
-            # Example: `total_traded_value = (trade_log_df['abs_trade_value']).sum()`
-            # For now, if 'cost_entry' and 'cost_exit' exist (from IntradayTradingEnv log):
-            total_traded_value = 0
-            if 'cost_entry' in trade_log_df.columns: # Value of entered position
-                # Cost is transaction cost. Need actual value.
-                # If entry_price and a hypothetical 'shares' column existed:
-                # total_traded_value += (trade_log_df['entry_price'] * trade_log_df['shares']).sum()
-                # This metric is underspecified with current IntradayTradingEnv trade log.
-                # Let's make a placeholder.
-                pass # TODO: Implement turnover based on actual trade values.
-            metrics['turnover_ratio'] = "TODO: Implement Turnover" # E.g. total_traded_value / initial_capital
-            self.logger.info(f"Calculated Turnover: {metrics['turnover_ratio']}")
-        elif 'turnover' in self.eval_metrics_config:
-             metrics['turnover_ratio'] = 0.0 # No trades
-
+        if 'turnover_ratio_period' in self.eval_metrics_config:
+            if not trade_log_df.empty and 'trade_value' in trade_log_df.columns:
+                total_traded_value = trade_log_df['trade_value'].sum()
+                # Turnover for the period = Total Traded Value / Average Capital (or Initial Capital)
+                # Using initial capital for simplicity here. Average capital would be more accurate.
+                avg_capital = initial_capital # Could also use portfolio_history.mean()
+                turnover_ratio = total_traded_value / avg_capital if avg_capital else 0
+                metrics['turnover_ratio_period'] = round(turnover_ratio, 4)
+                metrics['total_traded_value'] = round(total_traded_value, 2)
+            else:
+                metrics['turnover_ratio_period'] = 0.0
+                metrics['total_traded_value'] = 0.0
+            self.logger.info(f"Calculated Turnover Ratio (Period): {metrics['turnover_ratio_period']}")
+        
+        # 5. Number of Trades
         metrics['num_trades'] = len(trade_log_df)
         self.logger.info(f"Number of trades in backtest: {metrics['num_trades']}")
+
+        # TODO: Implement other metrics from self.eval_metrics_config as needed:
+        # - Sortino Ratio (needs downside deviation of returns)
+        # - Calmar Ratio (Total Return / Max Drawdown)
+        # - Win Rate, Avg Win/Loss, Profit Factor (needs P&L per trade from trade_log_df)
+        # - Avg Trade Duration (needs entry/exit times per trade from trade_log_df)
+        if 'sortino_ratio' in self.eval_metrics_config: metrics['sortino_ratio'] = "TODO"
+        if 'calmar_ratio' in self.eval_metrics_config: metrics['calmar_ratio'] = "TODO"
+        if 'win_rate_pct' in self.eval_metrics_config: metrics['win_rate_pct'] = "TODO"
         
         return metrics
 

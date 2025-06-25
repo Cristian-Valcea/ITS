@@ -25,99 +25,125 @@ class RiskAgent(BaseAgent):
 
         Args:
             config (dict): Configuration dictionary. Expected keys from `risk_limits.yaml`:
-                           'max_daily_drawdown_pct': float (e.g., 0.02 for 2%)
-                           'max_hourly_turnover_ratio': float (e.g., 5.0 for 5x capital)
-                           'max_daily_turnover_ratio': float (e.g., 20.0 for 20x capital)
-                           'halt_on_breach': bool (True to stop trading, False to just warn)
+                           'max_daily_drawdown_pct', 'max_hourly_turnover_ratio',
+                           'max_daily_turnover_ratio', 'halt_on_breach'.
         """
         super().__init__(agent_name="RiskAgent", config=config)
         
-        self.max_daily_drawdown_pct = self.config.get('max_daily_drawdown_pct', 0.02)
-        self.max_hourly_turnover_ratio = self.config.get('max_hourly_turnover_ratio', 5.0)
-        self.max_daily_turnover_ratio = self.config.get('max_daily_turnover_ratio', 20.0)
-        self.halt_on_breach = self.config.get('halt_on_breach', True)
+        # Ensure defaults are robust if keys are missing, though config loading should handle this.
+        self.max_daily_drawdown_pct = float(self.config.get('max_daily_drawdown_pct', 0.02))
+        self.max_hourly_turnover_ratio = float(self.config.get('max_hourly_turnover_ratio', 5.0))
+        self.max_daily_turnover_ratio = float(self.config.get('max_daily_turnover_ratio', 20.0))
+        self.halt_on_breach = bool(self.config.get('halt_on_breach', True))
+        self.liquidate_on_halt = bool(self.config.get('liquidate_on_halt', False))
+
 
         # State variables for live monitoring
-        self.start_of_day_capital = None
-        self.current_capital = None # Should be updated by Orchestrator/DataFeed
-        self.portfolio_value = None # Includes cash + value of open positions
+        self.start_of_day_portfolio_value = None # Use portfolio value as the capital base for ratios
+        self.current_portfolio_value = None    # Updated by Orchestrator/DataFeed
         
-        self.daily_traded_value = 0.0 # Sum of absolute value of all trades today
-        self.hourly_traded_value = 0.0 # Sum of absolute value of trades in current hour
+        self.daily_traded_value = 0.0    # Sum of absolute monetary value of all trades today
+        self.hourly_traded_value = 0.0   # Sum for the current rolling hour
 
-        self.last_trade_timestamp = None
-        self.trades_this_hour = deque() # Stores (timestamp, trade_value) for hourly turnover
-        self.trades_today = [] # Stores trade_value for daily turnover (could be large)
+        self.last_event_timestamp = None # Tracks time for hourly calculations
+        self.trades_this_hour = deque()  # Stores (timestamp, trade_value) for hourly turnover calculation
 
         self.logger.info("RiskAgent initialized with the following limits:")
         self.logger.info(f"  Max Daily Drawdown: {self.max_daily_drawdown_pct*100:.2f}%")
         self.logger.info(f"  Max Hourly Turnover Ratio: {self.max_hourly_turnover_ratio:.2f}x")
         self.logger.info(f"  Max Daily Turnover Ratio: {self.max_daily_turnover_ratio:.2f}x")
         self.logger.info(f"  Halt on Breach: {self.halt_on_breach}")
+        self.logger.info(f"  Liquidate on Halt: {self.liquidate_on_halt}")
 
-    def update_capital_and_portfolio(self, current_capital: float, portfolio_value: float):
+    def update_portfolio_value(self, portfolio_value: float, timestamp: datetime = None):
         """
-        Called by the Orchestrator to update the RiskAgent's view of current funds.
+        Called by the Orchestrator to update the RiskAgent's view of current portfolio value.
         
         Args:
-            current_capital (float): Current cash balance.
             portfolio_value (float): Total value of portfolio (cash + positions).
+            timestamp (datetime, optional): Current timestamp. Defaults to datetime.now().
         """
-        self.current_capital = current_capital
-        self.portfolio_value = portfolio_value if portfolio_value is not None else current_capital
+        self.current_portfolio_value = portfolio_value
+        self.last_event_timestamp = timestamp or datetime.now()
 
-        if self.start_of_day_capital is None: # First update of the day
-            self.start_of_day_capital = self.portfolio_value
-            self.logger.info(f"Start of day capital set to: {self.start_of_day_capital:.2f}")
+        if self.start_of_day_portfolio_value is None: # First update of the day
+            self.start_of_day_portfolio_value = self.current_portfolio_value
+            self.logger.info(f"Start of day portfolio value set to: {self.start_of_day_portfolio_value:.2f}")
+        
+        # Prune hourly trades based on the new timestamp
+        self._update_hourly_turnover(self.last_event_timestamp)
 
-    def reset_daily_limits(self, start_of_day_capital: float = None):
+
+    def reset_daily_limits(self, current_portfolio_value: float = None, timestamp: datetime = None):
         """
         Resets daily counters and sets the capital baseline for the new day.
         Should be called by the Orchestrator at the start of each trading day.
         """
-        sod_cap = start_of_day_capital if start_of_day_capital is not None else self.current_capital
-        if sod_cap is None:
-            self.logger.warning("Cannot reset daily limits: current capital unknown.")
+        # Use provided portfolio value or the last known one as the new day's starting point
+        sod_portfolio_val = current_portfolio_value if current_portfolio_value is not None else self.current_portfolio_value
+        if sod_portfolio_val is None:
+            self.logger.warning("Cannot reset daily limits: current portfolio value unknown. RiskAgent may not function correctly.")
             return
 
-        self.start_of_day_capital = sod_cap
+        self.start_of_day_portfolio_value = sod_portfolio_val
         self.daily_traded_value = 0.0
-        self.trades_today = []
-        # Hourly limits are reset implicitly by `_update_hourly_turnover`
-        self.logger.info(f"Daily risk limits reset. Start of day capital: {self.start_of_day_capital:.2f}")
-        # Reset hourly queue too, as it's tied to a day
-        self.trades_this_hour.clear()
-        self.hourly_traded_value = 0.0
+        self.hourly_traded_value = 0.0 # Reset this as well, as it's relative to SOD capital
+        self.trades_this_hour.clear()  # Clear the deque of hourly trades
+        self.last_event_timestamp = timestamp or datetime.now()
+        
+        self.logger.info(f"Daily risk limits reset. Start of day portfolio value: {self.start_of_day_portfolio_value:.2f} at {self.last_event_timestamp}")
 
 
     def _update_hourly_turnover(self, current_time: datetime):
-        """Helper to remove trades older than 1 hour from the deque."""
+        """Helper to remove trades older than 1 hour from the deque and update sum."""
         if not self.trades_this_hour:
             return
         
         one_hour_ago = current_time - timedelta(hours=1)
-        while self.trades_this_hour and self.trades_this_hour[0][0] < one_hour_ago:
-            _, trade_val = self.trades_this_hour.popleft()
-            self.hourly_traded_value -= trade_val
-            if self.hourly_traded_value < 0: self.hourly_traded_value = 0 # Float precision
+        updated_hourly_traded_value = 0
+        
+        # Rebuild deque and sum only valid trades to avoid float precision issues with subtraction
+        new_deque = deque()
+        for ts, trade_val in self.trades_this_hour:
+            if ts >= one_hour_ago:
+                new_deque.append((ts, trade_val))
+                updated_hourly_traded_value += trade_val
+        
+        if len(new_deque) < len(self.trades_this_hour):
+            self.logger.debug(f"Pruned {len(self.trades_this_hour) - len(new_deque)} old trades from hourly window.")
 
-    def record_trade(self, trade_value: float, timestamp: datetime):
+        self.trades_this_hour = new_deque
+        self.hourly_traded_value = updated_hourly_traded_value
+
+
+    def record_trade(self, trade_value: float, timestamp: datetime = None):
         """
         Records a trade to update turnover calculations.
         trade_value is the absolute monetary value of the trade (e.g., num_shares * price).
+        timestamp is when the trade occurred.
         """
-        abs_trade_value = abs(trade_value)
-        self.daily_traded_value += abs_trade_value
-        # self.trades_today.append(abs_trade_value) # If needed for more complex daily logic
+        if self.start_of_day_portfolio_value is None:
+            self.logger.error("Cannot record trade: start_of_day_portfolio_value is not set. Call reset_daily_limits() first.")
+            return
 
-        self._update_hourly_turnover(timestamp) # Prune old trades from hourly window
-        self.trades_this_hour.append((timestamp, abs_trade_value))
-        self.hourly_traded_value += abs_trade_value
+        current_time = timestamp or datetime.now()
+        self.last_event_timestamp = current_time
+
+        abs_trade_value = abs(trade_value)
+        if abs_trade_value <= 0:
+            self.logger.warning(f"Attempted to record a trade with non-positive value: {trade_value}. Ignoring.")
+            return
+            
+        self.daily_traded_value += abs_trade_value
         
-        self.last_trade_timestamp = timestamp
-        self.logger.debug(f"Trade recorded: Value={abs_trade_value:.2f} at {timestamp}. "
-                         f"Hourly Turnover Value: {self.hourly_traded_value:.2f}, "
-                         f"Daily Turnover Value: {self.daily_traded_value:.2f}")
+        # Prune hourly trades before adding new one and calculating sum
+        self._update_hourly_turnover(current_time) 
+        self.trades_this_hour.append((current_time, abs_trade_value))
+        self.hourly_traded_value += abs_trade_value # Add new trade to sum
+        
+        self.logger.debug(f"Trade recorded: Value={abs_trade_value:.2f} at {current_time}. "
+                         f"Hourly Traded Value: {self.hourly_traded_value:.2f}, "
+                         f"Daily Traded Value: {self.daily_traded_value:.2f}")
 
     def check_drawdown(self) -> tuple[bool, float]:
         """

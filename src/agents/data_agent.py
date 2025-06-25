@@ -1,62 +1,149 @@
 # src/agents/data_agent.py
 import os
 import pandas as pd
-from datetime import datetime
-# from ib_insync import IB, util, Contract # Uncomment when ib_insync is integrated
+from datetime import datetime, timedelta
+from ib_insync import IB, util, Contract, Stock # Assuming ib_insync is installed
+
 from .base_agent import BaseAgent
 # from ..utils.config_loader import load_config # Example for loading config
 
 class DataAgent(BaseAgent):
     """
     DataAgent is responsible for:
-    1. Fetching historical and live market data (initially focusing on historical).
+    1. Fetching historical and live market data from Interactive Brokers.
     2. Caching the data to local storage (e.g., CSV or Parquet/Pickle).
     3. Performing basic data validation and quality checks.
     """
-    def __init__(self, config: dict, ib_client=None):
+    def __init__(self, config: dict, ib_client: IB = None):
         """
         Initializes the DataAgent.
 
         Args:
             config (dict): Configuration dictionary. Expected keys:
                            'data_dir_raw': Path to save raw data.
-                           'default_symbol': Default trading symbol (e.g., 'AAPL').
-                           'ibkr_conn': IBKR connection details (host, port, clientId) if used.
+                           'ibkr_conn': IBKR connection details (host, port, clientId, timeout_seconds).
             ib_client (ib_insync.IB, optional): An active IB Insync IB client instance.
-                                                 This allows for sharing a connection.
+                                                 Allows for sharing an existing connection.
         """
         super().__init__(agent_name="DataAgent", config=config)
         self.data_dir_raw = self.config.get('data_dir_raw', 'data/raw')
         os.makedirs(self.data_dir_raw, exist_ok=True)
         
-        self.ib = ib_client # Store the passed IB client or None
-        # self.ib_connected = self.ib is not None and self.ib.isConnected() # Check if passed client is connected
+        self.ib_config = self.config.get('ibkr_conn', {})
+        self.ib = None # Will be initialized
+        self.ib_connected = False
+        self._ib_managed_locally = False # Flag to track if this instance manages the connection
 
-        # TODO: Initialize IB connection here if not passed an active one,
-        # using details from self.config['ibkr_conn']
-        # Example:
-        # if not self.ib_connected and 'ibkr_conn' in self.config:
-        #     self.ib = IB()
-        #     try:
-        #         self.ib.connect(self.config['ibkr_conn']['host'],
-        #                         self.config['ibkr_conn']['port'],
-        #                         clientId=self.config['ibkr_conn']['clientId'])
-        #         self.ib_connected = True
-        #         self.logger.info("Successfully connected to IBKR.")
-        #     except Exception as e:
-        #         self.logger.error(f"Failed to connect to IBKR: {e}")
-        #         self.ib_connected = False
+        if ib_client and ib_client.isConnected():
+            self.ib = ib_client
+            self.ib_connected = True
+            self.logger.info("Using provided, already connected IB client.")
+        elif self.ib_config:
+            self._connect_ibkr() # Attempt to connect if config is provided
+        else:
+            self.logger.warning("No IB client provided and no ibkr_conn config found. IBKR functionalities will be unavailable.")
 
         self.logger.info(f"Raw data will be saved to: {self.data_dir_raw}")
 
-    def _get_cache_filepath(self, symbol: str, start_date: str, end_date: str, interval: str, data_format: str = "csv") -> str:
-        """Helper to generate a consistent filepath for cached data."""
-        filename = f"{symbol}_{start_date.replace('-', '')}_{end_date.replace('-', '')}_{interval}.{data_format}"
-        return os.path.join(self.data_dir_raw, symbol, filename)
+    def _connect_ibkr(self):
+        """Initializes and connects to Interactive Brokers if not already connected."""
+        if self.ib_connected:
+            self.logger.info("IB client is already connected.")
+            return
+
+        if not self.ib_config.get('host') or not self.ib_config.get('port') or self.ib_config.get('clientId') is None:
+            self.logger.error("IBKR connection parameters (host, port, clientId) missing in config.")
+            return
+
+        try:
+            self.ib = IB()
+            self.logger.info(f"Attempting to connect to IBKR at {self.ib_config['host']}:{self.ib_config['port']} with clientId {self.ib_config['clientId']}...")
+            # util.patchAsyncio() # Not always needed, depends on environment
+            self.ib.connect(
+                host=self.ib_config['host'],
+                port=self.ib_config['port'],
+                clientId=self.ib_config['clientId'],
+                timeout=self.ib_config.get('timeout_seconds', 10), # Default timeout 10s
+                readonly=self.ib_config.get('readonly', False) # Default to read-write
+            )
+            self.ib_connected = True
+            self._ib_managed_locally = True # This instance established the connection
+            self.logger.info("Successfully connected to IBKR.")
+        except ConnectionRefusedError:
+            self.logger.error(f"IBKR connection refused. Ensure TWS/Gateway is running and API connections are enabled.")
+            self.ib_connected = False
+        except Exception as e:
+            self.logger.error(f"Failed to connect to IBKR: {e}", exc_info=True)
+            self.ib_connected = False
+
+
+    def disconnect_ibkr(self):
+        """Disconnects from IBKR if the connection was managed by this instance."""
+        if self.ib and self.ib_connected and self._ib_managed_locally:
+            self.logger.info("Disconnecting from IBKR...")
+            try:
+                self.ib.disconnect()
+                self.ib_connected = False
+                self.logger.info("Successfully disconnected from IBKR.")
+            except Exception as e:
+                self.logger.error(f"Error during IBKR disconnection: {e}", exc_info=True)
+        elif self.ib and self.ib_connected and not self._ib_managed_locally:
+            self.logger.info("IBKR connection was provided externally; not disconnecting from this instance.")
+        else:
+            self.logger.info("IBKR not connected or connection not managed locally.")
+            
+    def _determine_actual_start_end_for_cache(self, end_datetime_str: str, duration_str: str) -> tuple[str, str]:
+        """
+        Determines the actual start and end dates for consistent cache naming.
+        IBKR's durationStr can be tricky. This function aims to provide a best-effort
+        standardized date range for the cache filename.
+        """
+        try:
+            # Parse end_datetime_str (YYYYMMDD HH:MM:SS [TZ])
+            # For simplicity, we'll use the date part for filename consistency.
+            # A more robust solution might handle timezones if provided.
+            end_dt_obj = datetime.strptime(end_datetime_str.split(" ")[0], "%Y%m%d")
+            
+            # Parse duration_str (e.g., "1 Y", "6 M", "30 D", "1000 S")
+            # This is a simplified parser. ib_insync handles this internally for the request.
+            # We only need to approximate for the cache filename.
+            num_str, unit = duration_str.split(" ")
+            num = int(num_str)
+            
+            if unit == 'S': start_dt_obj = end_dt_obj - timedelta(seconds=num) # Approx for filename
+            elif unit == 'D': start_dt_obj = end_dt_obj - timedelta(days=num)
+            elif unit == 'W': start_dt_obj = end_dt_obj - timedelta(weeks=num)
+            elif unit == 'M': start_dt_obj = end_dt_obj - timedelta(days=num * 30) # Approx month
+            elif unit == 'Y': start_dt_obj = end_dt_obj - timedelta(days=num * 365) # Approx year
+            else:
+                self.logger.warning(f"Unknown duration unit '{unit}'. Using end date for start date in cache name.")
+                start_dt_obj = end_dt_obj
+
+            return start_dt_obj.strftime("%Y%m%d"), end_dt_obj.strftime("%Y%m%d")
+
+        except Exception as e:
+            self.logger.error(f"Error parsing dates for cache filename (end: '{end_datetime_str}', dur: '{duration_str}'): {e}. Using fallback names.")
+            return "UNKNOWN_START", end_datetime_str.split(" ")[0] if end_datetime_str else "UNKNOWN_END"
+
+
+    def _get_cache_filepath(self, symbol: str, start_date_str_yyyymmdd: str, end_date_str_yyyymmdd: str, bar_size_str: str, data_format: str = "csv") -> str:
+        """
+        Helper to generate a consistent filepath for cached data using standardized date formats.
+        Args:
+            start_date_str_yyyymmdd (str): Start date in YYYYMMDD format.
+            end_date_str_yyyymmdd (str): End date in YYYYMMDD format.
+            bar_size_str (str): Bar size string, spaces removed (e.g., "1min", "5mins").
+        """
+        # Sanitize bar_size_str for filename
+        interval_sanitized = bar_size_str.replace(" ", "").replace(":", "")
+        filename = f"{symbol}_{start_date_str_yyyymmdd}_{end_date_str_yyyymmdd}_{interval_sanitized}.{data_format}"
+        return os.path.join(self.data_dir_raw, symbol.upper(), filename)
 
     def fetch_ibkr_bars(self, symbol: str, end_datetime_str: str, duration_str: str, bar_size_str: str,
+                        sec_type: str = "STK", exchange: str = "SMART", currency: str = "USD",
                         what_to_show: str = "TRADES", use_rth: bool = True,
-                        data_format: str = "csv", force_fetch: bool = False) -> pd.DataFrame | None:
+                        data_format: str = "csv", force_fetch: bool = False,
+                        primary_exchange: str = None) -> pd.DataFrame | None:
         """
         Fetches historical bar data from Interactive Brokers.
 

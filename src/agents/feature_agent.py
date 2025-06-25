@@ -2,116 +2,144 @@
 import pandas as pd
 import numpy as np
 import os
-# import ta # Technical Analysis library: pip install ta
-from sklearn.preprocessing import StandardScaler # Example scaler
-import joblib # For saving/loading scaler
+import ta # Technical Analysis library: pip install ta
+from sklearn.preprocessing import StandardScaler
+import joblib 
 
 from .base_agent import BaseAgent
-# from ..utils.data_utils import load_data # Example utility
 
 class FeatureAgent(BaseAgent):
     """
     FeatureAgent is responsible for:
-    1. Loading raw bar data (typically fetched by DataAgent).
-    2. Computing various technical indicators and features (RSI, EMA, VWAP deviation, time-of-day).
+    1. Loading raw bar data.
+    2. Computing technical indicators (RSI, EMA, VWAP deviation, time-of-day).
     3. Normalizing/Standardizing features.
-    4. Rolling features into NumPy arrays suitable for the RL environment's observation space.
-    5. Saving/Loading scalers to ensure consistent transformation between training and live trading.
+    4. Rolling features into NumPy arrays for the RL environment.
+    5. Saving/Loading scalers.
     """
     def __init__(self, config: dict):
-        """
-        Initializes the FeatureAgent.
-
-        Args:
-            config (dict): Configuration dictionary. Expected keys:
-                           'data_dir_processed': Path to save processed feature data.
-                           'scalers_dir': Path to save fitted scalers.
-                           'features': List of features to compute (e.g., ['RSI', 'EMA_12', 'EMA_26']).
-                           'rsi': {'window': 14}
-                           'ema': {'windows': [12, 26]}
-                           'vwap': {} # VWAP specific params, if any
-                           'time_features': ['hour', 'minute'] or False
-                           'lookback_window': int, for creating sequences for LSTM/Transformer like models
-        """
         super().__init__(agent_name="FeatureAgent", config=config)
         self.processed_data_dir = self.config.get('data_dir_processed', 'data/processed')
         self.scalers_dir = self.config.get('scalers_dir', 'data/scalers')
         os.makedirs(self.processed_data_dir, exist_ok=True)
         os.makedirs(self.scalers_dir, exist_ok=True)
         
-        self.feature_list = self.config.get('features', [])
-        self.scaler = None # Will be initialized or loaded
-        self.lookback_window = self.config.get('lookback_window', 1) # For sequential data
+        self.feature_config = self.config.get('feature_engineering', {}) # Main key for all feature params
+        self.scaler = None
+        self.lookback_window = self.feature_config.get('lookback_window', 1)
 
         self.logger.info(f"Processed data will be saved to: {self.processed_data_dir}")
-        self.logger.info(f"Scalers will be saved to/loaded from: {self.scalers_dir}")
-        self.logger.info(f"Features to compute: {self.feature_list}")
+        self.logger.info(f"Scalers will be saved/loaded from: {self.scalers_dir}")
+        self.logger.info(f"Features to compute based on config: {self.feature_config.get('features_to_calculate', [])}")
         self.logger.info(f"Lookback window for sequences: {self.lookback_window}")
 
-
     def _calculate_rsi(self, series: pd.Series, window: int) -> pd.Series:
-        """Calculates Relative Strength Index (RSI)."""
-        # TODO: Implement RSI calculation using `ta` library or manually.
-        # from ta.momentum import RSIIndicator
-        # rsi_indicator = RSIIndicator(close=series, window=window, fillna=True)
-        # return rsi_indicator.rsi()
-        self.logger.info(f"Calculating RSI with window {window} (using dummy implementation).")
-        # Dummy implementation for skeleton
-        return pd.Series(np.random.rand(len(series)) * 100, index=series.index, name=f'rsi_{window}')
+        """Calculates Relative Strength Index (RSI) using 'ta' library."""
+        self.logger.debug(f"Calculating RSI with window {window}.")
+        try:
+            rsi_indicator = ta.momentum.RSIIndicator(close=series, window=window, fillna=True)
+            rsi_series = rsi_indicator.rsi()
+            return rsi_series.rename(f'rsi_{window}')
+        except Exception as e:
+            self.logger.error(f"Error calculating RSI with window {window}: {e}", exc_info=True)
+            return pd.Series(np.nan, index=series.index, name=f'rsi_{window}')
+
 
     def _calculate_ema(self, series: pd.Series, window: int) -> pd.Series:
-        """Calculates Exponential Moving Average (EMA)."""
-        # TODO: Implement EMA calculation using `ta` library or pandas.
-        # from ta.trend import EMAIndicator
-        # ema_indicator = EMAIndicator(close=series, window=window, fillna=True)
-        # return ema_indicator.ema_indicator()
-        self.logger.info(f"Calculating EMA with window {window} (using dummy implementation).")
-        # Dummy implementation for skeleton
-        return series.ewm(span=window, adjust=False).mean().rename(f'ema_{window}')
+        """Calculates Exponential Moving Average (EMA) using pandas."""
+        self.logger.debug(f"Calculating EMA with window {window}.")
+        try:
+            return series.ewm(span=window, adjust=False, min_periods=window).mean().rename(f'ema_{window}')
+        except Exception as e:
+            self.logger.error(f"Error calculating EMA with window {window}: {e}", exc_info=True)
+            return pd.Series(np.nan, index=series.index, name=f'ema_{window}')
 
 
-    def _calculate_vwap(self, high: pd.Series, low: pd.Series, close: pd.Series, volume: pd.Series, window: int = None) -> pd.Series:
+    def _calculate_vwap(self, high: pd.Series, low: pd.Series, close: pd.Series, volume: pd.Series, window: int = None, group_by_day: bool = True) -> pd.Series:
         """
         Calculates Volume Weighted Average Price (VWAP).
-        If window is None, calculates daily VWAP. If window is an int, calculates rolling VWAP.
+        If window is None and group_by_day is True, calculates daily VWAP.
+        If window is an int, calculates rolling VWAP over that window.
         """
-        # TODO: Implement VWAP and VWAP deviation.
-        # For daily VWAP: group by date and calculate cumulative (price * volume) / cumulative volume
-        # For rolling VWAP: use a rolling window.
-        self.logger.info(f"Calculating VWAP (using dummy implementation).")
+        self.logger.debug(f"Calculating VWAP. Window: {window}, Group by Day: {group_by_day}")
+        if not all(isinstance(s, pd.Series) for s in [high, low, close, volume]):
+            self.logger.error("VWAP calculation requires pandas Series inputs.")
+            return pd.Series(np.nan, index=close.index, name='vwap_error')
+            
         typical_price = (high + low + close) / 3
-        if window: # Rolling VWAP
-            pv = typical_price * volume
-            # return (pv.rolling(window=window).sum() / volume.rolling(window=window).sum()).rename('vwap_rolling')
-            # Dummy for rolling
-            return pd.Series(typical_price + np.random.randn(len(typical_price)) * 0.1, index=close.index, name=f'vwap_roll_{window}')
-        else: # Daily VWAP (requires grouping by day, more complex if data spans multiple days)
-            # This is a simplified placeholder for daily VWAP, assuming data is for a single day or needs to be reset daily.
-            # A proper daily VWAP resets at the start of each trading day.
-            # pv = typical_price * volume
-            # return (pv.cumsum() / volume.cumsum()).rename('vwap_daily')
-            # Dummy for daily
-            return pd.Series(typical_price + np.random.randn(len(typical_price)) * 0.1, index=close.index, name='vwap_daily')
+        pv = typical_price * volume
 
-    def _add_time_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Adds time-based features like hour of day, minute of hour, day of week."""
+        if window is not None and window > 0: # Rolling VWAP
+            self.logger.debug(f"Calculating rolling VWAP with window {window}.")
+            rolling_pv_sum = pv.rolling(window=window, min_periods=1).sum()
+            rolling_volume_sum = volume.rolling(window=window, min_periods=1).sum()
+            vwap = (rolling_pv_sum / rolling_volume_sum).rename(f'vwap_roll_{window}')
+        elif group_by_day: # Daily VWAP
+            self.logger.debug("Calculating daily VWAP.")
+            # Requires a DatetimeIndex
+            if not isinstance(close.index, pd.DatetimeIndex):
+                self.logger.error("Daily VWAP requires a DatetimeIndex.")
+                return pd.Series(np.nan, index=close.index, name='vwap_daily_error')
+            
+            # Group by date (day) and calculate cumulative sum for pv and volume within each day
+            # then divide. This resets VWAP calculation at the start of each day.
+            df_temp = pd.DataFrame({'pv': pv, 'volume': volume, 'date': close.index.date})
+            df_temp['daily_cum_pv'] = df_temp.groupby('date')['pv'].cumsum()
+            df_temp['daily_cum_volume'] = df_temp.groupby('date')['volume'].cumsum()
+            vwap = (df_temp['daily_cum_pv'] / df_temp['daily_cum_volume']).rename('vwap_daily')
+            vwap.index = close.index # Ensure original index is restored
+        else:
+            self.logger.warning("VWAP calculation parameters unclear (no window, not daily). Defaulting to cumulative VWAP.")
+            # Cumulative VWAP over the whole series if no window and not daily
+            vwap = (pv.cumsum() / volume.cumsum()).rename('vwap_cumulative')
+        
+        # Handle potential division by zero if volume is zero for a period
+        vwap.replace([np.inf, -np.inf], np.nan, inplace=True) 
+        # Forward fill NaNs that might result from zero volume, common at start of rolling/daily VWAP
+        vwap.fillna(method='ffill', inplace=True) 
+        return vwap
+
+    def _add_time_features(self, df: pd.DataFrame, time_feature_config: list, sin_cos_config: list) -> pd.DataFrame:
+        """Adds time-based features and optionally sin/cos encodes them."""
         if not isinstance(df.index, pd.DatetimeIndex):
             self.logger.warning("DataFrame index is not DatetimeIndex. Cannot add time features.")
             return df
         
-        time_feature_conf = self.config.get('time_features', [])
-        if 'hour' in time_feature_conf:
+        if 'hour_of_day' in time_feature_config:
             df['hour_of_day'] = df.index.hour
-            self.logger.info("Added 'hour_of_day' feature.")
-        if 'minute' in time_feature_conf:
+            self.logger.debug("Added 'hour_of_day' feature.")
+        if 'minute_of_hour' in time_feature_config:
             df['minute_of_hour'] = df.index.minute
-            self.logger.info("Added 'minute_of_hour' feature.")
-        if 'day_of_week' in time_feature_conf:
+            self.logger.debug("Added 'minute_of_hour' feature.")
+        if 'day_of_week' in time_feature_config:
             df['day_of_week'] = df.index.dayofweek # Monday=0, Sunday=6
-            self.logger.info("Added 'day_of_week' feature.")
-        # TODO: Consider sinusoidal encoding for cyclical features (hour, minute, day_of_week)
-        # E.g., df['hour_sin'] = np.sin(2 * np.pi * df['hour_of_day'] / 24)
-        #       df['hour_cos'] = np.cos(2 * np.pi * df['hour_of_day'] / 24)
+            self.logger.debug("Added 'day_of_week' feature.")
+        if 'month_of_year' in time_feature_config: # Added for completeness
+            df['month_of_year'] = df.index.month
+            self.logger.debug("Added 'month_of_year' feature.")
+
+        # Sin/Cos encoding for cyclical features
+        if 'hour_of_day' in sin_cos_config and 'hour_of_day' in df.columns:
+            df['hour_sin'] = np.sin(2 * np.pi * df['hour_of_day'] / 24.0)
+            df['hour_cos'] = np.cos(2 * np.pi * df['hour_of_day'] / 24.0)
+            df.drop(columns=['hour_of_day'], inplace=True) # Drop original if encoded
+            self.logger.debug("Applied Sin/Cos encoding to 'hour_of_day'.")
+        if 'minute_of_hour' in sin_cos_config and 'minute_of_hour' in df.columns:
+            df['minute_sin'] = np.sin(2 * np.pi * df['minute_of_hour'] / 60.0)
+            df['minute_cos'] = np.cos(2 * np.pi * df['minute_of_hour'] / 60.0)
+            df.drop(columns=['minute_of_hour'], inplace=True)
+            self.logger.debug("Applied Sin/Cos encoding to 'minute_of_hour'.")
+        if 'day_of_week' in sin_cos_config and 'day_of_week' in df.columns:
+            df['day_of_week_sin'] = np.sin(2 * np.pi * df['day_of_week'] / 7.0)
+            df['day_of_week_cos'] = np.cos(2 * np.pi * df['day_of_week'] / 7.0)
+            df.drop(columns=['day_of_week'], inplace=True)
+            self.logger.debug("Applied Sin/Cos encoding to 'day_of_week'.")
+        if 'month_of_year' in sin_cos_config and 'month_of_year' in df.columns:
+            df['month_sin'] = np.sin(2 * np.pi * df['month_of_year'] / 12.0)
+            df['month_cos'] = np.cos(2 * np.pi * df['month_of_year'] / 12.0)
+            df.drop(columns=['month_of_year'], inplace=True)
+            self.logger.debug("Applied Sin/Cos encoding to 'month_of_year'.")
+            
         return df
 
     def compute_features(self, raw_data_df: pd.DataFrame) -> pd.DataFrame | None:
