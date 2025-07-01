@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Run Training Pipeline</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; max-width: 800px; }
+        label { display: block; margin-top: 10px; font-weight: bold; }
+        input[type="text"], input[type="date"], input[type="number"], input[type="checkbox"], select { 
+            width: 90%; padding: 8px; margin-top: 5px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; 
+        }
+        .button-container { margin-top: 20px; }
+        .message { padding: 10px; margin-bottom: 15px; border-radius: 5px; }
+        .success { background-color: #e6ffed; border: 1px solid #5cb85c; color: #3c763d; }
+        .error { background-color: #f2dede; border: 1px solid #ebccd1; color: #a94442; }
+        .info { background-color: #d9edf7; border: 1px solid #bce8f1; color: #31708f; }
+        .form-section { margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 5px; }
+        h2 { border-bottom: 1px solid #eee; padding-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <nav>
+        <ul>
+            <li><a href="/ui/dashboard">Dashboard</a></li>
+            <li><a href="/ui/config/main_config">Main Config</a></li>
+            <li><a href="/ui/config/model_params">Model Params Config</a></li>
+            <li><a href="/ui/config/risk_limits">Risk Limits Config</a></li>
+            <li><a href="/ui/train">Run Training</a></li>
+        </ul>
+    </nav>
+    <hr>
+
+    <h1>Run Training Pipeline</h1>
+    <!-- Removed direct back to dashboard link -->
+
+    {% if message %}
+        <div class="message {{ 'success' if success else ('error' if success is false else 'info') }}">
+            {{ message }}
+            {% if task_id %}
+                <br>Task ID: <strong>{{ task_id }}</strong>. <a href="/ui/tasks/{{ task_id }}">Check Status</a>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <form method="post">
+        <div class="form-section">
+            <h2>Training Parameters</h2>
+            <div>
+                <label for="symbol">Symbol:</label>
+                <input type="text" id="symbol" name="symbol" value="SPY" required>
+            </div>
+            <div>
+                <label for="start_date">Start Date (YYYY-MM-DD):</label>
+                <input type="date" id="start_date" name="start_date" value="2022-01-01" required>
+            </div>
+            <div>
+                <label for="end_date">End Date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS):</label>
+                <input type="text" id="end_date" name="end_date" value="2022-12-31 23:59:59" required>
+                <small>For daily data, time can be omitted. For intraday, specify time e.g., YYYY-MM-DD HH:MM:SS</small>
+            </div>
+            <div>
+                <label for="interval">Interval:</label>
+                <select id="interval" name="interval">
+                    <option value="1min">1 Minute</option>
+                    <option value="5mins">5 Minutes</option>
+                    <option value="15mins">15 Minutes</option>
+                    <option value="1hour">1 Hour</option>
+                    <option value="1day" selected>1 Day</option>
+                </select>
+            </div>
+             <div>
+                <label for="use_cached_data">
+                    <input type="checkbox" id="use_cached_data" name="use_cached_data" value="true">
+                    Use Cached Raw Data (if available)
+                </label>
+            </div>
+            <div>
+                <label for="continue_from_model">Continue from Model (Optional Path):</label>
+                <input type="text" id="continue_from_model" name="continue_from_model" placeholder="e.g., models/my_run/model_10000.zip">
+            </div>
+        </div>
+
+        <div class.form-section>
+            <h2>Post-Training Evaluation (Optional)</h2>
+            <div>
+                <label for="run_evaluation_after_train">
+                    <input type="checkbox" id="run_evaluation_after_train" name="run_evaluation_after_train" value="true" checked>
+                    Run Evaluation After Training
+                </label>
+            </div>
+             <div>
+                <label for="eval_start_date">Evaluation Start Date (Optional, YYYY-MM-DD):</label>
+                <input type="date" id="eval_start_date" name="eval_start_date">
+                 <small>If blank, defaults to day after training end date.</small>
+            </div>
+            <div>
+                <label for="eval_end_date">Evaluation End Date (Optional, YYYY-MM-DD or YYYY-MM-DD HH:MM:SS):</label>
+                <input type="text" id="eval_end_date" name="eval_end_date">
+                <small>If blank, defaults to evaluation start date + configured duration.</small>
+            </div>
+            <div>
+                <label for="eval_interval">Evaluation Interval (Optional):</label>
+                <input type="text" id="eval_interval" name="eval_interval" placeholder="e.g., 1min">
+                <small>If blank, defaults to training interval.</small>
+            </div>
+        </div>
+
+        <div class="button-container">
+            <button type="submit">Start Training Pipeline</button>
+        </div>
+    </form>
+</body>
+</html>

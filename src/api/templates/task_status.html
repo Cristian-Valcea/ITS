@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Status - {{ task_id }}</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; max-width: 800px; }
+        .status-box { border: 1px solid #ccc; padding: 15px; margin-top: 15px; border-radius: 5px; background-color: #f9f9f9; }
+        .status-PENDING { border-left: 5px solid #f0ad4e; } /* Orange */
+        .status-RUNNING { border-left: 5px solid #5bc0de; } /* Blue */
+        .status-COMPLETED { border-left: 5px solid #5cb85c; } /* Green */
+        .status-FAILED { border-left: 5px solid #d9534f; } /* Red */
+        pre { background-color: #eee; padding: 10px; border-radius: 3px; white-space: pre-wrap; word-wrap: break-word; }
+        .label { font-weight: bold; }
+        #autoRefreshCheckbox { margin-left: 10px; }
+    </style>
+</head>
+<body>
+    <nav>
+        <ul>
+            <li><a href="/ui/dashboard">Dashboard</a></li>
+            <li><a href="/ui/config/main_config">Main Config</a></li>
+            <li><a href="/ui/config/model_params">Model Params Config</a></li>
+            <li><a href="/ui/config/risk_limits">Risk Limits Config</a></li>
+            <li><a href="/ui/train">Run Training</a></li>
+        </ul>
+    </nav>
+    <hr>
+
+    <h1>Task Status</h1>
+    <!-- Removed direct back to dashboard/train links -->
+    
+    <div class="status-box" id="statusBox">
+        <p><span class="label">Task ID:</span> <span id="taskId">{{ task_id }}</span></p>,
+        <p><span class="label">Description:</span> <span id="taskDescription">Loading...</span></p>
+        <p><span class="label">Status:</span> <span id="taskStatus">Loading...</span></p>
+        <p><span class="label">Start Time:</span> <span id="startTime">Loading...</span></p>
+        <p><span class="label">End Time:</span> <span id="endTime">Loading...</span></p>
+        
+        <div id="resultSection" style="display:none;">
+            <p><span class="label">Result:</span></p>
+            <pre id="taskResult"></pre>
+        </div>
+        
+        <div id="errorSection" style="display:none;">
+            <p><span class="label">Error:</span></p>
+            <pre id="taskError"></pre>
+        </div>
+    </div>
+
+    <div>
+        <button onclick="fetchStatus()">Refresh Status</button>
+        <label for="autoRefreshCheckbox">
+            <input type="checkbox" id="autoRefreshCheckbox" onchange="toggleAutoRefresh(this.checked)"> Auto-refresh (5s)
+        </label>
+    </div>
+
+    <script>
+        const taskId = "{{ task_id }}";
+        let autoRefreshIntervalId = null;
+
+        function updateStatusDisplay(data) {
+            document.getElementById('taskDescription').textContent = data.description || 'N/A';
+            document.getElementById('taskStatus').textContent = data.status || 'UNKNOWN';
+            document.getElementById('startTime').textContent = data.start_time ? new Date(data.start_time).toLocaleString() : 'N/A';
+            document.getElementById('endTime').textContent = data.end_time ? new Date(data.end_time).toLocaleString() : 'N/A';
+
+            const statusBox = document.getElementById('statusBox');
+            statusBox.className = 'status-box'; // Reset classes
+            statusBox.classList.add('status-' + (data.status || 'UNKNOWN'));
+
+
+            const resultSection = document.getElementById('resultSection');
+            const taskResult = document.getElementById('taskResult');
+            if (data.result) {
+                taskResult.textContent = JSON.stringify(data.result, null, 2);
+                resultSection.style.display = 'block';
+            } else {
+                resultSection.style.display = 'none';
+            }
+
+            const errorSection = document.getElementById('errorSection');
+            const taskError = document.getElementById('taskError');
+            if (data.error) {
+                taskError.textContent = data.error;
+                errorSection.style.display = 'block';
+            } else {
+                errorSection.style.display = 'none';
+            }
+
+            // Stop auto-refresh if task is completed or failed
+            if (data.status === 'COMPLETED' || data.status === 'FAILED') {
+                if (autoRefreshIntervalId) {
+                    clearInterval(autoRefreshIntervalId);
+                    autoRefreshIntervalId = null;
+                    document.getElementById('autoRefreshCheckbox').checked = false;
+                    console.log("Auto-refresh stopped for completed/failed task.");
+                }
+            }
+        }
+
+        async function fetchStatus() {
+            console.log("Fetching status for task:", taskId);
+            try {
+                const response = await fetch(`/api/v1/pipelines/train/status/${taskId}`);
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: "Failed to parse error response" }));
+                    console.error("Error fetching status:", response.status, errorData);
+                    document.getElementById('taskStatus').textContent = `Error: ${response.status} - ${errorData.detail || 'Unknown error'}`;
+                    if (autoRefreshIntervalId) { // Stop polling on API error
+                        clearInterval(autoRefreshIntervalId);
+                        autoRefreshIntervalId = null;
+                        document.getElementById('autoRefreshCheckbox').checked = false;
+                    }
+                    return;
+                }
+                const data = await response.json();
+                console.log("Status data received:", data);
+                if (data.success) {
+                    updateStatusDisplay(data); // The actual task status data is in the root of the response for TaskStatusResponse
+                } else {
+                     document.getElementById('taskStatus').textContent = `Error: ${data.error ? data.error.message : 'Failed to retrieve status'}`;
+                }
+            } catch (error) {
+                console.error("Network or other error fetching status:", error);
+                document.getElementById('taskStatus').textContent = "Error fetching status. Check console.";
+                 if (autoRefreshIntervalId) { // Stop polling on network error
+                    clearInterval(autoRefreshIntervalId);
+                    autoRefreshIntervalId = null;
+                    document.getElementById('autoRefreshCheckbox').checked = false;
+                }
+            }
+        }
+
+        function toggleAutoRefresh(enable) {
+            if (enable) {
+                if (!autoRefreshIntervalId) {
+                    fetchStatus(); // Fetch immediately
+                    autoRefreshIntervalId = setInterval(fetchStatus, 5000); // Refresh every 5 seconds
+                    console.log("Auto-refresh started.");
+                }
+            } else {
+                if (autoRefreshIntervalId) {
+                    clearInterval(autoRefreshIntervalId);
+                    autoRefreshIntervalId = null;
+                    console.log("Auto-refresh stopped.");
+                }
+            }
+        }
+
+        // Initial fetch when page loads
+        document.addEventListener('DOMContentLoaded', fetchStatus);
+    </script>
+</body>
+</html>

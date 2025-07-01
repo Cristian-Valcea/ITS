@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuration Editor - {{ config_name }}</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        label { display: block; margin-top: 10px; }
+        textarea { width: 90%; min-height: 300px; margin-top: 5px; font-family: monospace; font-size: 0.9em; }
+        .button-container { margin-top: 15px; }
+        .message { padding: 10px; margin-bottom: 15px; border-radius: 5px; }
+        .success { background-color: #e6ffed; border: 1px solid #5cb85c; color: #3c763d; }
+        .error { background-color: #f2dede; border: 1px solid #ebccd1; color: #a94442; }
+        pre { background-color: #f5f5f5; padding: 10px; border: 1px solid #ccc; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <nav>
+        <ul>
+            <li><a href="/ui/dashboard">Dashboard</a></li>
+            <li><a href="/ui/config/main_config">Main Config</a></li>
+            <li><a href="/ui/config/model_params">Model Params Config</a></li>
+            <li><a href="/ui/config/risk_limits">Risk Limits Config</a></li>
+            <li><a href="/ui/train">Run Training</a></li>
+        </ul>
+    </nav>
+    <hr>
+
+    <h1>Configuration Editor: {{ config_name_title }}</h1>
+    <!-- Removed direct back to dashboard link as it's in nav -->
+
+    {% if message %}
+        <div class="message {{ 'success' if success else 'error' }}">
+            {{ message }}
+        </div>
+    {% endif %}
+
+    <h2>Current Configuration:</h2>
+    <pre>{{ current_config_yaml }}</pre>
+
+    <h2>Edit Configuration:</h2>
+    <p>Modify the YAML content below and click "Save Configuration".</p>
+    <form method="post">
+        <div>
+            <label for="config_data_yaml">YAML Data for {{ config_name }}:</label>
+            <textarea id="config_data_yaml" name="config_data_yaml" rows="25">{{ editable_config_yaml }}</textarea>
+        </div>
+        <div class="button-container">
+            <button type="submit">Save Configuration</button>
+        </div>
+    </form>
+
+    <h3>Schema Reminder ({{ config_name }}):</h3>
+    <p>Ensure your YAML adheres to the expected structure. (Pydantic model: {{ pydantic_model_name }})</p>
+    <!-- 
+        Ideally, you might display key parts of the schema or link to documentation.
+        For simplicity, we just remind the user.
+    -->
+
+</body>
+</html>

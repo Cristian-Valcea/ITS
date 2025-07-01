@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading System Dashboard</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        nav ul { list-style-type: none; padding: 0; }
+        nav ul li { display: inline; margin-right: 20px; }
+        nav ul li a { text-decoration: none; color: blue; }
+        nav ul li a:hover { text-decoration: underline; }
+        .container { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <nav>
+        <ul>
+            <li><a href="/ui/dashboard">Dashboard</a></li>
+            <li><a href="/ui/config/main_config">Main Config</a></li>
+            <li><a href="/ui/config/model_params">Model Params Config</a></li>
+            <li><a href="/ui/config/risk_limits">Risk Limits Config</a></li>
+            <li><a href="/ui/train">Run Training</a></li>
+            <!-- Link to a task list page could be added later -->
+        </ul>
+    </nav>
+    <hr>
+
+    <div class="container">
+        <h1>{{ title }}</h1>
+        <p>Welcome to the RL Intraday Trading Platform control panel.</p>
+        <p>Use the navigation links above to manage configurations or run pipelines.</p>
+        
+        <h2>Quick Links:</h2>
+        <ul>
+            <li><a href="/api/v1/status">API Status (JSON)</a></li>
+            <li><a href="/docs">Interactive API Docs (Swagger UI)</a></li>
+            <li><a href="/redoc">Alternative API Docs (ReDoc)</a></li>
+        </ul>
+    </div>
+
+</body>
+</html>
