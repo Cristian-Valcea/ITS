@@ -25,6 +25,16 @@ class EvaluatePipelineResponse(StandardResponse):
     report_path: Optional[str] = Field(None, description="Path to the generated evaluation report.")
     trade_log_path: Optional[str] = Field(None, description="Path to the saved trade log from evaluation.")
 
+class TaskStatusResponse(BaseModel):
+    """Response model for task status queries."""
+    task_id: str = Field(..., description="Unique task identifier.")
+    status: str = Field(..., description="Current task status (PENDING, RUNNING, COMPLETED, FAILED).")
+    start_time: Optional[str] = Field(None, description="Task start time in ISO format.")
+    end_time: Optional[str] = Field(None, description="Task completion time in ISO format.")
+    description: Optional[str] = Field(None, description="Task description.")
+    result: Optional[Dict[str, Any]] = Field(None, description="Task result data if completed successfully.")
+    error: Optional[str] = Field(None, description="Error message if task failed.")
+
 class ErrorDetail(BaseModel):
     loc: Optional[List[Union[str, int]]] = None
     msg: str

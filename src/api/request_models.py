@@ -61,4 +61,3 @@ if __name__ == "__main__":
     eval_request = EvaluatePipelineRequest(**eval_req_data)
     print("\nSample EvaluatePipelineRequest:")
     print(eval_request.model_dump_json(indent=2))
-

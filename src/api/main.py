@@ -1,9 +1,12 @@
 # src/api/main.py
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from typing import Dict, Any, Optional
 import logging
 import os
 import sys
+import uuid # For generating task IDs
+from datetime import datetime
+
 
 # Adjust path to import OrchestratorAgent from parent directory (src)
 # This is necessary if 'src' is not automatically in PYTHONPATH when running uvicorn from project root.
@@ -18,20 +21,17 @@ import sys
 # or PYTHONPATH is set correctly.
 try:
     from src.agents.orchestrator_agent import OrchestratorAgent
-    from src.api import config_models, request_models, response_models, services # Placeholder for now
+    from src.api import config_models, request_models, response_models, services 
 except ModuleNotFoundError:
     # Fallback for simpler execution like `python src/api/main.py` if needed, by adding project root
     module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
     if module_path not in sys.path:
         sys.path.append(module_path)
     from src.agents.orchestrator_agent import OrchestratorAgent
-    # The following will be created in subsequent steps, so direct import might fail initially
-    # For now, we'll define dummy versions or handle their absence.
-    # from src.api import config_models, request_models, response_models, services
+    from src.api import config_models, request_models, response_models, services
 
 
 # --- Logging Setup ---
-# Basic logging, can be expanded using main_config.yaml settings later
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("RLTradingPlatform.API")
 
@@ -42,44 +42,19 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# --- Global Objects (Simple Approach) ---
-# For a more robust setup, especially with async, consider FastAPI's dependency injection for these.
-# Config paths relative to project root (assuming API is run from project root or paths are adjusted)
-# These paths assume 'config/' is at the same level as 'src/'
-# If running `uvicorn src.api.main:app` from project root, `../config` is not correct.
-# It should be `config/` directly if project root is the current working directory.
-# Let's assume project root is the CWD for uvicorn.
-CONFIG_DIR = "config" 
-# If this script is in src/api, and config is in root/config, then path needs to be relative to root.
-# For Uvicorn running from project root: `config/main_config.yaml`
-# For running this file directly from `src/api/`: `../../config/main_config.yaml`
+# --- Global Objects & Task Management (Simple In-Memory) ---
+orchestrator_agent_instance: Optional[OrchestratorAgent] = None
+config_service_instance: Optional[services.ConfigService] = None
+
+# For managing background task statuses (simple in-memory store)
+tasks_status: Dict[str, Dict[str, Any]] = {}
 
 # Determine base path for config files
-# This is a common way to make paths robust whether run directly or via uvicorn from root
-try:
-    # Assumes main.py is in src/api/
-    # Adjust if your execution context for uvicorn is different.
-    # If uvicorn src.api.main:app is run from project root, os.getcwd() is project root.
-    # If python src/api/main.py is run from project root, os.getcwd() is project root.
-    # If python main.py is run from src/api/, os.getcwd() is src/api
-    
-    # Let's assume the script is in src/api and config is in project_root/config
-    # This means config is one level up from 'src' directory.
-    _project_root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    
-    DEFAULT_MAIN_CONFIG_PATH = os.path.join(_project_root_path, "config", "main_config.yaml")
-    DEFAULT_MODEL_PARAMS_PATH = os.path.join(_project_root_path, "config", "model_params.yaml")
-    DEFAULT_RISK_LIMITS_PATH = os.path.join(_project_root_path, "config", "risk_limits.yaml")
+_project_root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+DEFAULT_MAIN_CONFIG_PATH = os.path.join(_project_root_path, "config", "main_config.yaml")
+DEFAULT_MODEL_PARAMS_PATH = os.path.join(_project_root_path, "config", "model_params.yaml")
+DEFAULT_RISK_LIMITS_PATH = os.path.join(_project_root_path, "config", "risk_limits.yaml")
 
-except Exception: # Fallback if path logic is tricky during early dev
-    logger.warning("Could not determine dynamic config paths, using defaults relative to potential CWD.")
-    DEFAULT_MAIN_CONFIG_PATH = "config/main_config.yaml"
-    DEFAULT_MODEL_PARAMS_PATH = "config/model_params.yaml"
-    DEFAULT_RISK_LIMITS_PATH = "config/risk_limits.yaml"
-
-
-orchestrator_agent_instance: Optional[OrchestratorAgent] = None
-config_service_instance: Optional[Any] = None # Will be services.ConfigService
 
 def get_orchestrator():
     global orchestrator_agent_instance
@@ -87,14 +62,11 @@ def get_orchestrator():
         logger.info(f"Initializing OrchestratorAgent with paths: \nMain: {DEFAULT_MAIN_CONFIG_PATH}\nModel: {DEFAULT_MODEL_PARAMS_PATH}\nRisk: {DEFAULT_RISK_LIMITS_PATH}")
         if not all(os.path.exists(p) for p in [DEFAULT_MAIN_CONFIG_PATH, DEFAULT_MODEL_PARAMS_PATH, DEFAULT_RISK_LIMITS_PATH]):
             logger.error("One or more default config files not found. API cannot fully initialize Orchestrator.")
-            # Create dummy files if they don't exist for basic API startup
             for p in [DEFAULT_MAIN_CONFIG_PATH, DEFAULT_MODEL_PARAMS_PATH, DEFAULT_RISK_LIMITS_PATH]:
                 if not os.path.exists(p):
                     os.makedirs(os.path.dirname(p), exist_ok=True)
-                    with open(p, 'w') as f: f.write("{}") # Empty YAML
+                    with open(p, 'w') as f: f.write("{}") 
                     logger.info(f"Created empty dummy config: {p}")
-            # Attempt initialization again, it might work with empty configs or use internal defaults
-        
         try:
             orchestrator_agent_instance = OrchestratorAgent(
                 main_config_path=DEFAULT_MAIN_CONFIG_PATH,
@@ -104,8 +76,6 @@ def get_orchestrator():
             logger.info("OrchestratorAgent initialized successfully for API.")
         except Exception as e:
             logger.error(f"Failed to initialize OrchestratorAgent for API: {e}", exc_info=True)
-            # Not raising HTTPException here as it's at app startup. Endpoints will fail if it's None.
-            # Consider a health check endpoint that verifies this.
             raise RuntimeError(f"Failed to initialize OrchestratorAgent: {e}") from e
     return orchestrator_agent_instance
 
@@ -113,21 +83,12 @@ def get_config_service():
     global config_service_instance
     if config_service_instance is None:
         try:
-            # This import will be valid after services.py is created.
-            from .services import ConfigService 
-            config_service_instance = ConfigService(
+            config_service_instance = services.ConfigService(
                 main_config_path=DEFAULT_MAIN_CONFIG_PATH,
                 model_params_path=DEFAULT_MODEL_PARAMS_PATH,
                 risk_limits_path=DEFAULT_RISK_LIMITS_PATH
             )
             logger.info("ConfigService initialized successfully for API.")
-        except ImportError:
-            logger.warning("ConfigService not yet available (services.py might not be created). Config endpoints will not work.")
-            # Define a dummy service if services.py is not yet created
-            class DummyConfigService:
-                def get_config(self, config_name: str): raise HTTPException(status_code=501, detail="ConfigService not implemented")
-                def update_config(self, config_name: str, data: dict): raise HTTPException(status_code=501, detail="ConfigService not implemented")
-            config_service_instance = DummyConfigService()
         except Exception as e:
             logger.error(f"Failed to initialize ConfigService for API: {e}", exc_info=True)
             raise RuntimeError(f"Failed to initialize ConfigService: {e}") from e
@@ -139,130 +100,229 @@ def get_config_service():
 @app.on_event("startup")
 async def startup_event():
     logger.info("FastAPI application startup...")
-    # Initialize services on startup to catch errors early
     try:
         get_orchestrator()
         get_config_service()
         logger.info("OrchestratorAgent and ConfigService pre-warmed on startup.")
     except Exception as e:
         logger.critical(f"Critical error during startup initialization: {e}", exc_info=True)
-        # Depending on the desired behavior, you might want the app to fail starting
-        # or continue with services being None, and endpoints returning errors.
 
-@app.get("/api/v1/status", tags=["General"])
+@app.get("/api/v1/status", tags=["General"], response_model=response_models.StandardResponse)
 async def get_status():
     """Returns the current status of the API."""
-    return {"status": "RL Trading Platform API is running", "timestamp": datetime.now().isoformat()}
+    return response_models.StandardResponse(
+        success=True,
+        message="RL Trading Platform API is running",
+        data={"timestamp": datetime.now().isoformat()}
+    )
 
 # --- Configuration Management Endpoints ---
-
 VALID_CONFIG_NAMES = ["main_config", "model_params", "risk_limits"]
 
 @app.get("/api/v1/config/{config_name}", 
          response_model=response_models.ConfigResponse,
          tags=["Configuration Management"])
 async def read_config(config_name: str, service: services.ConfigService = Depends(get_config_service)):
-    """
-    Retrieve the content of a specified YAML configuration file.
-    Valid `config_name` are: "main_config", "model_params", "risk_limits".
-    """
     if config_name not in VALID_CONFIG_NAMES:
         raise HTTPException(status_code=404, detail=f"Config '{config_name}' not found. Valid names are: {VALID_CONFIG_NAMES}")
     try:
         config_data = service.get_config(config_name)
         return response_models.ConfigResponse(
-            success=True,
-            config_name=config_name,
-            config_data=config_data,
+            success=True, config_name=config_name, config_data=config_data,
             message=f"{config_name} fetched successfully."
         )
     except FileNotFoundError:
-        logger.error(f"Config file for '{config_name}' not found by service, though _ensure_config_files_exist should prevent this.")
         raise HTTPException(status_code=404, detail=f"Configuration file for '{config_name}' not found on server.")
-    except ValueError as e: # Handles parsing errors or other service-level value errors
-        logger.error(f"ValueError reading config {config_name}: {e}", exc_info=True)
+    except ValueError as e:
         raise HTTPException(status_code=500, detail=f"Error processing config '{config_name}': {str(e)}")
     except Exception as e:
-        logger.exception(f"Unexpected error fetching config {config_name}: {e}") # Log full traceback
+        logger.exception(f"Unexpected error fetching config {config_name}: {e}")
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred while fetching config '{config_name}'.")
 
-
-@app.post("/api/v1/config/main_config", 
-          response_model=response_models.ConfigResponse,
-          tags=["Configuration Management"])
-async def update_main_config(
-    new_config: config_models.MainConfig, 
-    service: services.ConfigService = Depends(get_config_service)
-):
-    """Update the main_config.yaml file."""
+@app.post("/api/v1/config/main_config", response_model=response_models.ConfigResponse, tags=["Configuration Management"])
+async def update_main_config(new_config: config_models.MainConfig, service: services.ConfigService = Depends(get_config_service)):
     try:
-        # Pydantic model `new_config` already performed validation on the request body.
-        # We need to convert it to a dict for yaml.dump if it's not already.
-        # model_dump() is preferred for Pydantic v2, as_dict() for v1 or dict(new_config)
         updated_data = service.update_config("main_config", new_config.model_dump(mode='json'))
-        return response_models.ConfigResponse(
-            success=True,
-            config_name="main_config",
-            config_data=updated_data,
-            message="main_config updated successfully."
-        )
-    except ValueError as e:
-        logger.error(f"ValueError updating main_config: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error updating main_config: {str(e)}")
+        # Consider if OrchestratorAgent needs to be reloaded/notified
+        # For now, a restart of API would be needed for Orchestrator to pick up changes.
+        return response_models.ConfigResponse(success=True, config_name="main_config", config_data=updated_data, message="main_config updated successfully.")
     except Exception as e:
-        logger.exception(f"Unexpected error updating main_config: {e}")
-        raise HTTPException(status_code=500, detail="An unexpected error occurred while updating main_config.")
+        logger.exception(f"Error updating main_config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-
-@app.post("/api/v1/config/model_params", 
-          response_model=response_models.ConfigResponse,
-          tags=["Configuration Management"])
-async def update_model_params_config(
-    new_config: config_models.ModelParamsConfig, 
-    service: services.ConfigService = Depends(get_config_service)
-):
-    """Update the model_params.yaml file."""
+@app.post("/api/v1/config/model_params", response_model=response_models.ConfigResponse, tags=["Configuration Management"])
+async def update_model_params_config(new_config: config_models.ModelParamsConfig, service: services.ConfigService = Depends(get_config_service)):
     try:
         updated_data = service.update_config("model_params", new_config.model_dump(mode='json'))
-        return response_models.ConfigResponse(
-            success=True,
-            config_name="model_params",
-            config_data=updated_data,
-            message="model_params updated successfully."
-        )
-    except ValueError as e:
-        logger.error(f"ValueError updating model_params: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error updating model_params: {str(e)}")
+        return response_models.ConfigResponse(success=True, config_name="model_params", config_data=updated_data, message="model_params updated successfully.")
     except Exception as e:
-        logger.exception(f"Unexpected error updating model_params: {e}")
-        raise HTTPException(status_code=500, detail="An unexpected error occurred while updating model_params.")
+        logger.exception(f"Error updating model_params_config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-
-@app.post("/api/v1/config/risk_limits", 
-          response_model=response_models.ConfigResponse,
-          tags=["Configuration Management"])
-async def update_risk_limits_config(
-    new_config: config_models.RiskLimitsConfig, 
-    service: services.ConfigService = Depends(get_config_service)
-):
-    """Update the risk_limits.yaml file."""
+@app.post("/api/v1/config/risk_limits", response_model=response_models.ConfigResponse, tags=["Configuration Management"])
+async def update_risk_limits_config(new_config: config_models.RiskLimitsConfig, service: services.ConfigService = Depends(get_config_service)):
     try:
         updated_data = service.update_config("risk_limits", new_config.model_dump(mode='json'))
-        return response_models.ConfigResponse(
-            success=True,
-            config_name="risk_limits",
-            config_data=updated_data,
-            message="risk_limits updated successfully."
-        )
-    except ValueError as e:
-        logger.error(f"ValueError updating risk_limits: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error updating risk_limits: {str(e)}")
+        return response_models.ConfigResponse(success=True, config_name="risk_limits", config_data=updated_data, message="risk_limits updated successfully.")
     except Exception as e:
-        logger.exception(f"Unexpected error updating risk_limits: {e}")
-        raise HTTPException(status_code=500, detail="An unexpected error occurred while updating risk_limits.")
+        logger.exception(f"Error updating risk_limits_config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- Pipeline Triggering Endpoints ---
+
+@app.post("/api/v1/pipelines/train",
+          response_model=response_models.TrainPipelineResponse, # Will be updated for async
+          tags=["Pipelines"])
+async def trigger_train_pipeline(
+    request: request_models.TrainPipelineRequest,
+    background_tasks: BackgroundTasks, # Inject BackgroundTasks
+    orchestrator: OrchestratorAgent = Depends(get_orchestrator)
+):
+    """
+    Triggers the training pipeline asynchronously.
+    """
+    logger.info(f"Received request to train pipeline with params: {request.model_dump_json(indent=2)}")
+    if orchestrator is None:
+        logger.error("OrchestratorAgent not available for training pipeline.")
+        raise HTTPException(status_code=503, detail="Orchestrator service is not available. Cannot start training.")
+
+    task_id = str(uuid.uuid4())
+    tasks_status[task_id] = {
+        "status": "PENDING", 
+        "start_time": datetime.now().isoformat(), 
+        "result": None, 
+        "error": None,
+        "description": f"Training for symbol {request.symbol}"
+    }
+
+    # Define the actual work to be done in the background
+    def training_task_wrapper(task_id: str, req: request_models.TrainPipelineRequest):
+        tasks_status[task_id]["status"] = "RUNNING"
+        tasks_status[task_id]["start_time"] = datetime.now().isoformat() # More accurate start time
+        logger.info(f"Background training task {task_id} started for symbol {req.symbol}.")
+        try:
+            trained_model_path = orchestrator.run_training_pipeline(
+                symbol=req.symbol,
+                start_date=req.start_date,
+                end_date=req.end_date,
+                interval=req.interval,
+                use_cached_data=req.use_cached_data,
+                continue_from_model=req.continue_from_model,
+                run_evaluation_after_train=req.run_evaluation_after_train,
+                eval_start_date=req.eval_start_date,
+                eval_end_date=req.eval_end_date,
+                eval_interval=req.eval_interval
+            )
+            if trained_model_path:
+                tasks_status[task_id]["status"] = "COMPLETED"
+                tasks_status[task_id]["result"] = {"model_path": trained_model_path}
+                logger.info(f"Background training task {task_id} completed. Model: {trained_model_path}")
+            else:
+                tasks_status[task_id]["status"] = "FAILED"
+                tasks_status[task_id]["error"] = "Training pipeline completed but no model path was returned."
+                logger.error(f"Background training task {task_id} failed: No model path returned.")
+        except Exception as e:
+            logger.exception(f"Exception in background training task {task_id}: {e}")
+            tasks_status[task_id]["status"] = "FAILED"
+            tasks_status[task_id]["error"] = str(e)
+        tasks_status[task_id]["end_time"] = datetime.now().isoformat()
+
+    background_tasks.add_task(training_task_wrapper, task_id, request)
+    
+    return response_models.TrainPipelineResponse(
+        success=True,
+        message=f"Training pipeline initiated in background. Task ID: {task_id}",
+        task_id=task_id
+    )
+
+@app.get("/api/v1/pipelines/train/status/{task_id}", 
+         response_model=response_models.TaskStatusResponse, # To be created in response_models.py
+         tags=["Pipelines"])
+async def get_training_task_status(task_id: str):
+    """
+    Retrieves the status of a background training task.
+    """
+    task_info = tasks_status.get(task_id)
+    if not task_info:
+        raise HTTPException(status_code=404, detail=f"Task with ID '{task_id}' not found.")
+    
+    return response_models.TaskStatusResponse(
+        task_id=task_id,
+        status=task_info.get("status", "UNKNOWN"),
+        start_time=task_info.get("start_time"),
+        end_time=task_info.get("end_time"),
+        description=task_info.get("description"),
+        result=task_info.get("result"),
+        error=task_info.get("error")
+    )
+
+@app.post("/api/v1/pipelines/evaluate",
+          response_model=response_models.EvaluatePipelineResponse,
+          tags=["Pipelines"])
+async def trigger_evaluate_pipeline(
+    request: request_models.EvaluatePipelineRequest,
+    orchestrator: OrchestratorAgent = Depends(get_orchestrator)
+):
+    """
+    Triggers the evaluation pipeline for a specified model.
+    (This remains synchronous for now, as evaluation is typically faster)
+    """
+    logger.info(f"Received request to evaluate pipeline with params: {request.model_dump_json(indent=2)}")
+    if orchestrator is None:
+        logger.error("OrchestratorAgent not available for evaluation pipeline.")
+        raise HTTPException(status_code=503, detail="Orchestrator service is not available. Cannot start evaluation.")
+
+    # Check if model_path + .dummy exists if model_path itself doesn't
+    actual_model_path_to_check = request.model_path
+    if not os.path.exists(request.model_path) and os.path.exists(request.model_path + ".dummy"):
+        logger.info(f"Actual model file {request.model_path} not found, but dummy file {request.model_path + '.dummy'} exists. Proceeding with dummy model path.")
+        # No change needed for request.model_path if EvaluatorAgent handles the .dummy extension
+    elif not os.path.exists(request.model_path):
+         logger.error(f"Model path for evaluation does not exist: {request.model_path} (and no .dummy file)")
+         raise HTTPException(status_code=404, detail=f"Model file not found at: {request.model_path}")
+
+
+    try:
+        algo_name = orchestrator.model_params_config.get('algorithm_name', 'DQN')
+        model_name_tag = os.path.basename(request.model_path).replace(".zip", "").replace(".dummy", "")
+
+        eval_metrics = orchestrator.run_evaluation_pipeline(
+            symbol=request.symbol,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            interval=request.interval,
+            model_path=request.model_path,
+            use_cached_data=request.use_cached_data
+        )
+
+        if eval_metrics is not None:
+            # Assuming EvaluatorAgent's run method returns a dict that includes paths to reports
+            # This might need adjustment in EvaluatorAgent or OrchestratorAgent
+            report_path = eval_metrics.pop("report_txt_path", None) # Example key
+            trade_log_path = eval_metrics.pop("report_trades_csv_path", None) # Example key
+
+            return response_models.EvaluatePipelineResponse(
+                success=True,
+                message="Evaluation pipeline completed successfully.",
+                metrics=eval_metrics,
+                report_path=report_path,
+                trade_log_path=trade_log_path
+            )
+        else:
+            logger.error("Evaluation pipeline did not return metrics.")
+            raise HTTPException(status_code=500, detail="Evaluation pipeline completed but no metrics were returned.")
+
+    except FileNotFoundError as e:
+        logger.error(f"FileNotFoundError during evaluation pipeline: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Server configuration or data file error: {str(e)}")
+    except ValueError as e:
+        logger.error(f"ValueError during evaluation pipeline: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Evaluation pipeline error: {str(e)}")
+    except Exception as e:
+        logger.exception(f"Unexpected error during evaluation pipeline: {e}")
+        raise HTTPException(status_code=500, detail=f"An unexpected server error occurred during evaluation: {str(e)}")
+
 
 @app.post("/api/v1/pipelines/train",
           response_model=response_models.TrainPipelineResponse,
@@ -437,14 +497,4 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Failed to run Uvicorn directly: {e}", exc_info=True)
 
-# Placeholder for Pydantic models and services until they are created
-# This is to avoid import errors if this file is checked before others are created
-if 'config_models' not in sys.modules:
-    class DummyPydanticModel: pass
-    config_models = DummyPydanticModel() # type: ignore
-    request_models = DummyPydanticModel() # type: ignore
-    response_models = DummyPydanticModel() # type: ignore
-
-if 'services' not in sys.modules:
-    class DummyServicesModule: pass
-    services = DummyServicesModule() # type: ignore
+# All modules should be properly imported at the top of the file
