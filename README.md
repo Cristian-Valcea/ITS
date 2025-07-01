@@ -2,19 +2,22 @@
 
 A sophisticated intraday trading system built with Python, featuring multiple specialized agents for data processing, feature engineering, risk management, and automated trading execution using reinforcement learning.
 
-## 🎯 **Current Status: v0.2.0 - Development Ready**
+## 🎯 **Current Status: v0.3.0 - Production-Ready API**
 
 ✅ **Working Components:**
-- Multi-agent system architecture fully functional
-- Configuration system (YAML) working correctly  
-- Feature engineering pipeline (RSI, EMA, VWAP, Time features)
-- Virtual environment setup with all dependencies
-- Training pipeline initialization
+- **FastAPI REST API** - Complete backend with interactive documentation
+- **Multi-agent system** architecture fully functional
+- **Configuration Management API** - CRUD operations for all YAML configs
+- **Pipeline Control API** - Trigger training/evaluation via REST endpoints
+- **Feature engineering pipeline** (RSI, EMA, VWAP, Time features)
+- **Virtual environment** setup with all dependencies
+- **Interactive Documentation** - Swagger UI and ReDoc
 
 🔧 **In Development:**
 - Environment shape validation for small datasets
 - Enhanced dummy data generation for testing
-- Complete training loop implementation
+- Asynchronous pipeline execution
+- Frontend web interface
 
 ## 🚀 Features
 
@@ -53,6 +56,42 @@ All system behavior is controlled through YAML configuration files:
 - `config/main_config.yaml` - Main system configuration
 - `config/model_params.yaml` - ML model parameters  
 - `config/risk_limits.yaml` - Risk management settings
+
+## 🌐 **API Usage**
+
+### Start the API Server
+```powershell
+# Option 1: Using the launch script
+.\scripts\run_api.ps1
+
+# Option 2: Direct uvicorn command
+.\venv\Scripts\python.exe -m uvicorn src.api.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+### Access the API
+- **Interactive Documentation**: http://127.0.0.1:8000/docs
+- **ReDoc Documentation**: http://127.0.0.1:8000/redoc
+- **API Status**: http://127.0.0.1:8000/api/v1/status
+
+### Example API Calls
+```bash
+# Check API status
+curl http://127.0.0.1:8000/api/v1/status
+
+# Get main configuration
+curl http://127.0.0.1:8000/api/v1/config/main_config
+
+# Trigger training pipeline
+curl -X POST http://127.0.0.1:8000/api/v1/pipelines/train \
+  -H "Content-Type: application/json" \
+  -d '{"symbol": "AAPL", "start_date": "2023-01-01", "end_date": "2023-01-31", "interval": "1min"}'
+```
+
+### Test the API
+```powershell
+# Run the API test script
+.\venv\Scripts\python.exe test_api.py
+```
 
 ## 📁 Project Structure
 
