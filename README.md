@@ -1,15 +1,58 @@
 # IntradayJules - Intraday Trading System
 
-A sophisticated intraday trading system built with Python, featuring multiple specialized agents for data processing, feature engineering, risk management, and automated trading execution.
+A sophisticated intraday trading system built with Python, featuring multiple specialized agents for data processing, feature engineering, risk management, and automated trading execution using reinforcement learning.
+
+## 🎯 **Current Status: v0.2.0 - Development Ready**
+
+✅ **Working Components:**
+- Multi-agent system architecture fully functional
+- Configuration system (YAML) working correctly  
+- Feature engineering pipeline (RSI, EMA, VWAP, Time features)
+- Virtual environment setup with all dependencies
+- Training pipeline initialization
+
+🔧 **In Development:**
+- Environment shape validation for small datasets
+- Enhanced dummy data generation for testing
+- Complete training loop implementation
 
 ## 🚀 Features
 
 - **Multi-Agent Architecture**: Specialized agents for different trading tasks
-- **Gym Environment**: Custom OpenAI Gym environment for reinforcement learning
+- **Reinforcement Learning**: Custom OpenAI Gym environment with Stable-Baselines3
 - **Risk Management**: Built-in risk controls and position sizing
-- **Feature Engineering**: Advanced technical indicators and market features
-- **Automated Training**: Weekly model retraining capabilities
-- **Configuration Management**: YAML-based configuration system
+- **Feature Engineering**: Advanced technical indicators (RSI, EMA, VWAP, time features)
+- **Interactive Brokers Integration**: Real-time data and order execution
+- **Automated Training**: Configurable model retraining capabilities
+- **Configuration Management**: Comprehensive YAML-based configuration system
+
+## 🚀 **Quick Start**
+
+### Prerequisites
+- Python 3.10+
+- Windows (PowerShell scripts provided)
+
+### Setup
+```powershell
+# 1. Clone the repository
+git clone https://github.com/yourusername/IntradayJules.git
+cd IntradayJules
+
+# 2. Create and activate virtual environment (automated)
+.\activate_venv.ps1
+
+# 3. Run a quick training test
+.\run_training.ps1 AAPL 2023-01-01 2023-01-31 1min
+
+# Or manually:
+python src/main.py train --symbol AAPL --start_date 2023-01-01 --end_date 2023-01-31 --interval 1min --main_config config/main_config.yaml --model_params config/model_params.yaml --risk_limits config/risk_limits.yaml
+```
+
+### Configuration
+All system behavior is controlled through YAML configuration files:
+- `config/main_config.yaml` - Main system configuration
+- `config/model_params.yaml` - ML model parameters  
+- `config/risk_limits.yaml` - Risk management settings
 
 ## 📁 Project Structure
 

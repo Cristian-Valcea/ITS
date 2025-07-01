@@ -59,4 +59,3 @@ liquidate_on_halt: false  # If true, RiskAgent also signals to liquidate all ope
 # Turnover limits in the environment are more complex to implement accurately without
 # awareness of capital and precise trade values per step, but can be approximated.
 # The RiskAgent is the primary enforcer of these during live operations.
-```

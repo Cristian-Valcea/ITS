@@ -125,4 +125,3 @@ c51_features:
 #     net_arch_depth: {type: "int", low: 1, high: 3} # For number of layers
 #     net_arch_width: {type: "int", low: 32, high: 256, step: 32} # For neurons per layer
     # ... other parameters to tune
-```

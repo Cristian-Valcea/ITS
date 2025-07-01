@@ -25,12 +25,16 @@ class FeatureAgent(BaseAgent):
         os.makedirs(self.scalers_dir, exist_ok=True)
         
         self.feature_config = self.config.get('feature_engineering', {}) # Main key for all feature params
+        # If feature_engineering is not nested, the config itself might contain the feature params
+        if not self.feature_config:
+            self.feature_config = self.config
+        self.feature_list = self.feature_config.get('features_to_calculate', []) # List of features to compute
         self.scaler = None
         self.lookback_window = self.feature_config.get('lookback_window', 1)
 
         self.logger.info(f"Processed data will be saved to: {self.processed_data_dir}")
         self.logger.info(f"Scalers will be saved/loaded from: {self.scalers_dir}")
-        self.logger.info(f"Features to compute based on config: {self.feature_config.get('features_to_calculate', [])}")
+        self.logger.info(f"Features to compute based on config: {self.feature_list}")
         self.logger.info(f"Lookback window for sequences: {self.lookback_window}")
 
     def _calculate_rsi(self, series: pd.Series, window: int) -> pd.Series:
@@ -83,9 +87,9 @@ class FeatureAgent(BaseAgent):
             
             # Group by date (day) and calculate cumulative sum for pv and volume within each day
             # then divide. This resets VWAP calculation at the start of each day.
-            df_temp = pd.DataFrame({'pv': pv, 'volume': volume, 'date': close.index.date})
-            df_temp['daily_cum_pv'] = df_temp.groupby('date')['pv'].cumsum()
-            df_temp['daily_cum_volume'] = df_temp.groupby('date')['volume'].cumsum()
+            df_temp = pd.DataFrame({'pv': pv, 'volume': volume, 'trading_date': close.index.date})
+            df_temp['daily_cum_pv'] = df_temp.groupby('trading_date')['pv'].cumsum()
+            df_temp['daily_cum_volume'] = df_temp.groupby('trading_date')['volume'].cumsum()
             vwap = (df_temp['daily_cum_pv'] / df_temp['daily_cum_volume']).rename('vwap_daily')
             vwap.index = close.index # Ensure original index is restored
         else:
@@ -96,7 +100,7 @@ class FeatureAgent(BaseAgent):
         # Handle potential division by zero if volume is zero for a period
         vwap.replace([np.inf, -np.inf], np.nan, inplace=True) 
         # Forward fill NaNs that might result from zero volume, common at start of rolling/daily VWAP
-        vwap.fillna(method='ffill', inplace=True) 
+        vwap.ffill(inplace=True) 
         return vwap
 
     def _add_time_features(self, df: pd.DataFrame, time_feature_config: list, sin_cos_config: list) -> pd.DataFrame:
@@ -166,13 +170,13 @@ class FeatureAgent(BaseAgent):
             return None
 
         # --- RSI ---
-        if 'RSI' in self.feature_list and 'rsi' in self.config:
-            rsi_params = self.config['rsi']
+        if 'RSI' in self.feature_list and 'rsi' in self.feature_config:
+            rsi_params = self.feature_config['rsi']
             df[f'rsi_{rsi_params.get("window", 14)}'] = self._calculate_rsi(df['close'], rsi_params.get("window", 14))
 
         # --- EMAs ---
-        if 'EMA' in self.feature_list and 'ema' in self.config:
-            ema_params = self.config['ema']
+        if 'EMA' in self.feature_list and 'ema' in self.feature_config:
+            ema_params = self.feature_config['ema']
             for window in ema_params.get('windows', []):
                 df[f'ema_{window}'] = self._calculate_ema(df['close'], window)
             # Example: EMA difference (MACD-like)
@@ -185,16 +189,18 @@ class FeatureAgent(BaseAgent):
 
 
         # --- VWAP & VWAP Deviation ---
-        if 'VWAP' in self.feature_list and 'vwap' in self.config:
-            vwap_params = self.config['vwap']
+        if 'VWAP' in self.feature_list and 'vwap' in self.feature_config:
+            vwap_params = self.feature_config['vwap']
             # For simplicity, using a daily VWAP placeholder. A rolling window VWAP might also be useful.
             df['vwap'] = self._calculate_vwap(df['high'], df['low'], df['close'], df['volume'], window=vwap_params.get("window"))
             df['vwap_deviation'] = (df['close'] - df['vwap']) / df['vwap'] # Percentage deviation
             self.logger.info("Added 'vwap' and 'vwap_deviation' features.")
 
         # --- Time Features ---
-        if self.config.get('time_features', False):
-            df = self._add_time_features(df)
+        if 'Time' in self.feature_list and 'time_features' in self.feature_config:
+            time_features = self.feature_config.get('time_features', [])
+            sin_cos_encode = self.feature_config.get('sin_cos_encode', [])
+            df = self._add_time_features(df, time_features, sin_cos_encode)
 
         # TODO: Add optional order-book imbalance features if such data is available and processed.
         # This would likely come from a different data source or a more granular DataAgent output.
@@ -236,7 +242,7 @@ class FeatureAgent(BaseAgent):
 
         scaler_path = os.path.join(self.scalers_dir, f"{symbol}_feature_scaler.pkl")
         
-        feature_cols_to_scale = self.config.get('feature_cols_to_scale', [])
+        feature_cols_to_scale = self.feature_config.get('feature_cols_to_scale', [])
         if not feature_cols_to_scale: # If not specified, try to scale all non-OHLCV and non-datetime columns
             excluded_cols = ['open', 'high', 'low', 'close', 'volume', 'date', 'datetime'] # Common exclusions
             feature_cols_to_scale = [col for col in features_df.columns if col not in excluded_cols and features_df[col].dtype in [np.float64, np.int64]]

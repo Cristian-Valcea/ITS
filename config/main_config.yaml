@@ -68,10 +68,11 @@ feature_engineering:
     - "minute_of_hour"    # Integer minute
     - "day_of_week"       # Integer day of week (Monday=0)
     # - "month_of_year"
-    sin_cos_encode: # Apply sin/cos transformation for cyclical features
-      - "hour_of_day"
-      - "minute_of_hour"
-      # - "day_of_week" # If treating week as cyclical
+
+  sin_cos_encode: # Apply sin/cos transformation for cyclical features
+    - "hour_of_day"
+    - "minute_of_hour"
+    # - "day_of_week" # If treating week as cyclical
 
   lookback_window: 5 # For creating sequences for the RL agent (e.g., LSTM or CNN input)
                      # If 1, observations are just the current timestep's features.
@@ -166,4 +167,3 @@ scheduling:
   # Similar params for scheduled evaluation window after retraining.
   evaluate_after_retrain_start_offset_days: 0 # Start eval data from today (if model is for future)
   evaluate_after_retrain_duration_days: 90  # Evaluate on next 3 months (simulated if data available)
-```
