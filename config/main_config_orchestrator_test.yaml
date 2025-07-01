@@ -1,0 +1,47 @@
+environment:
+  initial_capital: 50000.0
+  log_trades_in_env: true
+  reward_scaling: 1.0
+  transaction_cost_pct: 0.001
+evaluation:
+  data_duration_for_fetch: 5 D
+  metrics:
+  - total_return
+  - num_trades
+feature_engineering:
+  ema:
+    windows:
+    - 10
+    - 20
+  feature_cols_to_scale:
+  - rsi_14
+  - ema_10
+  - ema_20
+  - hour_of_day
+  features:
+  - RSI
+  - EMA
+  lookback_window: 3
+  observation_feature_cols:
+  - rsi_14
+  - ema_10
+  - ema_20
+  - hour_of_day
+  - close
+  rsi:
+    window: 14
+  time_features:
+  - hour
+ibkr_connection: null
+paths:
+  data_dir_processed: data/processed_orch_test/
+  data_dir_raw: data/raw_orch_test/
+  model_save_dir: models/orch_test/
+  reports_dir: reports/orch_test/
+  scalers_dir: data/scalers_orch_test/
+  tensorboard_log_dir: logs/tensorboard_orch_test/
+training:
+  checkpoint_freq: 500
+  data_duration_for_fetch: 10 D
+  log_interval: 50
+  total_timesteps: 2000

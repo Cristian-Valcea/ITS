@@ -1,0 +1,4 @@
+halt_on_breach: true
+max_daily_drawdown_pct: 0.025
+max_daily_turnover_ratio: 4.0
+max_hourly_turnover_ratio: 1.5
