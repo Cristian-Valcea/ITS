@@ -127,6 +127,16 @@ app = FastAPI(
 
 # --- API Endpoints ---
 
+@app.get("/", response_class=RedirectResponse, tags=["Root"])
+async def root():
+    """Redirect root URL to dashboard"""
+    return RedirectResponse(url="/ui/dashboard")
+
+@app.get("/dashboard", response_class=RedirectResponse, tags=["Root"])
+async def dashboard_redirect():
+    """Redirect /dashboard to /ui/dashboard"""
+    return RedirectResponse(url="/ui/dashboard")
+
 @app.get("/api/v1/status", tags=["General API"], response_model=response_models.StandardResponse)
 async def get_status_api():
     return response_models.StandardResponse(
