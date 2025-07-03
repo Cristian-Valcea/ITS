@@ -6,6 +6,8 @@ import ta # Technical Analysis library: pip install ta
 from sklearn.preprocessing import StandardScaler
 import joblib 
 
+from src.column_names import COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME
+
 from .base_agent import BaseAgent
 
 class FeatureAgent(BaseAgent):
@@ -28,7 +30,7 @@ class FeatureAgent(BaseAgent):
         # If feature_engineering is not nested, the config itself might contain the feature params
         if not self.feature_config:
             self.feature_config = self.config
-        self.feature_list = self.feature_config.get('features_to_calculate', []) # List of features to compute
+        self.feature_list = self.feature_config.get('features', []) # List of features to compute
         self.scaler = None
         self.lookback_window = self.feature_config.get('lookback_window', 1)
 
@@ -87,9 +89,9 @@ class FeatureAgent(BaseAgent):
             
             # Group by date (day) and calculate cumulative sum for pv and volume within each day
             # then divide. This resets VWAP calculation at the start of each day.
-            df_temp = pd.DataFrame({'pv': pv, 'volume': volume, 'trading_date': close.index.date})
+            df_temp = pd.DataFrame({'pv': pv, COL_VOLUME: volume, 'trading_date': close.index.date})
             df_temp['daily_cum_pv'] = df_temp.groupby('trading_date')['pv'].cumsum()
-            df_temp['daily_cum_volume'] = df_temp.groupby('trading_date')['volume'].cumsum()
+            df_temp['daily_cum_volume'] = df_temp.groupby('trading_date')[COL_VOLUME].cumsum()
             vwap = (df_temp['daily_cum_pv'] / df_temp['daily_cum_volume']).rename('vwap_daily')
             vwap.index = close.index # Ensure original index is restored
         else:
@@ -151,7 +153,7 @@ class FeatureAgent(BaseAgent):
         Computes all configured features on the raw data.
 
         Args:
-            raw_data_df (pd.DataFrame): DataFrame with 'open', 'high', 'low', 'close', 'volume' columns
+            raw_data_df (pd.DataFrame): DataFrame with COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME columns
                                         and a DatetimeIndex.
 
         Returns:
@@ -164,7 +166,7 @@ class FeatureAgent(BaseAgent):
         df = raw_data_df.copy()
         
         # Ensure required columns exist
-        required_cols = ['open', 'high', 'low', 'close', 'volume']
+        required_cols = [COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME]
         if not all(col in df.columns for col in required_cols):
             self.logger.error(f"Raw data missing one or more required columns: {required_cols}")
             return None
@@ -172,13 +174,13 @@ class FeatureAgent(BaseAgent):
         # --- RSI ---
         if 'RSI' in self.feature_list and 'rsi' in self.feature_config:
             rsi_params = self.feature_config['rsi']
-            df[f'rsi_{rsi_params.get("window", 14)}'] = self._calculate_rsi(df['close'], rsi_params.get("window", 14))
+            df[f'rsi_{rsi_params.get("window", 14)}'] = self._calculate_rsi(df[COL_CLOSE], rsi_params.get("window", 14))
 
         # --- EMAs ---
         if 'EMA' in self.feature_list and 'ema' in self.feature_config:
             ema_params = self.feature_config['ema']
             for window in ema_params.get('windows', []):
-                df[f'ema_{window}'] = self._calculate_ema(df['close'], window)
+                df[f'ema_{window}'] = self._calculate_ema(df[COL_CLOSE], window)
             # Example: EMA difference (MACD-like)
             if 'ema_diff' in ema_params and len(ema_params.get('windows', [])) == 2:
                 fast_ema_col = f'ema_{ema_params["windows"][0]}'
@@ -192,8 +194,8 @@ class FeatureAgent(BaseAgent):
         if 'VWAP' in self.feature_list and 'vwap' in self.feature_config:
             vwap_params = self.feature_config['vwap']
             # For simplicity, using a daily VWAP placeholder. A rolling window VWAP might also be useful.
-            df['vwap'] = self._calculate_vwap(df['high'], df['low'], df['close'], df['volume'], window=vwap_params.get("window"))
-            df['vwap_deviation'] = (df['close'] - df['vwap']) / df['vwap'] # Percentage deviation
+            df['vwap'] = self._calculate_vwap(df[COL_HIGH], df[COL_LOW], df[COL_CLOSE], df[COL_VOLUME], window=vwap_params.get("window"))
+            df['vwap_deviation'] = (df[COL_CLOSE] - df['vwap']) / df['vwap'] # Percentage deviation
             self.logger.info("Added 'vwap' and 'vwap_deviation' features.")
 
         # --- Time Features ---
@@ -244,7 +246,7 @@ class FeatureAgent(BaseAgent):
         
         feature_cols_to_scale = self.feature_config.get('feature_cols_to_scale', [])
         if not feature_cols_to_scale: # If not specified, try to scale all non-OHLCV and non-datetime columns
-            excluded_cols = ['open', 'high', 'low', 'close', 'volume', 'date', 'datetime'] # Common exclusions
+            excluded_cols = [COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME, 'date', 'datetime'] # Common exclusions
             feature_cols_to_scale = [col for col in features_df.columns if col not in excluded_cols and features_df[col].dtype in [np.float64, np.int64]]
             self.logger.info(f"Auto-detected feature columns to scale: {feature_cols_to_scale}")
 
@@ -291,7 +293,7 @@ class FeatureAgent(BaseAgent):
         normalized_data = self.scaler.transform(data_to_scale)
         normalized_df = pd.DataFrame(normalized_data, columns=feature_cols_to_scale, index=features_df.index)
         
-        # Combine back with non-scaled columns (like 'close', 'volume' if needed by env)
+        # Combine back with non-scaled columns (like COL_CLOSE, COL_VOLUME if needed by env)
         # Create a new DataFrame to avoid modifying the original features_df structure unnecessarily here
         final_df = features_df.copy()
         for col in feature_cols_to_scale:
@@ -367,7 +369,7 @@ class FeatureAgent(BaseAgent):
                 - final_features_df: DataFrame of features (normalized, before sequencing). Retains index.
                 - feature_sequences: NumPy array of feature sequences (if lookback_window > 0). Index is lost.
                                      If lookback_window <=0, this is just `final_features_df.values`.
-                - price_data_for_env: Series of 'close' prices aligned with the `final_features_df` index,
+                - price_data_for_env: Series of CLOSE prices aligned with the `final_features_df` index,
                                       to be used by the environment for reward calculation.
                                       If sequencing is applied, this needs to be sliced to match the
                                       number of samples in `feature_sequences`.
@@ -393,28 +395,28 @@ class FeatureAgent(BaseAgent):
 
         final_features_df = normalized_features_df
         
-        # Extract price data (e.g., 'close' prices) for the environment
+        # Extract price data (e.g., CLOSE prices) for the environment
         # This should be done BEFORE sequencing, using the same index as final_features_df
         # The environment will need this to calculate P&L.
-        # Make sure 'close' prices are from the original data, not scaled.
-        if 'close' not in final_features_df.columns:
-            self.logger.error("'close' column not found in features DataFrame. Cannot provide price data for env.")
-            # Potentially, 'close' might have been in raw_data_df but not explicitly carried over or was scaled.
-            # Ensure 'close' (unscaled) is available.
-            # If 'close' was scaled, we should use the original 'close' from features_df (before normalization)
+        # Make sure CLOSE prices are from the original data, not scaled.
+        if COL_CLOSE not in final_features_df.columns:
+            self.logger.error("CLOSE column not found in features DataFrame. Cannot provide price data for env.")
+            # Potentially, CLOSE might have been in raw_data_df but not explicitly carried over or was scaled.
+            # Ensure CLOSE (unscaled) is available.
+            # If CLOSE was scaled, we should use the original CLOSE from features_df (before normalization)
             # or raw_data_df, aligned with final_features_df.index.
-            if 'close' in features_df: # from before normalization
-                 price_data_for_env = features_df.loc[final_features_df.index, 'close'].copy()
-            elif 'close' in raw_data_df: # from raw_data, aligned
-                 price_data_for_env = raw_data_df.loc[final_features_df.index, 'close'].copy()
+            if COL_CLOSE in features_df: # from before normalization
+                 price_data_for_env = features_df.loc[final_features_df.index, COL_CLOSE].copy()
+            elif COL_CLOSE in raw_data_df: # from raw_data, aligned
+                 price_data_for_env = raw_data_df.loc[final_features_df.index, COL_CLOSE].copy()
             else:
                  price_data_for_env = None # Should not happen if data pipeline is correct
-        else: # 'close' is in final_features_df (might be scaled if not excluded)
-            # It is safer to take 'close' from features_df (before scaling) or raw_data_df
-            if 'close' in features_df:
-                 price_data_for_env = features_df.loc[final_features_df.index, 'close'].copy()
-            else: # Fallback, though 'close' ideally shouldn't be scaled if used for P&L
-                 price_data_for_env = final_features_df['close'].copy()
+        else: # CLOSE is in final_features_df (might be scaled if not excluded)
+            # It is safer to take CLOSE from features_df (before scaling) or raw_data_df
+            if COL_CLOSE in features_df:
+                 price_data_for_env = features_df.loc[final_features_df.index, COL_CLOSE].copy()
+            else: # Fallback, though CLOSE ideally shouldn't be scaled if used for P&L
+                 price_data_for_env = final_features_df[COL_CLOSE].copy()
 
 
         # 3. Create Sequences (if lookback_window > 1)
@@ -497,7 +499,7 @@ if __name__ == '__main__':
         # Define which columns from the feature_df should be scaled
         'feature_cols_to_scale': ['rsi_14', 'ema_12', 'ema_26', 'ema_diff', 'vwap_deviation', 'hour_of_day', 'day_of_week'],
         # Define which columns (after scaling) should be part of the observation sequence for the model
-        'observation_feature_cols': ['rsi_14', 'ema_12', 'ema_26', 'ema_diff', 'vwap_deviation', 'hour_of_day', 'day_of_week', 'close', 'volume'] # Example
+        'observation_feature_cols': ['rsi_14', 'ema_12', 'ema_26', 'ema_diff', 'vwap_deviation', 'hour_of_day', 'day_of_week', COL_CLOSE, COL_VOLUME] # Example
     }
 
     feature_agent = FeatureAgent(config=config)
@@ -511,15 +513,15 @@ if __name__ == '__main__':
     ])
     num_rows = len(dates)
     data = {
-        'open': np.random.rand(num_rows) * 10 + 100,
-        'high': np.random.rand(num_rows) * 5 + 105, # ensure high > open
-        'low': np.random.rand(num_rows) * 5 + 95,   # ensure low < open
-        'close': np.random.rand(num_rows) * 10 + 100,
-        'volume': np.random.randint(100, 1000, size=num_rows) * 10
+        COL_OPEN: np.random.rand(num_rows) * 10 + 100,
+        COL_HIGH: np.random.rand(num_rows) * 5 + 105, # ensure high > open
+        COL_LOW: np.random.rand(num_rows) * 5 + 95,   # ensure low < open
+        COL_CLOSE: np.random.rand(num_rows) * 10 + 100,
+        COL_VOLUME: np.random.randint(100, 1000, size=num_rows) * 10
     }
     raw_df = pd.DataFrame(data, index=pd.DatetimeIndex(dates, name='date'))
-    raw_df['high'] = raw_df[['open', 'close']].max(axis=1) + np.random.rand(num_rows) * 2
-    raw_df['low'] = raw_df[['open', 'close']].min(axis=1) - np.random.rand(num_rows) * 2
+    raw_df[COL_HIGH] = raw_df[[COL_OPEN, COL_CLOSE]].max(axis=1) + np.random.rand(num_rows) * 2
+    raw_df[COL_LOW] = raw_df[[COL_OPEN, COL_CLOSE]].min(axis=1) - np.random.rand(num_rows) * 2
 
     print("--- Dummy Raw Data ---")
     print(raw_df.head())

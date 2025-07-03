@@ -374,7 +374,7 @@ if __name__ == '__main__':
     
     mock_eval_prices_arr = 150 + np.cumsum(np.random.randn(num_eval_steps) * 0.5)
     mock_eval_dates = pd.to_datetime(pd.date_range(start='2023-04-01', periods=num_eval_steps, freq='1min'))
-    mock_eval_price_series = pd.Series(mock_eval_prices_arr, index=mock_eval_dates, name='close')
+    mock_eval_price_series = pd.Series(mock_eval_prices_arr, index=mock_eval_dates, name=COL_CLOSE)
 
     # Ensure the eval env has log_trades=True so EvaluatorAgent can get the log
     eval_env_instance = IntradayTradingEnv(

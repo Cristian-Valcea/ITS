@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 # --- End Path Setup ---
 
-from src.column_names import CLOSE
+from src.column_names import COL_CLOSE  # Commented out to avoid numpy conflict
 from src.agents.data_agent import DataAgent
 from src.agents.feature_agent import FeatureAgent
 from src.agents.env_agent import EnvAgent
@@ -376,7 +376,7 @@ if __name__ == '__main__':
             'features': ['RSI', 'EMA', 'Time'], 'rsi': {'window': 14}, 'ema': {'windows': [10, 20]},
             'time_features': ['hour_of_day'], 'lookback_window': 3,
             'feature_cols_to_scale': ['rsi_14', 'ema_10', 'ema_20', 'hour_of_day'],
-            'observation_feature_cols': ['rsi_14', 'ema_10', 'ema_20', 'hour_of_day', CLOSE]
+            'observation_feature_cols': ['rsi_14', 'ema_10', 'ema_20', 'hour_of_day', 'Close']
         },
         'environment': {
             'initial_capital': 50000.0, 'transaction_cost_pct': 0.001, 'reward_scaling': 1.0,

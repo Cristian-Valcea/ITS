@@ -6,6 +6,8 @@ from ib_insync import IB, util, Contract, Stock # Assuming ib_insync is installe
 
 from .base_agent import BaseAgent
 # from ..utils.config_loader import load_config # Example for loading config
+from src.tools.ibkr_tools import fetch_5min_bars
+from src.column_names import COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME
 
 class DataAgent(BaseAgent):
     """
@@ -102,7 +104,7 @@ class DataAgent(BaseAgent):
             # Parse end_datetime_str (YYYYMMDD HH:MM:SS [TZ])
             # For simplicity, we'll use the date part for filename consistency.
             # A more robust solution might handle timezones if provided.
-            end_dt_obj = datetime.strptime(end_datetime_str.split(" ")[0], "%Y%m%d")
+            end_dt_obj = datetime.strptime(end_datetime_str.split(" ")[0], "%Y-%m-%d")
             
             # Parse duration_str (e.g., "1 Y", "6 M", "30 D", "1000 S")
             # This is a simplified parser. ib_insync handles this internally for the request.
@@ -136,8 +138,11 @@ class DataAgent(BaseAgent):
         """
         # Sanitize bar_size_str for filename
         interval_sanitized = bar_size_str.replace(" ", "").replace(":", "")
-        filename = f"{symbol}_{start_date_str_yyyymmdd}_{end_date_str_yyyymmdd}_{interval_sanitized}.{data_format}"
-        return os.path.join(self.data_dir_raw, symbol.upper(), filename)
+        symbol_clean = os.path.basename(symbol.replace('/', '').replace('\\', ''))
+        filename = f"{symbol_clean}_{start_date_str_yyyymmdd}_{end_date_str_yyyymmdd}_{interval_sanitized}.{data_format}"
+        full_path = os.path.join(self.data_dir_raw, symbol_clean.upper(), filename)
+        full_path = os.path.abspath(full_path) 
+        return full_path
 
     def fetch_ibkr_bars(self, symbol: str, end_datetime_str: str, duration_str: str, bar_size_str: str,
                         sec_type: str = "STK", exchange: str = "SMART", currency: str = "USD",
@@ -165,34 +170,39 @@ class DataAgent(BaseAgent):
         """
         self.logger.info(f"Requesting bars for {symbol}: end={end_datetime_str}, dur={duration_str}, size={bar_size_str}")
 
-        # TODO: Construct cache path based on a more robust representation of start/end dates
-        # For now, let's use a simplified version of the end_datetime_str and duration for caching name
-        # A proper implementation would parse end_datetime_str and duration_str to determine actual start_date
-        # For this skeleton, we'll simplify the cache filename.
-        # This needs to be made more robust to map to actual date ranges.
-        # Example: parse end_datetime_str and duration_str to get an actual start_date for filename.
-        # For now, using a placeholder for cache path construction.
-        # A real implementation would calculate the effective start date.
-        cache_filepath = self._get_cache_filepath(symbol, "TEMP_START", end_datetime_str.split(' ')[0], bar_size_str.replace(' ', ''), data_format)
+        start_date_str_yyyymmdd, end_date_str_yyyymmdd = self._determine_actual_start_end_for_cache(end_datetime_str, duration_str)
+
+        # Clean inputs for cache filepath
+        symbol_clean = symbol.replace('/', '').replace('\\', '')
+        bar_size_clean = bar_size_str.replace(' ', '').replace(':', '').replace('/', '').replace('\\', '')
+
+        cache_filepath = self._get_cache_filepath(
+            symbol_clean,
+            start_date_str_yyyymmdd,
+            end_date_str_yyyymmdd,
+            bar_size_clean,
+            data_format
+        )
         
         os.makedirs(os.path.dirname(cache_filepath), exist_ok=True)
 
-        if not force_fetch and os.path.exists(cache_filepath):
-            self.logger.info(f"Loading cached data from {cache_filepath}")
-            try:
-                if data_format == "csv":
-                    bars_df = pd.read_csv(cache_filepath, index_col='date', parse_dates=True)
-                elif data_format == "pkl":
-                    bars_df = pd.read_pickle(cache_filepath)
-                else:
-                    self.logger.warning(f"Unsupported data format '{data_format}' for loading.")
-                    return None
-                if not bars_df.empty:
-                    return bars_df
-                else:
-                    self.logger.warning(f"Cached file {cache_filepath} is empty. Fetching new data.")
-            except Exception as e:
-                self.logger.error(f"Error loading cached data from {cache_filepath}: {e}. Fetching new data.")
+        if not force_fetch: 
+            if os.path.exists(cache_filepath):
+                self.logger.info(f"Loading cached data from {cache_filepath}")
+                try:
+                    if data_format == "csv":
+                        bars_df = pd.read_csv(cache_filepath, index_col='datetime', parse_dates=True)
+                    elif data_format == "pkl":
+                        bars_df = pd.read_pickle(cache_filepath)
+                    else:
+                        self.logger.warning(f"Unsupported data format '{data_format}' for loading.")
+                        return None
+                    if not bars_df.empty:
+                        return bars_df
+                    else:
+                        self.logger.warning(f"Cached file {cache_filepath} is empty. Fetching new data.")
+                except Exception as e:
+                    self.logger.error(f"Error loading cached data from {cache_filepath}: {e}. Fetching new data.")
 
         # TODO: Implement actual IBKR data fetching logic using ib_insync
         # This is a placeholder and will not actually fetch data.
@@ -249,26 +259,42 @@ class DataAgent(BaseAgent):
         # except Exception as e:
         #     self.logger.error(f"Error fetching historical data for {symbol} from IBKR: {e}")
         #     return None
-        self.logger.warning("Actual IBKR fetching is not implemented in this skeleton.")
+        #self.logger.warning("Actual IBKR fetching is not implemented in this skeleton.")
         # Create a dummy DataFrame for skeleton purposes
-        dates = pd.to_datetime([
-            datetime(2023, 1, 1, 9, 30),
-            datetime(2023, 1, 1, 9, 31),
-            datetime(2023, 1, 1, 9, 32)
-        ])
-        dummy_data = {'open': [100, 101, 102], 'high': [102, 102, 103], 'low': [99, 100, 101],
-                      'close': [101, 102, 103], 'volume': [1000, 1200, 1100]}
-        bars_df = pd.DataFrame(dummy_data, index=pd.DatetimeIndex(dates, name='date'))
-        
+
+        #dates = pd.to_datetime([
+        #    datetime(2023, 1, 1, 9, 30),
+        #    datetime(2023, 1, 1, 9, 31),
+        #    datetime(2023, 1, 1, 9, 32)
+        #])
+        #dummy_data = {COL_OPEN: [100, 101, 102], COL_HIGH: [102, 102, 103], COL_LOW: [99, 100, 101],
+        #              COL_CLOSE: [101, 102, 103], COL_VOLUME: [1000, 1200, 1100]}
+        #bars_df = pd.DataFrame(dummy_data, index=pd.DatetimeIndex(dates, name='date'))
+        # Compute start and end dates for fetch_5min_bars
+
+        # Now call fetch_5min_bars with the correct arguments
+        bars_df = fetch_5min_bars(symbol, start_date_str_yyyymmdd, end_date_str_yyyymmdd, use_rth=use_rth)
+        #bars_df, _bt_feed = get_ibkr_data_sync(
+        #    ib_instance=self.ib,
+        #    ticker_symbol=symbol,
+        #    start_date=start_date_str_yyyymmdd,
+        #    end_date=end_date_str_yyyymmdd,
+        #    bar_size='5 mins',      # exactly this string
+        #    what_to_show='TRADES',  # matches your IBKR requests
+        #    use_rth=use_rth
+        #)
+        # If your system expects the column 'Date' instead of index name:
+        bars_df = bars_df.reset_index().rename(columns={'datetime': 'Date'}).set_index('Date')
+
         # Save dummy data to cache path for testing workflow
         try:
             if data_format == "csv":
                 bars_df.to_csv(cache_filepath)
             elif data_format == "pkl":
                 bars_df.to_pickle(cache_filepath)
-            self.logger.info(f"Saved DUMMY data to {cache_filepath}")
+            self.logger.info(f"Saved data to {cache_filepath}")
         except Exception as e:
-            self.logger.error(f"Error caching DUMMY data to {cache_filepath}: {e}")
+            self.logger.error(f"Error caching data to {cache_filepath}: {e}")
         return bars_df
 
 
@@ -289,7 +315,7 @@ class DataAgent(BaseAgent):
 
         # Check for required columns (adjust based on actual IBKR output)
         # Typical columns: open, high, low, close, volume
-        required_cols = ['open', 'high', 'low', 'close', 'volume']
+        required_cols = [COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME]
         if not all(col in df.columns for col in required_cols):
             self.logger.warning(f"Data validation failed for {symbol}: Missing one or more required columns {required_cols}.")
             return False
@@ -445,7 +471,7 @@ if __name__ == '__main__':
         end_date=end_date_for_fetch,
         interval=bar_interval,
         duration_str=duration_for_fetch, # This is used by fetch_ibkr_bars
-        force_fetch=True # Set to True to regenerate dummy data
+        force_fetch=False # Set to True to regenerate dummy data
     )
 
     if df_bars is not None:

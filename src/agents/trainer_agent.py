@@ -1,5 +1,4 @@
 # src/agents/trainer_agent.py
-# src/agents/trainer_agent.py
 import os
 import logging
 from datetime import datetime
@@ -191,13 +190,19 @@ class TrainerAgent(BaseAgent):
         self.logger.info(f"Attempting to create model: {self.algorithm_name} with effective params: {current_algo_params}")
         if policy_kwargs: # Update algo_params with potentially modified policy_kwargs
             current_algo_params['policy_kwargs'] = policy_kwargs
-        
+
+        # Remove unsupported PER params for SB3 DQN
+        if self.algorithm_name == 'DQN':
+            for per_param in ['prioritized_replay', 'prioritized_replay_alpha', 'prioritized_replay_beta', 'prioritized_replay_eps']:
+                if per_param in current_algo_params:
+                    del current_algo_params[per_param]
+
         try:
             if self.algorithm_name == 'DQN':
                 self.model = DQN(
-                    env=self.training_env_monitor, # Use the Monitor-wrapped environment
-                    tensorboard_log=self.log_dir, # Base directory for TensorBoard logs
-                    **current_algo_params # Unpack all other configured parameters
+                    env=self.training_env_monitor,
+                    tensorboard_log=self.log_dir,
+                    **current_algo_params
                 )
             # elif self.algorithm_name == 'C51':
             #     # If using a true C51 model (e.g., from sb3_contrib)
@@ -369,7 +374,7 @@ if __name__ == '__main__':
     
     mock_prices = 100 + np.cumsum(np.random.randn(num_env_steps))
     mock_dates = pd.to_datetime(pd.date_range(start='2023-03-01', periods=num_env_steps, freq='1min'))
-    mock_price_series = pd.Series(mock_prices, index=mock_dates, name='close')
+    mock_price_series = pd.Series(mock_prices, index=mock_dates, name=CLOSE)
 
     mock_env = IntradayTradingEnv(
         processed_feature_data=mock_market_feature_data, # Market features only

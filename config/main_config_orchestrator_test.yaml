@@ -1,7 +1,9 @@
 environment:
   initial_capital: 50000.0
   log_trades_in_env: true
+  position_sizing_pct_capital: 0.25
   reward_scaling: 1.0
+  trade_cooldown_steps: 0
   transaction_cost_pct: 0.001
 evaluation:
   data_duration_for_fetch: 5 D
@@ -21,17 +23,18 @@ feature_engineering:
   features:
   - RSI
   - EMA
+  - Time
   lookback_window: 3
   observation_feature_cols:
   - rsi_14
   - ema_10
   - ema_20
   - hour_of_day
-  - close
+  - Close
   rsi:
     window: 14
   time_features:
-  - hour
+  - hour_of_day
 ibkr_connection: null
 paths:
   data_dir_processed: data/processed_orch_test/
