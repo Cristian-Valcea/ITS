@@ -59,3 +59,16 @@ liquidate_on_halt: false  # If true, RiskAgent also signals to liquidate all ope
 # Turnover limits in the environment are more complex to implement accurately without
 # awareness of capital and precise trade values per step, but can be approximated.
 # The RiskAgent is the primary enforcer of these during live operations.
+
+# --- Environment-Specific Risk Settings (for IntradayTradingEnv during training/backtesting) ---
+# These control how the training environment reacts to certain risk conditions.
+env_turnover_penalty_factor: 0.01 # Factor to penalize reward for exceeding hourly_turnover_cap. Default: 0.01
+                                  # This value is passed to IntradayTradingEnv.
+
+# New parameters for controlling termination due to turnover in the environment (Step 7)
+env_terminate_on_turnover_breach: false # If true, IntradayTradingEnv will terminate an episode if hourly turnover
+                                        # significantly exceeds its cap. Default: false.
+env_turnover_termination_threshold_multiplier: 2.0 # Multiplier for 'hourly_turnover_cap'. If actual turnover ratio
+                                                   # exceeds (cap * multiplier), and terminate_on_breach is true,
+                                                   # the episode ends. Default: 2.0 (i.e., 200% of the cap).
+```

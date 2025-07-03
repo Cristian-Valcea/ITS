@@ -41,7 +41,11 @@ class IntradayTradingEnv(gym.Env):
                  reward_scaling: float = 1.0,
                  max_episode_steps: int = None,
                  log_trades: bool = True,
-                 turnover_penalty_factor: float = 0.01 # Penalty per unit of excess turnover
+                 turnover_penalty_factor: float = 0.01, # Penalty per unit of excess turnover
+                 position_sizing_pct_capital: float = 0.25, # Pct of capital to use for sizing
+                 trade_cooldown_steps: int = 0, # Number of steps to wait after a trade
+                 terminate_on_turnover_breach: bool = False, # Terminate if turnover cap breached significantly
+                 turnover_termination_threshold_multiplier: float = 2.0 # e.g. 2x the cap
                  ):
         """
         Args:
@@ -56,6 +60,10 @@ class IntradayTradingEnv(gym.Env):
             max_episode_steps (int): Max steps per episode.
             log_trades (bool): Whether to log trades.
             turnover_penalty_factor (float): Factor to penalize excess turnover.
+            position_sizing_pct_capital (float): Percentage of current capital to use for sizing new positions.
+            trade_cooldown_steps (int): Minimum number of steps to wait before executing another trade.
+            terminate_on_turnover_breach (bool): Whether to terminate the episode if hourly turnover cap is breached by a significant margin.
+            turnover_termination_threshold_multiplier (float): Multiplier for `hourly_turnover_cap` to determine termination threshold.
         """
         super().__init__()
         self.logger = logging.getLogger(f"RLTradingPlatform.Env.IntradayTradingEnv")
@@ -83,6 +91,23 @@ class IntradayTradingEnv(gym.Env):
         self._max_episode_steps = max_episode_steps if max_episode_steps is not None else len(self.market_feature_data)
         self.log_trades_flag = log_trades
         self.turnover_penalty_factor = turnover_penalty_factor
+        self.position_sizing_pct_capital = position_sizing_pct_capital
+        self.trade_cooldown_steps = trade_cooldown_steps
+        self.terminate_on_turnover_breach = terminate_on_turnover_breach
+        self.turnover_termination_threshold_multiplier = turnover_termination_threshold_multiplier
+
+        if not (0.01 <= self.position_sizing_pct_capital <= 1.0):
+            self.logger.warning(f"position_sizing_pct_capital ({self.position_sizing_pct_capital}) is outside the recommended range [0.01, 1.0]. Clamping to 0.25.")
+            self.position_sizing_pct_capital = 0.25
+        
+        if self.trade_cooldown_steps < 0:
+            self.logger.warning(f"trade_cooldown_steps ({self.trade_cooldown_steps}) is negative. Setting to 0.")
+            self.trade_cooldown_steps = 0
+        
+        if self.turnover_termination_threshold_multiplier <= 1.0 and self.terminate_on_turnover_breach:
+            self.logger.warning(f"turnover_termination_threshold_multiplier ({self.turnover_termination_threshold_multiplier}) should be > 1.0. Setting to 2.0.")
+            self.turnover_termination_threshold_multiplier = 2.0
+
 
         # Action Space
         self.action_space = spaces.Discrete(3)
@@ -119,6 +144,7 @@ class IntradayTradingEnv(gym.Env):
 
         self.hourly_traded_value = 0.0 # Sum of absolute value of trades in current hour (rolling window)
         self.trades_this_hour = [] # Stores (timestamp, trade_value, shares_traded)
+        self.steps_since_last_trade = 0 
 
         if self.log_trades_flag:
             self.trade_log = []
@@ -223,6 +249,7 @@ class IntradayTradingEnv(gym.Env):
         
         self.hourly_traded_value = 0.0
         self.trades_this_hour = []
+        self.steps_since_last_trade = self.trade_cooldown_steps # Initialize to allow immediate trade if cooldown is >0
 
         if self.log_trades_flag:
             self.trade_log = []
@@ -258,6 +285,7 @@ class IntradayTradingEnv(gym.Env):
         # Store portfolio value before action
         portfolio_value_before_action = self.portfolio_value
         
+        self.steps_since_last_trade += 1 # Increment regardless of action
         realized_pnl_this_step = 0.0
         transaction_executed = False
         trade_value_executed = 0.0 # Absolute monetary value of stock traded
@@ -276,8 +304,15 @@ class IntradayTradingEnv(gym.Env):
         # If current_position is 1 (long X shares), and action is Hold (0), we do nothing to quantity.
         # This is complex. Let's simplify: desired_position_signal is the *target state*.
 
+        # --- Cooldown Check ---
+        if self.steps_since_last_trade < self.trade_cooldown_steps and desired_position_signal != self.current_position:
+            self.logger.debug(f"Step {self.current_step}: Trade cooldown active. Steps since last trade: {self.steps_since_last_trade}/{self.trade_cooldown_steps}. Forcing HOLD.")
+            desired_position_signal = self.current_position # Force hold
+            # Action itself is not changed, only its effect for changing position.
+
         if desired_position_signal != self.current_position:
             transaction_executed = True
+            self.steps_since_last_trade = 0 # Reset cooldown counter
             
             # 1. Exit current position if any (calculate realized P&L)
             if self.current_position == 1: # Was long, now closing or flipping to short
@@ -305,8 +340,10 @@ class IntradayTradingEnv(gym.Env):
                 # Let's assume, for this skeleton, we try to invest a significant portion of capital.
                 # This is a placeholder for proper position sizing.
                 if self.current_capital > current_price: # Can afford at least one share
-                    self.position_quantity = np.floor( (self.current_capital * 0.95) / current_price ) # Example: 95% of capital
-                    if self.position_quantity == 0 and self.current_capital > current_price : self.position_quantity = 1 # min 1 share
+                    # Use the new position_sizing_pct_capital parameter
+                    capital_to_allocate = self.current_capital * self.position_sizing_pct_capital
+                    self.position_quantity = np.floor(capital_to_allocate / current_price)
+                    if self.position_quantity == 0 and self.current_capital > current_price : self.position_quantity = 1 # min 1 share if possible
                 else:
                     self.position_quantity = 0 # Cannot afford
 
@@ -321,9 +358,11 @@ class IntradayTradingEnv(gym.Env):
                     desired_position_signal = 0 # Force flat
 
             elif desired_position_signal == -1: # Sell to go Short
-                if self.current_capital > 0 : # Simplified check, shorting usually doesn't need upfront capital this way
-                     self.position_quantity = np.floor( (self.current_capital * 0.95) / current_price ) # Qty based on notional value
-                     if self.position_quantity == 0 and self.current_capital > current_price : self.position_quantity = 1
+                # Short selling quantity can also be based on a percentage of capital (notional value)
+                if self.current_capital > 0 : # Simplified check for available margin/capital
+                     capital_to_allocate_notional = self.current_capital * self.position_sizing_pct_capital
+                     self.position_quantity = np.floor(capital_to_allocate_notional / current_price)
+                     if self.position_quantity == 0 and self.current_capital > current_price : self.position_quantity = 1 # min 1 share if possible
                 else:
                     self.position_quantity = 0
 
@@ -391,7 +430,12 @@ class IntradayTradingEnv(gym.Env):
                 excess_turnover = current_hourly_turnover_ratio - self.hourly_turnover_cap
                 turnover_penalty = excess_turnover * self.start_of_day_portfolio_value * self.turnover_penalty_factor
                 reward -= turnover_penalty
-                # Optionally, could also terminate: terminated = True
+                
+                if self.terminate_on_turnover_breach:
+                    termination_threshold = self.hourly_turnover_cap * self.turnover_termination_threshold_multiplier
+                    if current_hourly_turnover_ratio > termination_threshold:
+                        self.logger.warning(f"Step {self.current_step}: Terminating due to excessive hourly turnover! Ratio: {current_hourly_turnover_ratio:.2f}x, Cap: {self.hourly_turnover_cap:.2f}x, Termination Threshold: {termination_threshold:.2f}x")
+                        terminated = True
         
         # --- Advance Time & Log Portfolio ---
         self.current_step += 1
@@ -525,7 +569,12 @@ if __name__ == '__main__':
         'reward_scaling': 1.0, # No scaling for test
         'max_episode_steps': 50, # Test truncation
         'log_trades': True,
-        'turnover_penalty_factor': 0.05 # Penalize 5% of excess turnover value
+        'turnover_penalty_factor': 0.05, # Penalize 5% of excess turnover value
+        # Showcase new parameters (Step 8)
+        'position_sizing_pct_capital': 0.30, # Use 30% of capital for sizing
+        'trade_cooldown_steps': 2,           # Wait 2 steps after a trade
+        'terminate_on_turnover_breach': True,# Terminate if turnover is >> cap
+        'turnover_termination_threshold_multiplier': 1.5 # Terminate if turnover > 1.5x cap
     }
     env = IntradayTradingEnv(**env_config)
 

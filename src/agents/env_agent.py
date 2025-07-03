@@ -29,22 +29,28 @@ class EnvAgent(BaseAgent):
         super().__init__(agent_name="EnvAgent", config=config)
         
         # self.env_params now directly holds the full sub-dictionary for IntradayTradingEnv
+        # This is expected to be populated by OrchestratorAgent with all necessary keys
+        # including the new ones: position_sizing_pct_capital, trade_cooldown_steps, etc.
         self.env_params = self.config.get('env_config', {})
         
-        # lookback_window is part of env_params but also often used by other agents,
-        # so having it directly in EnvAgent's config might still be useful for clarity or cross-checks.
-        # However, it should primarily be sourced from where FeatureAgent gets it (e.g., main_config.feature_engineering.lookback_window)
-        # and then passed into env_params for IntradayTradingEnv.
-        # Let's assume Orchestrator correctly populates 'lookback_window' within 'env_config' passed here.
-        if 'lookback_window' not in self.env_params:
-            self.logger.warning("lookback_window not found in env_config. It should be provided there.")
-            # Fallback or error if necessary, for now, IntradayTradingEnv will use its default or error.
+        if not self.env_params:
+            self.logger.warning("'env_config' is empty or not found in EnvAgent's configuration. IntradayTradingEnv will use its defaults.")
+
+        # Example check for new parameters (optional, for better debugging)
+        # These checks help confirm OrchestratorAgent is passing them. IntradayTradingEnv has defaults.
+        expected_keys = [
+            'lookback_window', 'position_sizing_pct_capital', 'trade_cooldown_steps',
+            'terminate_on_turnover_breach', 'turnover_termination_threshold_multiplier'
+        ]
+        for key in expected_keys:
+            if key not in self.env_params:
+                self.logger.info(f"'{key}' not explicitly found in env_config for EnvAgent. IntradayTradingEnv will use its default if applicable.")
 
         self.env = None # Will be initialized with data
         self.logger.info("EnvAgent initialized. Environment will be created when data is provided.")
 
     def create_env(self, 
-                   market_feature_data: np.ndarray, # Renamed to reflect it's market features only
+                   market_feature_data: np.ndarray, 
                    price_data_for_env: pd.Series) -> IntradayTradingEnv | None:
         """
         Creates an instance of the IntradayTradingEnv.
@@ -74,25 +80,22 @@ class EnvAgent(BaseAgent):
         
         try:
             # Combine static env_params from config with dynamic data
-            # Ensure all necessary params for IntradayTradingEnv are in self.env_params
-            # (like hourly_turnover_cap, turnover_penalty_factor)
+            # Combine static env_params from config with dynamic data
+            # self.env_params is expected to contain ALL config keys for IntradayTradingEnv,
+            # including the new ones, as set up by OrchestratorAgent.
             env_constructor_params = {
-                **self.env_params, 
-                'processed_feature_data': market_feature_data, # This is now market features only
+                **self.env_params,  # This will spread all keys from env_config
+                'processed_feature_data': market_feature_data, 
                 'price_data': price_data_for_env
-                # 'lookback_window' should already be in self.env_params from orchestrator
             }
             
-            # Defensive check for lookback_window if it wasn't in self.env_params
-            if 'lookback_window' not in env_constructor_params:
-                self.logger.warning("`lookback_window` missing in env_constructor_params. Attempting to use EnvAgent's direct config (if any) or default.")
-                # This part is a bit messy; Orchestrator should ensure env_params is complete.
-                # For robustness, could try to fetch from self.config if it was set there as a separate key.
-                # However, the plan is to have Orchestrator put it into env_config.
-                # IntradayTradingEnv has a default for lookback_window (1), so it might proceed.
+            # Log the parameters being passed for easier debugging
+            # self.logger.debug(f"Parameters being passed to IntradayTradingEnv constructor: {env_constructor_params}") # Can be very verbose
+            self.logger.info(f"Attempting to create IntradayTradingEnv with {len(env_constructor_params)} total constructor parameters.")
+
 
             self.env = IntradayTradingEnv(**env_constructor_params)
-            self.logger.info(f"IntradayTradingEnv created successfully with params: {env_constructor_params}")
+            self.logger.info(f"IntradayTradingEnv created successfully.") # Params logged by Env itself or above if debugged
             
             # Optional: Validate the created environment using SB3's check_env
             # from stable_baselines3.common.env_checker import check_env

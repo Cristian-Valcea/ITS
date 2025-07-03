@@ -68,11 +68,10 @@ feature_engineering:
     - "minute_of_hour"    # Integer minute
     - "day_of_week"       # Integer day of week (Monday=0)
     # - "month_of_year"
-
-  sin_cos_encode: # Apply sin/cos transformation for cyclical features
-    - "hour_of_day"
-    - "minute_of_hour"
-    # - "day_of_week" # If treating week as cyclical
+    sin_cos_encode: # Apply sin/cos transformation for cyclical features
+      - "hour_of_day"
+      - "minute_of_hour"
+      # - "day_of_week" # If treating week as cyclical
 
   lookback_window: 5 # For creating sequences for the RL agent (e.g., LSTM or CNN input)
                      # If 1, observations are just the current timestep's features.
@@ -118,6 +117,10 @@ environment:
   # hourly_turnover_cap also in risk_limits.yaml, harder for simple env.
   max_episode_steps: null # Set to an integer for fixed episode length, or null to run through all data.
   log_trades_in_env: true # Whether the environment itself should log trades (EvaluatorAgent relies on this)
+
+  # New environment behavior parameters (Step 7)
+  position_sizing_pct_capital: 0.25 # Percentage of capital to use for sizing new positions (0.01 to 1.0)
+  trade_cooldown_steps: 0          # Minimum number of steps to wait after a trade before allowing another. 0 means no cooldown.
 
 # --- Training Configuration ---
 # TrainerAgent will use this for controlling the training loop.
@@ -167,3 +170,4 @@ scheduling:
   # Similar params for scheduled evaluation window after retraining.
   evaluate_after_retrain_start_offset_days: 0 # Start eval data from today (if model is for future)
   evaluate_after_retrain_duration_days: 90  # Evaluate on next 3 months (simulated if data available)
+```
