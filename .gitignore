@@ -148,10 +148,22 @@ credentials/
 # IDE specific files
 .vscode/
 .idea/
+.vs/
 *.swp
 *.swo
 *~
+*.pyproj
+*.sln
+*.suo
+*.user
 
 # OS specific files
 .DS_Store
 Thumbs.db
+
+# Project specific
+garbage/
+test_*.py
+venv_*/
+cache_ibkr/
+reports/
