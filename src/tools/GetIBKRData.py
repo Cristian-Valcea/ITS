@@ -20,6 +20,9 @@ CONNECTION_RETRIES = 3
 RETRY_DELAY_SECONDS = 5 # Delay between retry attempts
 CONNECTION_TIMEOUT_SECONDS = 10 # Timeout for each connection attempt
 
+
+from src.column_names import COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME
+
 # Global IB instance to manage connection
 ib = IB()
 
@@ -204,7 +207,7 @@ async def _fetch_historical_data_chunked(ib_instance, contract, end_date_dt_para
         if not bars:
             # ... (same handling as before for no bars) ...
             if not any(all_bars_df):
-                df_placeholder_for_no_data = pd.DataFrame(columns=['date', OPEN, HIGH, LOW, CLOSE, VOLUME, 'barCount', 'average'])
+                df_placeholder_for_no_data = pd.DataFrame(columns=['date', COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME, 'barCount', 'average'])
                 df_placeholder_for_no_data = df_placeholder_for_no_data.set_index('date') # Ensure index exists
                 all_bars_df.append(df_placeholder_for_no_data) # Append to avoid concat issues if all_bars_df is empty
             break
@@ -214,7 +217,7 @@ async def _fetch_historical_data_chunked(ib_instance, contract, end_date_dt_para
         if chunk_df is None or chunk_df.empty:
             # ... (same handling as before for empty df) ...
             if not any(all_bars_df):
-                df_placeholder_for_no_data = pd.DataFrame(columns=['date', OPEN, HIGH, LOW, CLOSE, VOLUME, 'barCount', 'average'])
+                df_placeholder_for_no_data = pd.DataFrame(columns=['date', COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME, 'barCount', 'average'])
                 df_placeholder_for_no_data = df_placeholder_for_no_data.set_index('date')
                 all_bars_df.append(df_placeholder_for_no_data)
             break
@@ -258,7 +261,7 @@ async def _fetch_historical_data_chunked(ib_instance, contract, end_date_dt_para
 
     if not all_bars_df or all(df.empty for df in all_bars_df): # Check if all DFs are empty
         print("No data fetched after chunking attempts.")
-        return pd.DataFrame(columns=['Open', 'High', 'Low', 'Close', 'Volume']) # Return empty DF with expected columns
+        return pd.DataFrame(columns=[COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME]) # Return empty DF with expected columns
 
     full_df = pd.concat(reversed(all_bars_df))
     full_df = full_df[~full_df.index.duplicated(keep='first')]
@@ -353,7 +356,7 @@ async def _fetch_historical_data_chunkedOld(contract, end_date_dt, start_date_dt
                 print("No prior data, completely stopping.")
                 df_placeholder_for_no_data = pd.DataFrame() # ensure a df is returned
                 # Set columns to match what's expected if it were populated, helps downstream
-                df_placeholder_for_no_data = pd.DataFrame(columns=['date', OPEN, HIGH, LOW, CLOSE, VOLUME, 'barCount', 'average'])
+                df_placeholder_for_no_data = pd.DataFrame(columns=['date', COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME, 'barCount', 'average'])
                 df_placeholder_for_no_data = df_placeholder_for_no_data.set_index('date')
                 all_bars_df.append(df_placeholder_for_no_data) # Add empty to avoid issues if all_bars_df is empty
             break
@@ -465,8 +468,8 @@ async def get_ibkr_data_async(
         df = _load_from_cache(cache_file)
         if df is not None and not df.empty:
             # Ensure standard Backtrader column names if loaded from cache
-            df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 
-                               'close': 'Close', 'volume': 'Volume', 'date': 'datetime'},
+            df.rename(columns={'open': COL_OPEN, 'high': COL_HIGH, 'low': COL_LOW, 
+                               'close': COL_CLOSE, 'volume': COL_VOLUME, 'date': 'datetime'},
                       inplace=True, errors='ignore') # errors='ignore' if they are already correct
             if 'datetime' not in df.columns and df.index.name == 'date':
                  df.index.name = 'datetime' # Ensure index is named datetime for PandasData
@@ -520,8 +523,8 @@ async def get_ibkr_data_async(
     # Standardize column names for Backtrader (IBKR usually returns lowercase)
     # util.df already returns 'date', OPEN, HIGH, LOW, CLOSE, VOLUME, 'barCount', 'average'
     # We need 'Open', 'High', 'Low', 'Close', 'Volume' and datetime index
-    df.rename(columns={OPEN: 'Open', HIGH: 'High', LOW: 'Low', 
-                       CLOSE: 'Close', VOLUME: 'Volume'}, 
+    df.rename(columns={'open': COL_OPEN, 'high': COL_HIGH, 'low': COL_LOW, 
+                       'close': COL_CLOSE, 'volume': COL_VOLUME}, 
               inplace=True)
     
     # Ensure 'datetime' index
@@ -533,8 +536,9 @@ async def get_ibkr_data_async(
         raise ValueError("DataFrame index is not a datetime object after fetching from IBKR.")
 
     # Select only standard OHLCV columns for Backtrader, plus OpenInterest if available and needed
-    required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+    required_cols = [COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME]
     df = df[required_cols]
+    df = df.copy()
     df.dropna(inplace=True) # Drop rows with any NaNs in essential columns
 
     if df.empty:

@@ -20,10 +20,8 @@
     <nav>
         <ul>
             <li><a href="/ui/dashboard">Dashboard</a></li>
-            <li><a href="/ui/config/main_config">Main Config</a></li>
-            <li><a href="/ui/config/model_params">Model Params Config</a></li>
-            <li><a href="/ui/config/risk_limits">Risk Limits Config</a></li>
             <li><a href="/ui/train">Run Training</a></li>
+            <li><a href="/ui/tasks">View All Tasks</a></li>
         </ul>
     </nav>
     <hr>
@@ -103,7 +101,7 @@
         async function fetchStatus() {
             console.log("Fetching status for task:", taskId);
             try {
-                const response = await fetch(`/api/v1/pipelines/train/status/${taskId}`);
+                const response = await fetch(`/orchestrator/task_status/${taskId}`);
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({ detail: "Failed to parse error response" }));
                     console.error("Error fetching status:", response.status, errorData);
@@ -117,11 +115,7 @@
                 }
                 const data = await response.json();
                 console.log("Status data received:", data);
-                if (data.success) {
-                    updateStatusDisplay(data); // The actual task status data is in the root of the response for TaskStatusResponse
-                } else {
-                     document.getElementById('taskStatus').textContent = `Error: ${data.error ? data.error.message : 'Failed to retrieve status'}`;
-                }
+                updateStatusDisplay(data); // Direct response from TaskStatusResponse
             } catch (error) {
                 console.error("Network or other error fetching status:", error);
                 document.getElementById('taskStatus').textContent = "Error fetching status. Check console.";

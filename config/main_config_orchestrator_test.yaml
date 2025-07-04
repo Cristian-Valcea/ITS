@@ -1,3 +1,14 @@
+data_augmentation:
+  noise_injection: true
+  noise_level: 0.02
+  random_scaling: true
+  scale_max: 1.02
+  scale_min: 0.98
+  window_size: 60
+  window_slicing: false
+data_preprocessing:
+  impute_missing: true
+  normalize: false
 environment:
   initial_capital: 50000.0
   log_trades_in_env: true

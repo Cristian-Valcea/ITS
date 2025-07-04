@@ -1,5 +1,5 @@
 env_terminate_on_turnover_breach: false
-env_turnover_penalty_factor: 0.01
+env_turnover_penalty_factor: 0.015
 env_turnover_termination_threshold_multiplier: 2.0
 halt_on_breach: true
 max_daily_drawdown_pct: 0.025
