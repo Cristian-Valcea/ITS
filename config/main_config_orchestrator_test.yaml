@@ -1,50 +1,136 @@
-environment:
-  initial_capital: 50000.0
-  log_trades_in_env: true
-  position_sizing_pct_capital: 0.25
-  reward_scaling: 1.0
-  trade_cooldown_steps: 0
-  transaction_cost_pct: 0.001
-evaluation:
-  data_duration_for_fetch: 5 D
-  metrics:
-  - total_return
-  - num_trades
-feature_engineering:
-  ema:
-    windows:
-    - 10
-    - 20
-  feature_cols_to_scale:
-  - rsi_14
-  - ema_10
-  - ema_20
-  - hour_of_day
-  features:
-  - RSI
-  - EMA
-  - Time
-  lookback_window: 3
-  observation_feature_cols:
-  - rsi_14
-  - ema_10
-  - ema_20
-  - hour_of_day
-  - Close
-  rsi:
-    window: 14
-  time_features:
-  - hour_of_day
-ibkr_connection: null
+# Test configuration for OrchestratorAgent and its components
+# Used in OrchestratorAgent.__main__ and potentially main.py examples
+
 paths:
-  data_dir_processed: data/processed_orch_test/
-  data_dir_raw: data/raw_orch_test/
-  model_save_dir: models/orch_test/
-  reports_dir: reports/orch_test/
-  scalers_dir: data/scalers_orch_test/
-  tensorboard_log_dir: logs/tensorboard_orch_test/
+  data_dir_raw: 'data/raw_orch_test/'
+  data_dir_processed: 'data/processed_orch_test/'
+  scalers_dir: 'data/scalers_orch_test/'
+  model_save_dir: 'models/orch_test/'
+  tensorboard_log_dir: 'logs/tensorboard_orch_test/'
+  reports_dir: 'reports/orch_test/'
+
+ibkr_connection: # Keep null for tests not requiring live IBKR connection
+  host: '127.0.0.1'
+  port: 7497 # Paper TWS
+  clientId: 105
+  timeout_seconds: 10
+  readonly: false # For live trading, this must be false
+  account_id: "DUxxxxxxx" # Example Paper Account ID, replace with actual if testing live
+
+feature_engineering:
+  features: ['RSI', 'EMA', 'Time', 'VWAP'] # Included VWAP
+  rsi: {'window': 14}
+  ema: {'windows': [10, 20], 'ema_diff': True}
+  vwap: {'window': None, 'group_by_day': True } # Daily VWAP
+  time_features: ['hour_of_day', 'day_of_week'] # Raw time features
+  sin_cos_encode: ['hour_of_day', 'day_of_week'] # Which of the time_features to sin/cos encode
+  lookback_window: 5 # For RL agent's observation sequence
+  # Columns to be scaled by StandardScaler
+  feature_cols_to_scale:
+    - 'rsi_14'
+    - 'ema_10'
+    - 'ema_20'
+    - 'ema_diff'
+    - 'vwap_deviation' # Assuming vwap_deviation is generated
+    - 'hour_sin'       # Scaled sin/cos encoded features
+    - 'hour_cos'
+    - 'day_of_week_sin'
+    - 'day_of_week_cos'
+  # Final columns to be included in the observation sequence for the model
+  observation_feature_cols:
+    - 'rsi_14'
+    - 'ema_10'
+    - 'ema_20'
+    - 'ema_diff'
+    - 'vwap_deviation'
+    - 'hour_sin'
+    - 'hour_cos'
+    - 'day_of_week_sin'
+    - 'day_of_week_cos'
+    # Optionally include raw Close or Volume if needed by model, but usually not if normalized
+    # - 'Close'
+    # - 'Volume'
+
+environment: # Parameters for IntradayTradingEnv
+  initial_capital: 50000.0
+  transaction_cost_pct: 0.0005 # Lowered transaction cost
+  reward_scaling: 1.0
+  max_episode_steps: null # null means use length of data
+  log_trades_in_env: True
+  position_sizing_pct_capital: 0.25 # For env's internal sizing if used
+  trade_cooldown_steps: 1 # Cooldown of 1 step in env
+
 training:
+  total_timesteps: 2000 # Reduced for quicker test runs
   checkpoint_freq: 500
-  data_duration_for_fetch: 10 D
-  log_interval: 50
-  total_timesteps: 2000
+  console_log_interval_episodes: 10 # SB3 model.learn log_interval for episodes
+  data_duration_for_fetch: "10 D" # For DataAgent fetching historical data
+  use_eval_callback: false # Set to true to enable EvalCallback during training
+  eval_freq: 1000 # Frequency of evaluation if EvalCallback is used
+
+evaluation:
+  metrics: ['total_return', 'sharpe_ratio', 'max_drawdown', 'num_trades', 'win_rate']
+  data_duration_for_fetch: "5 D" # For DataAgent fetching historical data for evaluation runs
+
+data_preprocessing:
+  impute_missing: True
+  normalize: False # Normalization is handled by FeatureAgent's StandardScaler
+
+data_augmentation:
+  noise_injection: False # Disabled for simpler testing initially
+  noise_level: 0.01
+  random_scaling: False
+  scale_min: 0.98
+  scale_max: 1.02
+  window_slicing: False # If true, slices training data to 'window_size'
+  window_size: 60
+
+# Walk-forward validation settings (conceptual, used if Orchestrator calls run_walk_forward_evaluation)
+walk_forward:
+  enabled: false # Set to true to run walk-forward in Orchestrator __main__
+  overall_start_date: "2023-01-01"
+  overall_end_date: "2023-03-31"
+  train_window_days: 60
+  eval_window_days: 15
+  step_days: 15 # How many days to step forward for the next fold
+  data_interval: "1min" # Interval for data used in walk-forward
+  use_cached_data: false
+
+# Scheduling settings for automated retraining (conceptual)
+scheduling:
+  retrain_symbol: "SCHED_DUMMY"
+  retrain_interval: "1min"
+  retrain_data_start_offset_days: 90 # e.g. use data from 90 days ago
+  retrain_data_end_offset_days: 1    # e.g. up to yesterday
+  evaluate_after_retrain_duration_days: 14 # Evaluate on last 2 weeks of data
+  use_cached_data_for_scheduled_run: false
+
+# Live trading specific configurations
+live_trading:
+  enabled: false # Master switch for live trading mode
+  symbol: "AAPL" # Default symbol for live trading
+  data_interval: "5 secs" # Interval for live data from DataAgent (usually 5 secs from IBKR)
+                          # Aggregation to model's interval (e.g. 1min) would happen in Orchestrator/FeatureAgent
+  production_model_path: "models/live/prod_model.zip" # Path to the production-ready model
+
+  trade_quantity_type: "fixed_shares" # Options: "fixed_shares", "percent_of_capital", "fixed_notional"
+  trade_quantity_value: 10.0 # Value for the chosen type (e.g., 10 shares, 0.02 for 2% of capital, 5000 for $5000 notional)
+
+  order_type: "MKT" # Default order type: "MKT", "LMT"
+  limit_price_offset_pct: 0.001 # For LMT orders: e.g., 0.001 (0.1%) away from current price.
+                               # BUY LMT = current_price * (1 - offset), SELL LMT = current_price * (1 + offset)
+  time_in_force: "DAY" # Order TIF: "DAY", "GTC"
+
+  contract_details: # Specify if non-standard or for clarity
+    sec_type: "STK"
+    exchange: "SMART" # Use "SMART" for IB's smart routing
+    currency: "USD"
+    primary_exchange: "NASDAQ" # Important for some US stocks like AAPL, MSFT
+
+  portfolio_sync_interval_minutes: 15 # How often to sync local portfolio with broker
+  historical_warmup_bars: 200 # Number of historical bars to feed FeatureAgent at start
+                              # Should be >= max indicator lookback + model lookback sequence length
+
+  market_open_time: "09:30:00"   # Example for US Equities
+  market_close_time: "16:00:00"  # Example for US Equities
+  market_time_zone: "America/New_York" # IANA time zone for market open/close

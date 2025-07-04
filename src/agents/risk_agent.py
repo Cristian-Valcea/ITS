@@ -152,11 +152,11 @@ class RiskAgent(BaseAgent):
         Returns:
             tuple[bool, float]: (True if breached, current_drawdown_percentage)
         """
-        if self.portfolio_value is None or self.start_of_day_capital is None or self.start_of_day_capital == 0:
-            self.logger.warning("Cannot check drawdown: capital values not properly set.")
+        if self.current_portfolio_value is None or self.start_of_day_portfolio_value is None or self.start_of_day_portfolio_value == 0:
+            self.logger.warning("Cannot check drawdown: portfolio values not properly set.")
             return False, 0.0
 
-        current_drawdown_pct = (self.start_of_day_capital - self.portfolio_value) / self.start_of_day_capital
+        current_drawdown_pct = (self.start_of_day_portfolio_value - self.current_portfolio_value) / self.start_of_day_portfolio_value
         
         if current_drawdown_pct > self.max_daily_drawdown_pct:
             self.logger.warning(f"DRAWDOWN BREACHED: Current {current_drawdown_pct*100:.2f}% > Limit {self.max_daily_drawdown_pct*100:.2f}%")
@@ -179,8 +179,8 @@ class RiskAgent(BaseAgent):
                 - current_hourly_ratio (float): Current hourly turnover ratio (after proposed trade).
                 - current_daily_ratio (float): Current daily turnover ratio (after proposed trade).
         """
-        if self.start_of_day_capital is None or self.start_of_day_capital == 0:
-            self.logger.warning("Cannot check turnover: start_of_day_capital not set or zero.")
+        if self.start_of_day_portfolio_value is None or self.start_of_day_portfolio_value == 0:
+            self.logger.warning("Cannot check turnover: start_of_day_portfolio_value not set or zero.")
             return False, False, 0.0, 0.0
         
         current_time = current_time or datetime.now() # Use current time if not provided
@@ -189,8 +189,8 @@ class RiskAgent(BaseAgent):
         potential_hourly_value = self.hourly_traded_value + abs(proposed_trade_value)
         potential_daily_value = self.daily_traded_value + abs(proposed_trade_value)
 
-        hourly_ratio = potential_hourly_value / self.start_of_day_capital
-        daily_ratio = potential_daily_value / self.start_of_day_capital
+        hourly_ratio = potential_hourly_value / self.start_of_day_portfolio_value
+        daily_ratio = potential_daily_value / self.start_of_day_portfolio_value
 
         hourly_breached = hourly_ratio > self.max_hourly_turnover_ratio
         daily_breached = daily_ratio > self.max_daily_turnover_ratio
@@ -215,8 +215,8 @@ class RiskAgent(BaseAgent):
             tuple[bool, str]: (is_safe_to_trade, reason_if_not_safe)
                               is_safe_to_trade is True if trade is allowed.
         """
-        if self.portfolio_value is None or self.start_of_day_capital is None:
-            return False, "Capital information not available for risk assessment."
+        if self.current_portfolio_value is None or self.start_of_day_portfolio_value is None:
+            return False, "Portfolio value information not available for risk assessment."
 
         # 1. Check Drawdown (based on current portfolio value, not affected by proposed trade directly here)
         drawdown_breached, dd_pct = self.check_drawdown()
@@ -284,7 +284,7 @@ class RiskAgent(BaseAgent):
         This is more of a status check than an action. `assess_trade_risk` is for pre-trade checks.
 
         Args:
-            current_capital (float): Current cash.
+            current_capital (float): Current cash. (Note: RiskAgent primarily uses portfolio_value)
             portfolio_value (float): Current total portfolio value.
             proposed_trade_value (float): Optional, if checking a hypothetical next trade.
             current_time (datetime): Current timestamp.
@@ -292,8 +292,10 @@ class RiskAgent(BaseAgent):
         Returns:
             dict: A status dictionary with current risk metrics and breach status.
         """
-        self.update_capital_and_portfolio(current_capital, portfolio_value)
-        current_time = current_time or datetime.now()
+        # current_capital is not directly used by RiskAgent's internal state,
+        # but portfolio_value is crucial. update_portfolio_value handles it.
+        self.update_portfolio_value(portfolio_value, current_time) # current_time passed here
+        # current_time = current_time or datetime.now() # No longer needed if update_portfolio_value sets self.last_event_timestamp
 
         dd_breached, dd_pct = self.check_drawdown()
         ht_breached, dt_breached, hr, dr = self.check_turnover(proposed_trade_value, current_time)
@@ -344,10 +346,12 @@ if __name__ == '__main__':
     initial_cap = 100000.0
     
     # Start of day
-    risk_agent.reset_daily_limits(start_of_day_capital=initial_cap)
-    risk_agent.update_capital_and_portfolio(current_capital=initial_cap, portfolio_value=initial_cap)
+    risk_agent.reset_daily_limits(current_portfolio_value=initial_cap, timestamp=sim_current_time)
+    # update_portfolio_value is called by reset_daily_limits implicitly if current_portfolio_value is passed,
+    # or can be called separately. For clarity in example:
+    risk_agent.update_portfolio_value(portfolio_value=initial_cap, timestamp=sim_current_time)
     print(f"\n--- Simulating Trading Day: {sim_current_time.date()} ---")
-    print(f"Initial Capital: {initial_cap:.2f}")
+    print(f"Initial Portfolio Value (SOD): {risk_agent.start_of_day_portfolio_value:.2f}")
 
     # Simulate some trades
     # Trade 1: Buy 10k worth of stock
@@ -357,8 +361,10 @@ if __name__ == '__main__':
     print(f"Trade 1 (Value: {trade_1_value:.2f}) Assessment: Safe={safe}, Reason='{reason}'")
     if safe:
         risk_agent.record_trade(trade_1_value, sim_current_time)
-        # Assume capital doesn't change much for this example, only portfolio value might
-        risk_agent.update_capital_and_portfolio(current_capital=initial_cap - trade_1_value, portfolio_value=initial_cap)
+        # Portfolio value might decrease slightly due to spread/slippage, or stay same if cash used.
+        # For this test, let's assume portfolio value reflects the new state after trade costs if any.
+        # Let's assume no immediate P&L change from this trade for simplicity of example value.
+        risk_agent.update_portfolio_value(portfolio_value=initial_cap, timestamp=sim_current_time)
 
 
     # Trade 2: Sell 50k worth of stock (potential turnover breach)
@@ -368,26 +374,27 @@ if __name__ == '__main__':
     print(f"Trade 2 (Value: {trade_2_value:.2f}) Assessment: Safe={safe}, Reason='{reason}'")
     if safe:
         risk_agent.record_trade(trade_2_value, sim_current_time)
-        risk_agent.update_capital_and_portfolio(current_capital=initial_cap - trade_1_value + trade_2_value, portfolio_value=initial_cap) # Simplified capital update
+        risk_agent.update_portfolio_value(portfolio_value=initial_cap, timestamp=sim_current_time)
 
     # Trade 3: Buy another 50k (should definitely breach hourly turnover if previous was allowed)
     trade_3_value = 50000.0
-    sim_current_time += timedelta(minutes=10)
+    sim_current_time += timedelta(minutes=10) # 09:55
     safe, reason = risk_agent.assess_trade_risk(trade_3_value, sim_current_time)
     print(f"Trade 3 (Value: {trade_3_value:.2f}) Assessment: Safe={safe}, Reason='{reason}'")
-    if safe: # This should be False if Trade 2 happened and config['halt_on_breach'] is True
+    if safe:
         risk_agent.record_trade(trade_3_value, sim_current_time)
+        risk_agent.update_portfolio_value(portfolio_value=initial_cap, timestamp=sim_current_time)
     
     # Simulate portfolio value drop (drawdown)
     sim_current_time += timedelta(minutes=30) # 10:25 AM
     new_portfolio_value = initial_cap * 0.97 # 3% drawdown
-    risk_agent.update_capital_and_portfolio(current_capital=initial_cap, portfolio_value=new_portfolio_value) # Assuming cash is same, positions lost value
+    risk_agent.update_portfolio_value(portfolio_value=new_portfolio_value, timestamp=sim_current_time)
     print(f"Portfolio value dropped to {new_portfolio_value:.2f} at {sim_current_time.time()}")
 
-    # Check risk status
+    # Check risk status using the run method (which also calls update_portfolio_value)
     status_check = risk_agent.run(
-        current_capital=risk_agent.current_capital, # Use agent's current view
-        portfolio_value=risk_agent.portfolio_value,
+        current_capital=0, # Not used by run, but required by signature
+        portfolio_value=risk_agent.current_portfolio_value, # Pass current value
         current_time=sim_current_time
     )
     print(f"Risk Status at {sim_current_time.time()}:")
