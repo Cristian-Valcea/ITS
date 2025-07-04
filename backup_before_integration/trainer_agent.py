@@ -15,29 +15,12 @@ try:
     # If a custom ReplayBuffer is needed:
     # from stable_baselines3.common.buffers import ReplayBuffer, PrioritizedReplayBuffer # (PrioritizedReplayBuffer might be in contrib or custom)
     SB3_AVAILABLE = True
-    SB3_MODEL_CLASSES = {
-        'DQN': DQN,
-        # Add other SB3 models here if supported, e.g.
-        # 'A2C': A2C,
-        # 'PPO': PPO,
-        # 'C51': C51, # If using from sb3_contrib
-        # 'QRDQN': QRDQN, # If using from sb3_contrib
-    }
 except ImportError:
     SB3_AVAILABLE = False
     logging.warning("Stable-Baselines3 components not found. TrainerAgent will use dummy implementations.")
     # Define dummy classes if SB3 is not available, to allow skeleton to run
     class DummySB3Model:
-        def __init__(self, policy, env, **kwargs): self.logger = logging.getLogger("DummySB3Model"); self.env = env; self.kwargs = kwargs; self.num_timesteps = 0 # Added num_timesteps for predict
-        def predict(self, observation, state=None, episode_start=None, deterministic=False): # Added predict
-            self.logger.info(f"Dummy predict called with observation shape: {observation.shape if hasattr(observation, 'shape') else 'N/A'}, deterministic: {deterministic}")
-            # Return a dummy action (e.g., random action from env space if env is available)
-            if self.env and hasattr(self.env, 'action_space'):
-                action = self.env.action_space.sample()
-                self.logger.info(f"Dummy predict returning action: {action}")
-                return action, None # action, state (None for SB3)
-            self.logger.info(f"Dummy predict returning default action: 0")
-            return 0, None # Default dummy action if no env
+        def __init__(self, policy, env, **kwargs): self.logger = logging.getLogger("DummySB3Model"); self.env = env; self.kwargs = kwargs
         def learn(self, total_timesteps, callback=None, tb_log_name="DummyRun", **kwargs):
             self.logger.info(f"Dummy learn for {total_timesteps} timesteps. TB log: {tb_log_name}. Callbacks: {callback}")
             if callback: callback.init_callback(self) # Mimic SB3 callback init
@@ -76,25 +59,16 @@ except ImportError:
 
     # Assign dummy if real ones not available
     if not SB3_AVAILABLE:
-        DQN_dummy_assign = DummySB3Model # Use a different name to avoid confusion with potential later import
+        DQN = DummySB3Model 
         # MlpPolicy = "MlpPolicy" # Keep as string for DummySB3Model
         # CnnPolicy = "CnnPolicy"
-        SB3_MODEL_CLASSES = { # Ensure SB3_MODEL_CLASSES is defined in the else block too
-            'DQN': DQN_dummy_assign,
-        }
 
 
 from .base_agent import BaseAgent
-# Ensure IntradayTradingEnv is available for type hinting even if SB3 is not
-if SB3_AVAILABLE:
-    from src.gym_env.intraday_trading_env import IntradayTradingEnv
-else: # Define a placeholder if gym_env might also be missing or for type hinting consistency
-    class IntradayTradingEnv: pass
+from src.gym_env.intraday_trading_env import IntradayTradingEnv
 
 
 class TrainerAgent(BaseAgent):
-    SB3_AVAILABLE = SB3_AVAILABLE # Expose at class level
-    SB3_MODEL_CLASSES = SB3_MODEL_CLASSES # Expose at class level
     """
     TrainerAgent is responsible for:
     1. Instantiating the RL algorithm (e.g., C51-like DQN) from Stable-Baselines3.

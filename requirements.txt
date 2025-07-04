@@ -10,7 +10,9 @@ torch>=1.11.0
 
 # Reinforcement Learning
 gym>=0.21.0
-stable-baselines3>=1.5.0
+gymnasium>=0.28.0
+stable-baselines3>=2.0.0
+sb3-contrib>=2.0.0
 
 # AI Agents & LLM Integration
 openai>=1.3.0

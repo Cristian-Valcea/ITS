@@ -278,6 +278,14 @@ class IntradayTradingEnv(gym.Env):
 
 
     def step(self, action: int):
+        # Convert action to int if it's a single-element array or numpy scalar
+        if isinstance(action, np.ndarray):
+            if action.size == 1:
+                action = int(action.item())
+            else:
+                raise ValueError(f"Action array has more than one element: {action}")
+        elif isinstance(action, np.generic):  # Handles numpy scalar types
+            action = int(action)
         assert isinstance(action, (int, np.integer)), f"Action must be int, got {type(action)}"
         desired_position_signal = self._action_map[action] # -1 (Sell), 0 (Hold), 1 (Buy)
         current_price = self._get_current_price()
