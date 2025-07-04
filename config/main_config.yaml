@@ -158,16 +158,23 @@ evaluation:
   #   initial_start_date: "2020-01-01"
   #   final_end_date: "2023-12-31"
 
-# --- Scheduling (Conceptual) ---
-# For OrchestratorAgent's scheduling features.
+# --- Live Trading Configuration ---
+# For real-time trading using trained models
+live_trading:
+  enabled: false # Set to true to enable live trading
+  production_model_path: "models/production/best_model.zip" # Path to the production model
+  data_interval: "1min" # Data interval for live trading
+  trade_quantity_type: "fixed_shares" # Options: "fixed_shares", "fixed_notional", "percent_of_capital"
+  trade_quantity_value: 100 # Number of shares, notional amount, or percentage based on trade_quantity_type
+
+# --- Scheduling Configuration ---
+# For OrchestratorAgent's scheduling features and automated retraining
 scheduling:
   retrain_cron_schedule: "0 0 * * 0" # Example: Every Sunday at midnight
   # Parameters for scheduled retraining runs:
-  retrain_symbol: "SPY"
-  retrain_data_start_offset_days: 730 # Fetch data starting 2 years ago from current date
-  retrain_data_end_offset_days: 1     # Fetch data up to yesterday
-  retrain_interval: "1day" # Or "1hour" for more frequent intraday models
-  # Similar params for scheduled evaluation window after retraining.
-  evaluate_after_retrain_start_offset_days: 0 # Start eval data from today (if model is for future)
-  evaluate_after_retrain_duration_days: 90  # Evaluate on next 3 months (simulated if data available)
-```
+  retrain_symbol: "AAPL" # Symbol to retrain on
+  retrain_interval: "1min" # Data interval for retraining
+  retrain_data_start_offset_days: 30 # Fetch data starting N days ago from current date
+  retrain_data_end_offset_days: 1 # Fetch data up to N days ago (1 = yesterday)
+  evaluate_after_retrain_duration_days: 7 # Evaluate model performance for N days after training
+  use_cached_data_for_scheduled_run: false # Whether to use cached data for scheduled runs

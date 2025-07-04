@@ -1,7 +1,8 @@
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 import numpy as np
 import pandas as pd
+import hashlib
 
 from .base_agent import BaseAgent
 from src.gym_env.intraday_trading_env import IntradayTradingEnv
@@ -19,7 +20,8 @@ class EnvAgent(BaseAgent):
     1. Defining and instantiating the `IntradayTradingEnv`.
     2. Preparing data (features, prices) in the format expected by the environment.
     3. Providing an interface to interact with the environment (reset, step).
-    4. (NEW) Validating the environment and input data for RL compatibility.
+    4. Validating the environment and input data for RL compatibility.
+    5. (ENHANCED) Managing and caching multiple environments for multi-asset/multi-market support.
     """
     def __init__(self, config: dict, validate_env: bool = True):
         """
@@ -39,9 +41,10 @@ class EnvAgent(BaseAgent):
         if not self.env_params:
             self.logger.warning("'env_config' is empty or not found in EnvAgent's configuration. IntradayTradingEnv will use its defaults.")
 
-        self.env: Optional[IntradayTradingEnv] = None
+        self.env_cache: Dict[str, IntradayTradingEnv] = {}
+        self.active_env_id: Optional[str] = None
         self.validate_env = validate_env
-        self.logger.info("EnvAgent initialized. Environment will be created when data is provided.")
+        self.logger.info("EnvAgent initialized. Environment(s) will be created when data is provided.")
 
     def _diagnose_data(self, market_feature_data: np.ndarray, price_data_for_env: pd.Series) -> bool:
         """
@@ -86,48 +89,109 @@ class EnvAgent(BaseAgent):
         elif self.validate_env and not SB3_CHECK_AVAILABLE:
             self.logger.warning("SB3 check_env is not available. Skipping environment validation.")
 
-    def create_env(
+    def _config_hash(self, config: dict, market_feature_data: np.ndarray, price_data_for_env: pd.Series) -> str:
+        """
+        Generates a unique hash for the environment configuration and data.
+        """
+        # Use config, data shapes, and price index hash for uniqueness
+        config_str = str(sorted((k, str(v)) for k, v in config.items()))
+        data_shape_str = str(market_feature_data.shape) + str(price_data_for_env.shape)
+        price_index_hash = hashlib.md5(str(price_data_for_env.index.tolist()).encode()).hexdigest()
+        return hashlib.md5((config_str + data_shape_str + price_index_hash).encode()).hexdigest()
+
+    def get_or_create_env(
         self,
         market_feature_data: np.ndarray,
-        price_data_for_env: pd.Series
+        price_data_for_env: pd.Series,
+        env_params: Optional[dict] = None
     ) -> Optional[IntradayTradingEnv]:
         """
-        Creates and validates an instance of the IntradayTradingEnv.
+        Returns a cached environment if available, otherwise creates and caches a new one.
         """
+        params = env_params if env_params is not None else self.env_params
+        env_id = self._config_hash(params, market_feature_data, price_data_for_env)
+        if env_id in self.env_cache:
+            self.logger.info(f"Reusing cached environment with id: {env_id}")
+            self.active_env_id = env_id
+            return self.env_cache[env_id]
+
         if not self._diagnose_data(market_feature_data, price_data_for_env):
             self.logger.error("Data validation failed. Environment will not be created.")
             return None
 
-        self.logger.info(f"Creating IntradayTradingEnv with {len(market_feature_data)} steps.")
+        self.logger.info(f"Creating IntradayTradingEnv with {len(market_feature_data)} steps. (env_id={env_id})")
         self.logger.info(f"Market Feature data shape: {market_feature_data.shape}, Price data shape: {price_data_for_env.shape}")
 
         try:
             env_constructor_params = {
-                **self.env_params,
+                **params,
                 'processed_feature_data': market_feature_data,
                 'price_data': price_data_for_env
             }
-            self.env = IntradayTradingEnv(**env_constructor_params)
+            env = IntradayTradingEnv(**env_constructor_params)
             self.logger.info("IntradayTradingEnv created successfully.")
-            self._validate_environment(self.env)
-            return self.env
+            self._validate_environment(env)
+            self.env_cache[env_id] = env
+            self.active_env_id = env_id
+            return env
         except Exception as e:
             self.logger.error(f"Failed to create IntradayTradingEnv: {e}", exc_info=True)
-            self.env = None
             return None
 
+    def switch_env(
+        self,
+        market_feature_data: np.ndarray,
+        price_data_for_env: pd.Series,
+        env_params: Optional[dict] = None
+    ) -> Optional[IntradayTradingEnv]:
+        """
+        Switches to a different environment (creates or retrieves from cache).
+        """
+        return self.get_or_create_env(market_feature_data, price_data_for_env, env_params)
+
     def get_env(self) -> Optional[IntradayTradingEnv]:
-        if self.env is None:
-            self.logger.warning("Environment accessed before creation. Call create_env() first with data.")
-        return self.env
+        """
+        Returns the currently active environment.
+        """
+        if self.active_env_id is None or self.active_env_id not in self.env_cache:
+            self.logger.warning("No active environment. Use get_or_create_env() or switch_env() first.")
+            return None
+        return self.env_cache[self.active_env_id]
+
+    def remove_env(
+        self,
+        market_feature_data: np.ndarray,
+        price_data_for_env: pd.Series,
+        env_params: Optional[dict] = None
+    ):
+        """
+        Removes an environment from the cache and closes it.
+        """
+        params = env_params if env_params is not None else self.env_params
+        env_id = self._config_hash(params, market_feature_data, price_data_for_env)
+        if env_id in self.env_cache:
+            self.env_cache[env_id].close()
+            del self.env_cache[env_id]
+            if self.active_env_id == env_id:
+                self.active_env_id = None
+            self.logger.info(f"Environment with id {env_id} removed from cache.")
+
+    def list_envs(self) -> Dict[str, IntradayTradingEnv]:
+        """
+        Returns a copy of the environment cache dictionary.
+        """
+        return self.env_cache.copy()
 
     def run(
         self,
         processed_feature_data: np.ndarray,
         price_data_for_env: pd.Series
     ) -> Optional[IntradayTradingEnv]:
-        self.logger.info("EnvAgent run: Creating trading environment.")
-        return self.create_env(market_feature_data=processed_feature_data, price_data_for_env=price_data_for_env)
+        """
+        Creates or retrieves an environment and sets it as active.
+        """
+        self.logger.info("EnvAgent run: Creating or retrieving trading environment.")
+        return self.get_or_create_env(processed_feature_data, price_data_for_env)
 
 if __name__ == '__main__':
     import os
