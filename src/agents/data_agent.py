@@ -521,7 +521,7 @@ if __name__ == '__main__':
         """
         if hasNewBar and self.bar_update_callback:
             latest_bar_data = bars[-1] # Get the most recent bar
-            
+
             # Convert RealTimeBar to a DataFrame consistent with historical data
             bar_df = pd.DataFrame([{
                 'datetime': pd.to_datetime(latest_bar_data.time, unit='s'), # Assuming time is Unix epoch. IBKR might send datetime object.
@@ -533,10 +533,10 @@ if __name__ == '__main__':
                 # 'average': latest_bar_data.wap, # Uncomment if WAP is needed as 'average'
                 # 'barCount': latest_bar_data.count # Uncomment if bar count is needed
             }]).set_index('datetime')
-            
+
             # Ensure datetime is timezone-aware if IB returns naive datetime
             # Example: if latest_bar_data.time is a naive datetime in UTC:
-            # bar_df.index = bar_df.index.tz_localize('UTC') 
+            # bar_df.index = bar_df.index.tz_localize('UTC')
             # Or convert to local time if necessary, but UTC is often preferred for internal processing.
 
             self.logger.debug(f"New live bar for {symbol} via wrapper: {bar_df.iloc[0].to_dict()}")
@@ -548,13 +548,13 @@ if __name__ == '__main__':
             self.logger.debug(f"Bar update event for {symbol} but hasNewBar is False. Bars: {bars[-1] if bars else 'N/A'}")
 
 
-    def subscribe_live_bars(self, symbol: str, interval_seconds: int = 5, sec_type: str = "STK", 
+    def subscribe_live_bars(self, symbol: str, interval_seconds: int = 5, sec_type: str = "STK",
                             exchange: str = "SMART", currency: str = "USD", use_rth: bool = True) -> bool:
         """
         Subscribes to live bars for a given symbol.
         Note: IBKR's reqRealTimeBars typically provides 5-second bars.
               Aggregation to other intervals (e.g., 1 minute) must be handled by the recipient (Orchestrator/FeatureAgent).
-        
+
         Args:
             symbol (str): The stock symbol.
             interval_seconds (int): Requested bar interval in seconds. IB API usually only supports 5 for realTimeBars.
@@ -562,7 +562,7 @@ if __name__ == '__main__':
             exchange (str): Exchange (e.g., "SMART", "NASDAQ", "NYSE").
             currency (str): Currency (e.g., "USD").
             use_rth (bool): If True, only data from regular trading hours.
-        
+
         Returns:
             bool: True if subscription was successful or already active, False otherwise.
         """
@@ -578,7 +578,7 @@ if __name__ == '__main__':
                                 f"IBKR reqRealTimeBars provides 5-second bars. Subscribing to 5-second bars. "
                                 "Aggregation to other intervals must be handled by the application.")
             # We proceed with 5 seconds as that's what the API provides for real-time bars.
-            
+
         contract_key = (symbol, sec_type, exchange, currency) # Unique key for the contract
 
         if contract_key in self.live_bar_tickers:
@@ -591,7 +591,7 @@ if __name__ == '__main__':
         contract.exchange = exchange
         contract.currency = currency
         # For some symbols/secTypes, primaryExchange might be needed
-        # contract.primaryExchange = "NASDAQ" 
+        # contract.primaryExchange = "NASDAQ"
 
         self.logger.info(f"Attempting to qualify contract for {symbol}...")
         try:
@@ -606,29 +606,29 @@ if __name__ == '__main__':
             return False
 
         self.logger.info(f"Subscribing to live 5-second bars for {qualified_contract.symbol} (RTH: {use_rth}).")
-        
+
         try:
             # reqRealTimeBars returns a RealTimeBarList object
             # barSize must be 5 (seconds) for whatToShow='TRADES', 'MIDPOINT', 'BID', or 'ASK'
             ticker = self.ib.reqRealTimeBars(
                 contract=qualified_contract,
-                barSize=5, 
-                whatToShow="TRADES", 
+                barSize=5,
+                whatToShow="TRADES",
                 useRTH=use_rth,
-                realTimeBarsOptions=[] 
+                realTimeBarsOptions=[]
             )
-            
-            self.live_bar_tickers[contract_key] = ticker 
-            
+
+            self.live_bar_tickers[contract_key] = ticker
+
             # Register the event handler for this specific ticker using a lambda to pass the symbol
             # The symbol passed to the wrapper should be the original requested symbol for consistency
             ticker.updateEvent += lambda bars, hasNewBar: self._on_bar_update_wrapper(symbol, bars, hasNewBar)
-            
+
             self.logger.info(f"Successfully subscribed to live bars for {symbol}. Ticker object: {ticker}")
             return True
         except Exception as e:
             self.logger.error(f"Error subscribing to live bars for {symbol}: {e}", exc_info=True)
-            if contract_key in self.live_bar_tickers: 
+            if contract_key in self.live_bar_tickers:
                 del self.live_bar_tickers[contract_key]
             return False
 
@@ -642,11 +642,11 @@ if __name__ == '__main__':
             self.logger.warning(f"Not currently subscribed to live bars for {contract_key}.")
             return
 
-        ticker = self.live_bar_tickers.pop(contract_key) 
+        ticker = self.live_bar_tickers.pop(contract_key)
         try:
             self.logger.info(f"Unsubscribing from live bars for {contract_key}...")
             self.ib.cancelRealTimeBars(ticker)
-            
+
             # Attempt to remove the specific lambda handler. This can be tricky.
             # A common way is to store the handler if it needs to be removed,
             # or rely on the ticker object being garbage collected if not referenced elsewhere.
@@ -661,13 +661,13 @@ if __name__ == '__main__':
             self.logger.error(f"Error unsubscribing from live bars for {contract_key}: {e}", exc_info=True)
             # If cancellation failed, consider adding the ticker back or logging severity
             self.live_bar_tickers[contract_key] = ticker # Add back if failed
-            
+
     # --- End Live Data Methods ---
 
 
     # --- Methods for Order Execution ---
 
-    def _create_contract(self, symbol: str, sec_type: str = "STK", exchange: str = "SMART", 
+    def _create_contract(self, symbol: str, sec_type: str = "STK", exchange: str = "SMART",
                          currency: str = "USD", primary_exchange: Optional[str] = None) -> Optional[Contract]:
         """
         Creates and qualifies an IBKR contract.
@@ -684,14 +684,14 @@ if __name__ == '__main__':
         contract.currency = currency.upper()
         if primary_exchange: # Often needed for US stocks to avoid ambiguity
             contract.primaryExchange = primary_exchange.upper()
-        
+
         self.logger.info(f"Attempting to qualify contract: {contract}")
         try:
             qualified_contracts = self.ib.qualifyContracts(contract)
             if not qualified_contracts:
                 self.logger.error(f"Failed to qualify contract for {symbol}. No qualified contracts returned.")
                 return None
-            
+
             qualified_contract = qualified_contracts[0] # Usually, the first one is the most specific
             self.logger.info(f"Contract qualified: {qualified_contract}")
             return qualified_contract
@@ -726,7 +726,7 @@ if __name__ == '__main__':
         if not self.ib_connected:
             self.logger.error("IBKR not connected. Cannot place order.")
             return None
-        
+
         if not isinstance(order_details, dict):
             self.logger.error("order_details must be a dictionary.")
             return None
@@ -750,7 +750,7 @@ if __name__ == '__main__':
         action = order_details['action'].upper()
         quantity = float(order_details['quantity'])
         order_type_str = order_details['order_type'].upper()
-        
+
         if action not in ["BUY", "SELL"]:
             self.logger.error(f"Invalid order action: {action}. Must be 'BUY' or 'SELL'.")
             return None
@@ -781,10 +781,10 @@ if __name__ == '__main__':
         else:
             self.logger.error(f"Unsupported order type: {order_type_str}")
             return None
-        
+
         # Set Time In Force (TIF)
         order.tif = order_details.get('tif', 'DAY').upper()
-        
+
         # Set account if specified
         if 'account' in order_details and order_details['account']:
             order.account = order_details['account']
@@ -803,13 +803,13 @@ if __name__ == '__main__':
         except Exception as e:
             self.logger.error(f"Error placing order for {contract.symbol}: {e}", exc_info=True)
             return None
-            
+
     # --- End Order Execution Methods ---
 
 
     # --- Methods for Portfolio and Position Tracking ---
 
-    def get_account_summary(self, account_id: Optional[str] = None, 
+    def get_account_summary(self, account_id: Optional[str] = None,
                             tags: str = "NetLiquidation,TotalCashValue,AvailableFunds,GrossPositionValue,RealizedPnL,UnrealizedPnL") -> Dict[str, Any]:
         """
         Fetches account summary details like NetLiquidation, TotalCashValue, etc.
@@ -834,31 +834,31 @@ if __name__ == '__main__':
             # If account_id is None, it might return summaries for multiple accounts if linked.
             # We may need to filter for a specific account if multiple are returned and account_id was None.
             # For now, let's assume we are interested in the first account summary if not specified, or a specific one.
-            
+
             # Requesting all tags and then filtering might be easier than subscribing one by one.
             # However, self.ib.accountValues() is for streaming.
             # self.ib.reqAccountSummary() is also for streaming.
             # For a one-time snapshot, it's often done by requesting pnl, accountSummary etc.
             # and then processing the results that arrive via event handlers.
             # A simpler way for a snapshot is to use `ib.accountSummaryAsync` or manage subscription.
-            
+
             # Let's use the simpler approach of just calling `ib.accountSummary()` and processing what we get.
             # This method, when called without args, might require prior subscription or might not work as expected for snapshot.
             # A more robust way for snapshot is to use `ib.reqAccountUpdates(True, account_id or "")`
             # then access `ib.accountValues()`. Then `ib.reqAccountUpdates(False, account_id or "")`.
             # For simplicity here, let's assume `ib.accountSummary()` can provide a snapshot or is used in a context
             # where data is already streaming. `ib_insync` docs suggest `ib.accountSummary()` is for streaming.
-            
+
             # Correct approach for snapshot with ib_insync:
             acc_summary_list = self.ib.accountSummary(account=account_id if account_id else "") # Get all for the account
-            
+
             if not acc_summary_list:
                 self.logger.warning(f"No account summary data received for account '{account_id if account_id else 'Default'}'.")
                 return {}
 
             # Filter by requested tags
             tag_list = [t.strip() for t in tags.split(',')]
-            
+
             for acc_value in acc_summary_list:
                 if acc_value.tag in tag_list:
                     try:
@@ -866,13 +866,13 @@ if __name__ == '__main__':
                         summary_values[acc_value.tag] = float(acc_value.value)
                     except ValueError:
                         summary_values[acc_value.tag] = acc_value.value
-            
+
             self.logger.info(f"Fetched account summary for account '{account_id if account_id else 'Default'}': {summary_values}")
 
         except Exception as e:
             self.logger.error(f"Error fetching account summary: {e}", exc_info=True)
             return {}
-        
+
         return summary_values
 
     def get_portfolio_positions(self, account_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -884,7 +884,7 @@ if __name__ == '__main__':
 
         Returns:
             List[Dict[str, Any]]: A list of dictionaries, each representing a position.
-                                 Keys include: 'symbol', 'sec_type', 'currency', 'exchange', 
+                                 Keys include: 'symbol', 'sec_type', 'currency', 'exchange',
                                  'position', 'market_price', 'market_value', 'average_cost',
                                  'unrealized_pnl', 'realized_pnl'.
                                  Returns an empty list if fetching fails or no positions.
@@ -921,13 +921,13 @@ if __name__ == '__main__':
                     "realized_pnl": item.realizedPNL
                 }
                 positions_list.append(pos_data)
-            
+
             self.logger.info(f"Fetched {len(positions_list)} portfolio positions for account(s) '{account_id if account_id else 'All'}'.")
 
         except Exception as e:
             self.logger.error(f"Error fetching portfolio positions: {e}", exc_info=True)
             return []
-            
+
         return positions_list
 
     # --- End Portfolio and Position Tracking ---

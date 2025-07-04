@@ -602,11 +602,11 @@ if __name__ == '__main__':
         max_lookback = 0
         if 'RSI' in self.feature_list and 'rsi' in self.feature_config:
             max_lookback = max(max_lookback, self.feature_config['rsi'].get("window", 14))
-        
+
         if 'EMA' in self.feature_list and 'ema' in self.feature_config:
             for window in self.feature_config['ema'].get('windows', []):
                 max_lookback = max(max_lookback, window)
-        
+
         if 'VWAP' in self.feature_list and 'vwap' in self.feature_config:
             # Daily VWAP doesn't have a fixed lookback in the same sense, but rolling VWAP does.
             # If using rolling VWAP, its window should be considered.
@@ -619,7 +619,7 @@ if __name__ == '__main__':
                 max_lookback = max(max_lookback, vwap_window)
             # else for Daily VWAP, it's calculated per day, doesn't add to this numerical max_lookback for buffer length.
             # However, the buffer should ideally be long enough to establish VWAP.
-        
+
         # Add other features like Bollinger Bands, MACD, etc. if they are implemented.
         # For example:
         # if 'MACD' in self.feature_list and 'macd' in self.feature_config:
@@ -632,7 +632,7 @@ if __name__ == '__main__':
             self.logger.warning(f"No specific indicator windows found; setting max_indicator_lookback to model's lookback_window: {max_lookback}")
 
         # Ensure it's at least as large as the model's observation sequence length
-        self._max_indicator_lookback = max(max_lookback, self.lookback_window) 
+        self._max_indicator_lookback = max(max_lookback, self.lookback_window)
         self.logger.info(f"Determined maximum indicator lookback period: {self._max_indicator_lookback} bars.")
         return self._max_indicator_lookback
 
@@ -686,8 +686,8 @@ if __name__ == '__main__':
             # No, _max_indicator_lookback is for *indicator calculation*.
             # The actual buffer for raw data should be at least _max_indicator_lookback.
             # Then, from the computed features, we take `self.lookback_window` for the model.
-            buffer_needed_for_indicators = self._max_indicator_lookback 
-            
+            buffer_needed_for_indicators = self._max_indicator_lookback
+
             if len(self.live_data_buffer) > buffer_needed_for_indicators:
                  self.live_data_buffer = self.live_data_buffer.iloc[-buffer_needed_for_indicators:]
             self.logger.info(f"live_data_buffer initialized with {len(self.live_data_buffer)} bars after warmup and trim.")
@@ -702,14 +702,14 @@ if __name__ == '__main__':
                     if warmup_norm_features_df is not None and not warmup_norm_features_df.empty:
                         obs_cols = self.feature_config.get('observation_feature_cols', warmup_norm_features_df.columns.tolist())
                         warmup_obs_features = warmup_norm_features_df[obs_cols]
-                        
+
                         # Populate the history buffer with the most recent `lookback_window` observations
                         num_to_take = min(len(warmup_obs_features), self.lookback_window)
                         for i in range(num_to_take):
                             # Append as list or 1-row DataFrame/Series
-                            self.normalized_feature_history_buffer.append(warmup_obs_features.iloc[-(num_to_take - i)].values) 
+                            self.normalized_feature_history_buffer.append(warmup_obs_features.iloc[-(num_to_take - i)].values)
                         self.logger.info(f"Normalized feature history buffer populated with {len(self.normalized_feature_history_buffer)} entries from warmup data.")
-        
+
         self._is_live_session_initialized = True
         self.logger.info("Live trading session initialized successfully.")
 
@@ -731,11 +731,11 @@ if __name__ == '__main__':
         if not self._is_live_session_initialized:
             self.logger.error("Live session not initialized. Call initialize_live_session() first.")
             return None, None
-        
+
         if self.scaler is None:
             self.logger.error(f"Scaler for {symbol} is not loaded. Cannot process live bar.")
             return None, None
-            
+
         if not isinstance(new_bar_df.index, pd.DatetimeIndex) or len(new_bar_df) != 1:
             self.logger.error("New bar data must be a single-row DataFrame with a DatetimeIndex.")
             return None, new_bar_df.iloc[-1] if not new_bar_df.empty else None
@@ -748,7 +748,7 @@ if __name__ == '__main__':
             self.live_data_buffer = pd.concat([self.live_data_buffer, new_bar_df])
         else:
             self.live_data_buffer = self.live_data_buffer.append(new_bar_df)
-        
+
         # Trim buffer to keep only necessary length for indicator calculation
         # Max length needed is _max_indicator_lookback (which includes model's lookback_window if larger)
         # No, _max_indicator_lookback is for indicator calculation only.
@@ -756,7 +756,7 @@ if __name__ == '__main__':
         min_buffer_len_for_indicators = self._max_indicator_lookback
         if len(self.live_data_buffer) > min_buffer_len_for_indicators + 20: # Keep a bit extra margin
             self.live_data_buffer = self.live_data_buffer.iloc[-(min_buffer_len_for_indicators + 20):]
-        
+
         if len(self.live_data_buffer) < min_buffer_len_for_indicators:
             self.logger.warning(f"Live data buffer size ({len(self.live_data_buffer)}) is less than "
                                 f"max indicator lookback ({min_buffer_len_for_indicators}). Features might be unstable or NaN.")
@@ -769,12 +769,12 @@ if __name__ == '__main__':
         if current_features_df is None or current_features_df.empty:
             self.logger.warning(f"Feature computation on live buffer for {symbol} yielded no data. Buffer size: {len(self.live_data_buffer)}")
             return None, latest_price_series
-        
+
         # 3. Normalize the latest set of features
         # We only need to normalize the features corresponding to the *latest bar* for the model input.
         # However, the scaler expects a 2D array.
         latest_computed_features_row = current_features_df.iloc[-1:] # Keep as DataFrame for column selection
-        
+
         # Ensure columns for scaling are present (as done in normalize_features)
         feature_cols_to_scale = self.feature_config.get('feature_cols_to_scale', [])
         if not feature_cols_to_scale: # Auto-detect if not specified
@@ -786,7 +786,7 @@ if __name__ == '__main__':
             return None, latest_price_series
 
         data_to_scale = latest_computed_features_row[feature_cols_to_scale]
-        
+
         try:
             normalized_data_values = self.scaler.transform(data_to_scale) # Input must be 2D
         except Exception as e:
@@ -801,7 +801,7 @@ if __name__ == '__main__':
         obs_feature_cols = self.feature_config.get('observation_feature_cols', [])
         if not obs_feature_cols: # Default to all columns in latest_computed_features_row if not specified
             obs_feature_cols = latest_computed_features_row.columns.tolist()
-            
+
         final_observation_values = []
         for col in obs_feature_cols:
             if col in latest_normalized_features.index: # It was a scaled column
@@ -811,7 +811,7 @@ if __name__ == '__main__':
             else:
                 self.logger.error(f"Observation column '{col}' not found in latest computed or normalized features for {symbol}. Filling with NaN.")
                 final_observation_values.append(np.nan)
-        
+
         latest_observation_row_np = np.array(final_observation_values)
 
         # 4. Update normalized feature history buffer and create sequence
@@ -826,12 +826,12 @@ if __name__ == '__main__':
             return None, latest_price_series # Not enough history to form a full sequence
 
         observation_sequence_np = np.array(self.normalized_feature_history_buffer) # Shape: (lookback_window, num_features)
-        
+
         # Sanity check for NaNs in the final observation sequence
         if np.isnan(observation_sequence_np).any():
             self.logger.warning(f"NaNs detected in the final observation sequence for {symbol}. This might be due to indicator warmup or data issues.")
             # Potentially return None or let the model handle NaNs if designed to. For now, return as is.
 
         return observation_sequence_np, latest_price_series
-    
+
     # --- End Live Trading Methods ---

@@ -381,14 +381,14 @@ if __name__ == '__main__':
     sim_current_time += timedelta(minutes=10) # 09:55
     safe, reason = risk_agent.assess_trade_risk(trade_3_value, sim_current_time)
     print(f"Trade 3 (Value: {trade_3_value:.2f}) Assessment: Safe={safe}, Reason='{reason}'")
-    if safe: 
+    if safe:
         risk_agent.record_trade(trade_3_value, sim_current_time)
         risk_agent.update_portfolio_value(portfolio_value=initial_cap, timestamp=sim_current_time)
     
     # Simulate portfolio value drop (drawdown)
     sim_current_time += timedelta(minutes=30) # 10:25 AM
     new_portfolio_value = initial_cap * 0.97 # 3% drawdown
-    risk_agent.update_portfolio_value(portfolio_value=new_portfolio_value, timestamp=sim_current_time) 
+    risk_agent.update_portfolio_value(portfolio_value=new_portfolio_value, timestamp=sim_current_time)
     print(f"Portfolio value dropped to {new_portfolio_value:.2f} at {sim_current_time.time()}")
 
     # Check risk status using the run method (which also calls update_portfolio_value)
