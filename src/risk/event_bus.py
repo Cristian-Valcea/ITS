@@ -37,6 +37,8 @@ class EventType(Enum):
     KILL_SWITCH = "kill_switch"
     ALERT = "alert"
     CONFIG_UPDATE = "config_update"
+    RISK_MONITORING = "risk_monitoring"
+    POSITION_MANAGEMENT = "position_management"
 
 
 @dataclass

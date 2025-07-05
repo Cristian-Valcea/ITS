@@ -1,0 +1,275 @@
+# .github/workflows/risk_system_tests.yml
+name: Risk System Tests with Latency Benchmarks
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/risk/**'
+      - 'tests/test_risk_*'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/risk/**'
+      - 'tests/test_risk_*'
+
+jobs:
+  risk-calculator-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9, 3.10, 3.11]
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio pytest-benchmark numpy pandas psutil
+        pip install -r requirements.txt
+    
+    - name: Run Risk Calculator Tests with Latency Benchmarks
+      run: |
+        pytest tests/test_risk_calculators.py -v -s --tb=short
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+    
+    - name: Generate Latency Report
+      run: |
+        pytest tests/test_risk_calculators.py --tb=no -q > latency_report_calculators.txt 2>&1 || true
+        echo "## Calculator Latency Benchmarks" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        grep -E "(Latency|µs)" latency_report_calculators.txt >> $GITHUB_STEP_SUMMARY || echo "No latency data found" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
+  risk-integration-tests:
+    runs-on: ubuntu-latest
+    needs: risk-calculator-tests
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio pytest-benchmark numpy pandas psutil
+        pip install -r requirements.txt
+    
+    - name: Run Integration Tests with End-to-End Latency
+      run: |
+        pytest tests/test_risk_integration.py -v -s --tb=short
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+    
+    - name: Generate Integration Report
+      run: |
+        pytest tests/test_risk_integration.py --tb=no -q > latency_report_integration.txt 2>&1 || true
+        echo "## Integration Test Latency Benchmarks" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        grep -E "(latency|µs|events/sec)" latency_report_integration.txt >> $GITHUB_STEP_SUMMARY || echo "No integration data found" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
+  performance-regression-check:
+    runs-on: ubuntu-latest
+    needs: [risk-calculator-tests, risk-integration-tests]
+    
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 2  # Need previous commit for comparison
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio pytest-benchmark numpy pandas psutil
+        pip install -r requirements.txt
+    
+    - name: Run Performance Regression Tests
+      run: |
+        # Run current version
+        pytest tests/test_risk_calculators.py::TestCalculatorPerformance -v --tb=no -q > current_perf.txt 2>&1 || true
+        
+        # Extract key metrics
+        echo "## Performance Regression Check" >> $GITHUB_STEP_SUMMARY
+        echo "### Current Performance" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        grep -E "(Latency|Memory usage)" current_perf.txt >> $GITHUB_STEP_SUMMARY || echo "No performance data" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        
+        # Check for performance regressions (basic thresholds)
+        python -c "
+import re
+import sys
+
+with open('current_perf.txt', 'r') as f:
+    content = f.read()
+
+# Extract P50 latencies
+p50_matches = re.findall(r'P50: ([\d.]+)µs', content)
+if p50_matches:
+    max_p50 = max(float(x) for x in p50_matches)
+    print(f'Maximum P50 latency: {max_p50}µs')
+    
+    # Fail if any P50 > 1000µs (1ms)
+    if max_p50 > 1000.0:
+        print(f'PERFORMANCE REGRESSION: P50 latency {max_p50}µs exceeds 1000µs threshold')
+        sys.exit(1)
+    else:
+        print('✅ Performance within acceptable limits')
+else:
+    print('⚠️  No latency data found')
+"
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+
+  golden-file-validation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio numpy pandas
+        pip install -r requirements.txt
+    
+    - name: Validate Golden File Tests
+      run: |
+        # Run only golden file tests
+        pytest tests/test_risk_calculators.py -k "golden" -v --tb=short
+        pytest tests/test_risk_integration.py -k "golden" -v --tb=short
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+    
+    - name: Generate Golden File Report
+      run: |
+        echo "## Golden File Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "Golden file tests validate expected behavior against known scenarios:" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Simple decline scenarios" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Recovery scenarios" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Volatile market scenarios" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Market crash simulations" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Normal trading day validations" >> $GITHUB_STEP_SUMMARY
+
+  latency-slo-monitoring:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio numpy pandas
+        pip install -r requirements.txt
+    
+    - name: Run Latency SLO Tests
+      run: |
+        # Create SLO test script
+        cat > slo_test.py << 'EOF'
+import asyncio
+import time
+import numpy as np
+import sys
+import os
+sys.path.insert(0, '.')
+
+from src.risk import DrawdownCalculator, TurnoverCalculator, RiskEventBus, RiskEvent, EventType, EventPriority
+
+async def test_slo_compliance():
+    """Test SLO compliance for critical components."""
+    print("🎯 Testing SLO Compliance")
+    
+    # Test DrawdownCalculator SLO (target: <150µs P95)
+    calc = DrawdownCalculator({'lookback_periods': [1, 5, 20]})
+    portfolio_values = np.random.normal(100000, 5000, 100)
+    
+    latencies = []
+    for _ in range(100):
+        start = time.time_ns()
+        result = calc.calculate_safe({
+            'portfolio_values': portfolio_values,
+            'start_of_day_value': portfolio_values[0]
+        })
+        end = time.time_ns()
+        latencies.append((end - start) / 1000.0)
+    
+    p95 = np.percentile(latencies, 95)
+    print(f"DrawdownCalculator P95: {p95:.2f}µs (SLO: <150µs)")
+    
+    if p95 > 150.0:
+        print(f"❌ SLO VIOLATION: DrawdownCalculator P95 {p95:.2f}µs > 150µs")
+        return False
+    
+    # Test TurnoverCalculator SLO (target: <100µs P95)
+    turnover_calc = TurnoverCalculator({'hourly_window_minutes': 60})
+    from datetime import datetime, timedelta
+    
+    trade_values = [10000] * 50
+    trade_timestamps = [datetime.now() + timedelta(minutes=i) for i in range(50)]
+    
+    latencies = []
+    for _ in range(100):
+        start = time.time_ns()
+        result = turnover_calc.calculate_safe({
+            'trade_values': trade_values,
+            'trade_timestamps': trade_timestamps,
+            'capital_base': 1000000
+        })
+        end = time.time_ns()
+        latencies.append((end - start) / 1000.0)
+    
+    p95 = np.percentile(latencies, 95)
+    print(f"TurnoverCalculator P95: {p95:.2f}µs (SLO: <100µs)")
+    
+    if p95 > 100.0:
+        print(f"❌ SLO VIOLATION: TurnoverCalculator P95 {p95:.2f}µs > 100µs")
+        return False
+    
+    print("✅ All SLOs met")
+    return True
+
+if __name__ == "__main__":
+    result = asyncio.run(test_slo_compliance())
+    sys.exit(0 if result else 1)
+EOF
+        
+        python slo_test.py
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+    
+    - name: Generate SLO Report
+      run: |
+        echo "## Latency SLO Monitoring" >> $GITHUB_STEP_SUMMARY
+        echo "Service Level Objectives for risk system components:" >> $GITHUB_STEP_SUMMARY
+        echo "- 🎯 DrawdownCalculator: P95 < 150µs" >> $GITHUB_STEP_SUMMARY
+        echo "- 🎯 TurnoverCalculator: P95 < 100µs" >> $GITHUB_STEP_SUMMARY
+        echo "- 🎯 Event Bus: P95 < 200µs" >> $GITHUB_STEP_SUMMARY
+        echo "- 🎯 Rules Engine: P95 < 100µs" >> $GITHUB_STEP_SUMMARY

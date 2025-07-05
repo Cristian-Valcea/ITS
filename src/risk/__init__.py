@@ -25,18 +25,22 @@ Key Features:
 from .calculators import (
     BaseRiskCalculator, DrawdownCalculator, TurnoverCalculator
 )
-from .rules_engine import RulesEngine, RiskPolicy, PolicyValidator
-from .event_bus import RiskEventBus, RiskEvent
+from .rules_engine import RulesEngine, RiskPolicy, PolicyValidator, ThresholdRule, RuleAction
+from .event_bus import RiskEventBus, RiskEvent, EventType, EventPriority
+from .risk_agent_v2 import RiskAgentV2, create_risk_agent_v2
 
 __all__ = [
     # Calculators
     'BaseRiskCalculator', 'DrawdownCalculator', 'TurnoverCalculator',
     
     # Rules & Enforcement
-    'RulesEngine', 'RiskPolicy', 'PolicyValidator',
+    'RulesEngine', 'RiskPolicy', 'PolicyValidator', 'ThresholdRule', 'RuleAction',
     
     # Infrastructure
-    'RiskEventBus', 'RiskEvent'
+    'RiskEventBus', 'RiskEvent', 'EventType', 'EventPriority',
+    
+    # Risk Agent
+    'RiskAgentV2', 'create_risk_agent_v2'
 ]
 
 # Version info
