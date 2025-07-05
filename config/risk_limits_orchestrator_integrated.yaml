@@ -1,0 +1,76 @@
+# Comprehensive integrated risk limits configuration
+# Covers both environment and live trading risk management
+
+# Core risk limits
+max_daily_drawdown_pct: 0.025 # Maximum 2.5% daily drawdown
+max_hourly_turnover_ratio: 5.0 # Maximum hourly turnover ratio
+max_daily_turnover_ratio: 20.0 # Maximum daily turnover ratio
+halt_on_breach: true # Halt trading on risk limit breach
+liquidate_on_halt: false # Whether to liquidate positions on halt
+
+# Environment-specific risk controls
+env_turnover_penalty_factor: 0.01 # Penalty factor for high turnover in environment
+env_terminate_on_turnover_breach: false # Whether to terminate episode on turnover breach
+env_turnover_termination_threshold_multiplier: 2.0 # Multiplier for termination threshold
+
+# Position and trade limits
+max_position_size_pct: 0.10 # Maximum 10% of portfolio in single position
+max_positions: 5 # Maximum number of concurrent positions
+max_daily_trades: 50 # Maximum trades per day
+max_loss_per_trade_pct: 0.02 # Maximum 2% loss per trade
+
+# Stop loss and take profit
+stop_loss_pct: 0.05 # 5% stop loss
+take_profit_pct: 0.10 # 10% take profit
+trailing_stop_pct: 0.03 # 3% trailing stop
+
+# Portfolio risk limits
+max_portfolio_leverage: 1.0 # No leverage allowed
+max_sector_concentration_pct: 0.30 # Maximum 30% in any sector
+max_correlation_threshold: 0.7 # Maximum correlation between positions
+
+# Volatility and market risk
+max_portfolio_volatility: 0.20 # Maximum 20% annualized portfolio volatility
+var_confidence_level: 0.95 # 95% confidence level for VaR
+max_var_pct: 0.03 # Maximum 3% daily VaR
+
+# Liquidity risk
+min_avg_daily_volume: 1000000 # Minimum average daily volume for trading
+max_position_vs_volume_pct: 0.05 # Maximum 5% of average daily volume
+
+# Time-based risk controls
+trading_hours_start: "09:30:00" # Start of trading hours
+trading_hours_end: "16:00:00" # End of trading hours
+no_trading_before_close_minutes: 30 # No new positions 30 minutes before close
+no_trading_after_open_minutes: 30 # No trading in first 30 minutes after open
+
+# Emergency controls
+emergency_liquidate_on_drawdown_pct: 0.10 # Emergency liquidation at 10% drawdown
+pause_trading_on_consecutive_losses: 5 # Pause after 5 consecutive losses
+daily_loss_limit_pct: 0.05 # Daily loss limit of 5%
+weekly_loss_limit_pct: 0.10 # Weekly loss limit of 10%
+monthly_loss_limit_pct: 0.15 # Monthly loss limit of 15%
+
+# Market condition risk controls
+max_vix_level: 40.0 # Don't trade if VIX above 40
+min_market_cap: 1000000000 # Minimum $1B market cap for trading
+avoid_earnings_days: true # Avoid trading on earnings announcement days
+avoid_ex_dividend_days: true # Avoid trading on ex-dividend days
+
+# Risk monitoring and alerts
+risk_check_frequency_seconds: 60 # Check risk limits every 60 seconds
+alert_on_risk_breach: true # Send alerts on risk breaches
+log_risk_metrics: true # Log risk metrics for analysis
+risk_report_frequency_hours: 24 # Generate risk reports every 24 hours
+
+# Stress testing parameters
+stress_test_enabled: false # Enable stress testing
+stress_test_scenarios:
+  - name: "market_crash"
+    market_drop_pct: 0.20
+    correlation_increase: 0.30
+  - name: "volatility_spike"
+    volatility_multiplier: 2.0
+    liquidity_reduction_pct: 0.50
+  - name: "sector_rotation"
+    sector_performance_spread: 0.15
