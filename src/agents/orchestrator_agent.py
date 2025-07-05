@@ -1629,6 +1629,14 @@ if __name__ == '__main__':
             'scale_max': 1.02,
             'window_slicing': False,
             'window_size': 60
+        },
+        'scheduling': {
+            'retrain_symbol': "AAPL",
+            'retrain_interval': "1min",
+            'retrain_data_start_offset_days': 30,
+            'retrain_data_end_offset_days': 7,
+            'evaluate_after_retrain_duration_days': 5,
+            'use_cached_data_for_scheduled_run': False
         }
     }
     with open(main_cfg_path, 'w') as f: yaml.dump(dummy_main_config, f)
