@@ -54,6 +54,13 @@ paths:
   reports_dir: reports/orch_test/
   scalers_dir: data/scalers_orch_test/
   tensorboard_log_dir: logs/tensorboard_orch_test/
+scheduling:
+  evaluate_after_retrain_duration_days: 5
+  retrain_data_end_offset_days: 7
+  retrain_data_start_offset_days: 30
+  retrain_interval: 1min
+  retrain_symbol: AAPL
+  use_cached_data_for_scheduled_run: false
 training:
   checkpoint_freq: 500
   data_duration_for_fetch: 10 D

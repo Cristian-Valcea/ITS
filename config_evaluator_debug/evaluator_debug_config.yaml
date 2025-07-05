@@ -1,0 +1,16 @@
+backtest_progress_log_interval: 25
+environment_config:
+  lookback_window: 1
+  max_position_size: 1.0
+  transaction_cost: 0.001
+eval_metrics:
+- total_return_pct
+- sharpe_ratio
+- max_drawdown_pct
+- num_trades
+- turnover_ratio_period
+- win_rate_pct
+model_load_path: null
+periods_per_year_for_sharpe: 252
+reports_dir: reports_evaluator_debug
+risk_free_rate_annual: 0.02
