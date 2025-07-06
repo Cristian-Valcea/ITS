@@ -15,7 +15,9 @@ from collections import defaultdict, deque
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
-
+from wsgiref.simple_server import demo_app
+from .event_types import RiskEvent, EventType, EventPriority
+from .obs.audit_sink import JsonAuditSink
 
 class EventPriority(Enum):
     """Event priority levels for latency-sensitive processing."""
@@ -39,7 +41,7 @@ class EventType(Enum):
     CONFIG_UPDATE = "config_update"
     RISK_MONITORING = "risk_monitoring"
     POSITION_MANAGEMENT = "position_management"
-
+    HEARTBEAT = "heartbeat"         
 
 @dataclass
 class RiskEvent:
@@ -135,6 +137,7 @@ class RiskEventBus:
             enable_latency_monitoring: Whether to track latency metrics
             latency_slo_us: SLO thresholds in microseconds per priority
         """
+        self._audit_sink = JsonAuditSink()
         self.logger = logging.getLogger(self.__class__.__name__)
         
         # Event routing
@@ -272,6 +275,12 @@ class RiskEventBus:
             for handler in filtered_handlers:
                 try:
                     result_event = await handler.handle(event)
+
+                    # --- AUDIT TRAIL ---------------------------------
+                    if isinstance(result_event, RiskEvent):
+                        self._audit_sink.write(result_event)   # <— ADD THIS
+                    # -------------------------------------------------
+
                     
                     # If handler returns a new event, publish it
                     if result_event:
@@ -288,7 +297,9 @@ class RiskEventBus:
         
         finally:
             event.end_processing()
-            
+            # --- AUDIT ORIGINAL EVENT -----------------------------------
+            self._audit_sink.write(event)
+            # ------------------------------------------------------------
             # Record latency metrics
             if self._enable_latency_monitoring:
                 latency_us = event.get_processing_latency_us()
@@ -306,34 +317,38 @@ class RiskEventBus:
     
     async def _monitor_latency(self) -> None:
         """Monitor latency metrics and emit alerts."""
-        while self._running:
-            try:
-                await asyncio.sleep(10)  # Check every 10 seconds
-                
-                for priority in EventPriority:
-                    times = self._processing_times[priority]
-                    if len(times) < 10:  # Need minimum samples
-                        continue
+        try:
+            while self._running:
+                try:
+                    await asyncio.sleep(10)  # Check every 10 seconds
                     
-                    # Calculate percentiles
-                    sorted_times = sorted(times)
-                    p99_9 = sorted_times[int(len(sorted_times) * 0.999)]
-                    p99 = sorted_times[int(len(sorted_times) * 0.99)]
-                    p95 = sorted_times[int(len(sorted_times) * 0.95)]
-                    
-                    slo_threshold = self._latency_slo_us[priority]
-                    
-                    if p99_9 > slo_threshold:
-                        self.logger.critical(
-                            f"LATENCY ALERT: {priority} P99.9 = {p99_9:.2f}µs > SLO {slo_threshold:.2f}µs"
+                    for priority in EventPriority:
+                        times = self._processing_times[priority]
+                        if len(times) < 10:  # Need minimum samples
+                            continue
+                        
+                        # Calculate percentiles
+                        sorted_times = sorted(times)
+                        p99_9 = sorted_times[int(len(sorted_times) * 0.999)]
+                        p99 = sorted_times[int(len(sorted_times) * 0.99)]
+                        p95 = sorted_times[int(len(sorted_times) * 0.95)]
+                        
+                        slo_threshold = self._latency_slo_us[priority]
+                        
+                        if p99_9 > slo_threshold:
+                            self.logger.critical(
+                                f"LATENCY ALERT: {priority} P99.9 = {p99_9:.2f}µs > SLO {slo_threshold:.2f}µs"
+                            )
+                        
+                        self.logger.debug(
+                            f"{priority} latency: P95={p95:.2f}µs, P99={p99:.2f}µs, P99.9={p99_9:.2f}µs"
                         )
-                    
-                    self.logger.debug(
-                        f"{priority} latency: P95={p95:.2f}µs, P99={p99:.2f}µs, P99.9={p99_9:.2f}µs"
-                    )
-            
-            except Exception as e:
-                self.logger.error(f"Latency monitoring error: {e}")
+                
+                except Exception as e:
+                    self.logger.error(f"Latency monitoring error: {e}")
+        except asyncio.CancelledError:
+            self.logger.info("Latency monitoring task cancelled.")
+            # Optionally, perform any cleanup here before exiting
     
     def get_metrics(self) -> Dict[str, Any]:
         """Get current event bus metrics."""

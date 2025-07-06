@@ -1,4 +1,4 @@
-# config/risk_limits.yaml
+﻿# config/risk_limits.yaml
 # Configuration for risk management parameters.
 # Used by RiskAgent for live trading and can inform IntradayTradingEnv for training/backtesting.
 
@@ -71,4 +71,18 @@ env_terminate_on_turnover_breach: false # If true, IntradayTradingEnv will termi
 env_turnover_termination_threshold_multiplier: 2.0 # Multiplier for 'hourly_turnover_cap'. If actual turnover ratio
                                                    # exceeds (cap * multiplier), and terminate_on_breach is true,
                                                    # the episode ends. Default: 2.0 (i.e., 200% of the cap).
-```
+var_limit:
+  enabled: true
+  threshold: 2_000_000      # currency units
+  action: BLOCK
+
+volatility_limit:
+  enabled: true
+  threshold: 0.35           # 35 % annualised
+  action: BLOCK
+
+concentration_limit:
+  enabled: true
+
+greeks_limit:
+  enabled: true

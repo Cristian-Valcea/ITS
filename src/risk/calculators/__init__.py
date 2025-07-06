@@ -10,7 +10,7 @@ All calculators are designed to be:
 - Easily unit testable
 """
 
-from .base_calculator import BaseRiskCalculator, RiskCalculationResult
+from .base_calculator import BaseRiskCalculator, RiskCalculationResult, RiskMetricType
 from .drawdown_calculator import DrawdownCalculator
 from .turnover_calculator import TurnoverCalculator
 from .var_calculator import VaRCalculator
@@ -20,7 +20,8 @@ from .concentration_calculator import ConcentrationCalculator
 
 __all__ = [
     'BaseRiskCalculator',
-    'RiskCalculationResult', 
+    'RiskCalculationResult',
+    'RiskMetricType',
     'DrawdownCalculator',
     'TurnoverCalculator',
     'VaRCalculator',

@@ -160,7 +160,30 @@ class TurnoverCalculator(VectorizedCalculator):
         
         return result
     
-    def _calculate_rolling_turnover(self, trade_values: np.ndarray, 
+
+    def _calculate_rolling_turnover(self, trade_values, trade_timestamps, capital_base):
+        """Vectorised hourly / daily turnover."""
+        tv = trade_values
+        ts_sec = np.array([ts.timestamp() for ts in trade_timestamps])
+        now_sec = ts_sec[-1]
+
+        # Boolean masks instead of Python for-loop
+        hourly_mask = ts_sec >= now_sec - self.hourly_window_minutes * 60
+        hv     = tv[hourly_mask]
+        hc     = hv.size
+        result = {}
+        if hc:
+            hv_sum = hv.sum()
+            result.update({
+                'hourly_trade_value'   : hv_sum,
+                'hourly_turnover_ratio': hv_sum / capital_base,
+                'hourly_trade_count'   : int(hc),
+                'hourly_avg_trade_size': hv_sum / hc
+            })
+        # daily / custom windows analogous …
+        return result
+
+    def _calculate_rolling_turnoverOld(self, trade_values: np.ndarray, 
                                   trade_timestamps: List[datetime],
                                   capital_base: float) -> Dict[str, Any]:
         """Calculate rolling window turnover metrics."""

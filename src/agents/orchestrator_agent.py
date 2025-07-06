@@ -25,7 +25,7 @@ from src.agents.feature_agent import FeatureAgent
 from src.agents.env_agent import EnvAgent
 from src.agents.trainer_agent import TrainerAgent
 from src.agents.evaluator_agent import EvaluatorAgent
-from src.agents.risk_agent import RiskAgent
+from src.risk.risk_agent_adapter import RiskAgentAdapter
 
 # Attempt to import ib_insync specific types for type hinting if available
 try:
@@ -140,7 +140,7 @@ class OrchestratorAgent:
             'reports_dir': paths.get('reports_dir', 'reports/'),
             'eval_metrics': self.main_config.get('evaluation', {}).get('metrics', ['sharpe', 'max_drawdown'])
         })
-        self.risk_agent = RiskAgent(config=risk_cfg)
+        self.risk_agent = RiskAgentAdapter(config=risk_cfg)
 
     def _validate_configs(self):
         """Basic config validation. Extend as needed."""
