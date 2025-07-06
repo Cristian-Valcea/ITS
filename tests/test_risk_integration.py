@@ -20,6 +20,7 @@ from src.risk import (
     RiskEventBus, RiskEvent, EventType, EventPriority,
     RulesEngine, RiskPolicy, ThresholdRule, RuleAction, RuleSeverity,
     DrawdownCalculator, TurnoverCalculator,
+    FeedStalenessCalculator, LiquidityCalculator, ConcentrationCalculator,
     RiskAgentV2, create_risk_agent_v2
 )
 
@@ -634,6 +635,729 @@ class TestRiskSystemGoldenFiles:
             
         finally:
             await event_bus.stop()
+
+
+class TestSensorBasedRiskScenarios:
+    """Test specific sensor-based risk scenarios with expected actions."""
+    
+    @pytest.fixture
+    def comprehensive_risk_config(self):
+        """Configuration with all sensor calculators enabled."""
+        return {
+            'calculators': {
+                'drawdown': {
+                    'enabled': True,
+                    'config': {'lookback_periods': [1, 5]}
+                },
+                'turnover': {
+                    'enabled': True,
+                    'config': {'hourly_window_minutes': 60}
+                },
+                'feed_staleness': {
+                    'enabled': True,
+                    'config': {'max_staleness_seconds': 1.0}
+                },
+                'liquidity': {
+                    'enabled': True,
+                    'config': {'min_depth_ratio': 0.1}
+                },
+                'concentration': {
+                    'enabled': True,
+                    'config': {'max_position_ratio': 0.25}
+                }
+            },
+            'policies': [{
+                'policy_id': 'comprehensive_sensor_policy',
+                'policy_name': 'Comprehensive Sensor Policy',
+                'rules': [
+                    {
+                        'rule_id': 'stale_feed_kill_switch',
+                        'rule_type': 'threshold',
+                        'field': 'feed_staleness_seconds',
+                        'threshold': 1.0,  # 1 second staleness limit
+                        'operator': 'gt',
+                        'action': 'liquidate',  # KILL_SWITCH equivalent
+                        'severity': 'critical'
+                    },
+                    {
+                        'rule_id': 'liquidity_throttle',
+                        'rule_type': 'threshold',
+                        'field': 'order_book_depth_ratio',
+                        'threshold': 0.1,  # Deep orderbook sweep threshold
+                        'operator': 'lt',
+                        'action': 'reduce_position',  # THROTTLE equivalent
+                        'severity': 'medium'
+                    },
+                    {
+                        'rule_id': 'concentration_block',
+                        'rule_type': 'threshold',
+                        'field': 'position_concentration_ratio',
+                        'threshold': 0.25,  # 25% of portfolio (4x ADV equivalent)
+                        'operator': 'gt',
+                        'action': 'block',
+                        'severity': 'high'
+                    },
+                    {
+                        'rule_id': 'drawdown_halt',
+                        'rule_type': 'threshold',
+                        'field': 'daily_drawdown',
+                        'threshold': -0.05,  # -5%
+                        'operator': 'lt',
+                        'action': 'halt',
+                        'severity': 'critical'
+                    }
+                ]
+            }],
+            'active_policy': 'comprehensive_sensor_policy'
+        }
+    
+    async def test_stale_tick_timestamp_kill_switch(self, comprehensive_risk_config):
+        """Test that stale tick timestamp triggers KILL_SWITCH (LIQUIDATE) action."""
+        print("\n🧪 Testing Stale Tick Timestamp → KILL_SWITCH")
+        print("=" * 60)
+        
+        event_bus = RiskEventBus(max_workers=2)
+        await event_bus.start()
+        
+        try:
+            risk_agent = create_risk_agent_v2(comprehensive_risk_config)
+            event_bus.register_handler(risk_agent)
+            
+            # Create trade request with stale feed timestamp
+            current_time = datetime.now()
+            stale_timestamp = current_time - timedelta(seconds=2.5)  # 2.5 seconds stale
+            
+            trade_event = RiskEvent(
+                event_type=EventType.TRADE_REQUEST,
+                priority=EventPriority.CRITICAL,
+                source="StaleFeedTest",
+                data={
+                    'symbol': 'AAPL',
+                    'trade_value': 100000.0,
+                    'portfolio_value': 1000000.0,
+                    'start_of_day_value': 1000000.0,
+                    'capital_base': 1000000.0,
+                    'timestamp': current_time.isoformat(),
+                    
+                    # Feed staleness data - CRITICAL: feeds are stale
+                    'feed_timestamps': {
+                        'market_data': stale_timestamp.timestamp(),  # 2.5s stale
+                        'order_book': stale_timestamp.timestamp(),   # 2.5s stale
+                        'trades': stale_timestamp.timestamp()        # 2.5s stale
+                    },
+                    
+                    # Other sensor data (normal)
+                    'order_book_depth': {
+                        'AAPL': {
+                            'bids': [(150.00, 10000), (149.95, 5000)],
+                            'asks': [(150.05, 8000), (150.10, 6000)]
+                        }
+                    },
+                    'positions': {'AAPL': 1000},  # Normal position
+                    'daily_volumes': {'AAPL': [50000000] * 20}
+                }
+            )
+            
+            # Publish event
+            await event_bus.publish(trade_event)
+            await asyncio.sleep(0.05)  # Wait for processing
+            
+            # Verify KILL_SWITCH (LIQUIDATE) was triggered
+            bus_metrics = event_bus.get_metrics()
+            agent_stats = risk_agent.get_performance_stats()
+            
+            # Check for liquidation events
+            liquidate_events = bus_metrics['event_counts'].get(EventType.KILL_SWITCH, 0)
+            
+            print(f"📊 Results:")
+            print(f"   Feed staleness: 2.5 seconds (threshold: 1.0s)")
+            print(f"   Kill switch events: {liquidate_events}")
+            print(f"   Risk evaluations: {agent_stats['evaluation_count']}")
+            
+            # Verify kill switch was triggered
+            assert liquidate_events > 0, f"Expected KILL_SWITCH for stale feeds, got {liquidate_events} events"
+            
+            print("✅ PASS: Stale tick timestamp correctly triggered KILL_SWITCH")
+            
+        finally:
+            await event_bus.stop()
+    
+    async def test_deep_orderbook_sweep_throttle(self, comprehensive_risk_config):
+        """Test that deep orderbook sweep triggers THROTTLE (REDUCE_POSITION) action."""
+        print("\n🧪 Testing Deep Orderbook Sweep → THROTTLE")
+        print("=" * 60)
+        
+        event_bus = RiskEventBus(max_workers=2)
+        await event_bus.start()
+        
+        try:
+            risk_agent = create_risk_agent_v2(comprehensive_risk_config)
+            event_bus.register_handler(risk_agent)
+            
+            current_time = datetime.now()
+            
+            trade_event = RiskEvent(
+                event_type=EventType.TRADE_REQUEST,
+                priority=EventPriority.CRITICAL,
+                source="LiquidityTest",
+                data={
+                    'symbol': 'AAPL',
+                    'trade_value': 500000.0,  # Large trade
+                    'portfolio_value': 1000000.0,
+                    'start_of_day_value': 1000000.0,
+                    'capital_base': 1000000.0,
+                    'timestamp': current_time.isoformat(),
+                    
+                    # Fresh feed timestamps (good)
+                    'feed_timestamps': {
+                        'market_data': current_time.timestamp() - 0.1,  # 100ms fresh
+                        'order_book': current_time.timestamp() - 0.05,  # 50ms fresh
+                        'trades': current_time.timestamp() - 0.2        # 200ms fresh
+                    },
+                    
+                    # CRITICAL: Thin order book - deep sweep required
+                    'order_book_depth': {
+                        'AAPL': {
+                            'bids': [(150.00, 100), (149.95, 50)],      # Very thin bids
+                            'asks': [(150.05, 80), (150.10, 60)]       # Very thin asks
+                        }
+                    },
+                    
+                    # Calculate depth ratio: trade_value / available_liquidity
+                    # Trade: $500k, Available liquidity: ~$22.5k → ratio = 0.045 < 0.1 threshold
+                    'order_book_depth_ratio': 0.045,  # Below 0.1 threshold
+                    
+                    'positions': {'AAPL': 1000},  # Normal position
+                    'daily_volumes': {'AAPL': [50000000] * 20}
+                }
+            )
+            
+            # Publish event
+            await event_bus.publish(trade_event)
+            await asyncio.sleep(0.05)
+            
+            # Verify THROTTLE (REDUCE_POSITION) was triggered
+            bus_metrics = event_bus.get_metrics()
+            agent_stats = risk_agent.get_performance_stats()
+            
+            # Check for throttle/reduce position events
+            throttle_events = bus_metrics['event_counts'].get(EventType.RISK_ALERT, 0)
+            
+            print(f"📊 Results:")
+            print(f"   Order book depth ratio: 0.045 (threshold: 0.1)")
+            print(f"   Trade size: $500,000")
+            print(f"   Available liquidity: ~$22,500")
+            print(f"   Throttle events: {throttle_events}")
+            print(f"   Risk evaluations: {agent_stats['evaluation_count']}")
+            
+            # Verify throttle was triggered
+            assert throttle_events > 0, f"Expected THROTTLE for thin order book, got {throttle_events} events"
+            
+            print("✅ PASS: Deep orderbook sweep correctly triggered THROTTLE")
+            
+        finally:
+            await event_bus.stop()
+    
+    async def test_4x_adv_position_block(self, comprehensive_risk_config):
+        """Test that 4x ADV position triggers BLOCK action."""
+        print("\n🧪 Testing 4x ADV Position → BLOCK")
+        print("=" * 60)
+        
+        event_bus = RiskEventBus(max_workers=2)
+        await event_bus.start()
+        
+        try:
+            risk_agent = create_risk_agent_v2(comprehensive_risk_config)
+            event_bus.register_handler(risk_agent)
+            
+            current_time = datetime.now()
+            
+            # Calculate 4x ADV scenario
+            # ADV (Average Daily Volume) = 50M shares
+            # 4x ADV = 200M shares
+            # At $150/share = $30B position (unrealistic but for testing)
+            # Let's use more realistic numbers: 25% of portfolio = 4x "normal" position
+            
+            trade_event = RiskEvent(
+                event_type=EventType.TRADE_REQUEST,
+                priority=EventPriority.CRITICAL,
+                source="ConcentrationTest",
+                data={
+                    'symbol': 'AAPL',
+                    'trade_value': 300000.0,  # This trade would create concentration
+                    'portfolio_value': 1000000.0,
+                    'start_of_day_value': 1000000.0,
+                    'capital_base': 1000000.0,
+                    'timestamp': current_time.isoformat(),
+                    
+                    # Fresh feed timestamps (good)
+                    'feed_timestamps': {
+                        'market_data': current_time.timestamp() - 0.1,
+                        'order_book': current_time.timestamp() - 0.05,
+                        'trades': current_time.timestamp() - 0.2
+                    },
+                    
+                    # Good order book depth
+                    'order_book_depth': {
+                        'AAPL': {
+                            'bids': [(150.00, 10000), (149.95, 8000)],
+                            'asks': [(150.05, 12000), (150.10, 9000)]
+                        }
+                    },
+                    'order_book_depth_ratio': 0.5,  # Good liquidity
+                    
+                    # CRITICAL: High position concentration
+                    # Current position: $200k, New trade: $300k, Total: $500k
+                    # Concentration: $500k / $1M portfolio = 50% > 25% threshold
+                    'positions': {'AAPL': 1333},  # Current position ~$200k at $150/share
+                    'position_concentration_ratio': 0.50,  # 50% > 25% threshold
+                    
+                    'daily_volumes': {'AAPL': [50000000] * 20}  # Normal volume
+                }
+            )
+            
+            # Publish event
+            await event_bus.publish(trade_event)
+            await asyncio.sleep(0.05)
+            
+            # Verify BLOCK was triggered
+            bus_metrics = event_bus.get_metrics()
+            agent_stats = risk_agent.get_performance_stats()
+            
+            # Check for block events
+            block_events = bus_metrics['event_counts'].get(EventType.RISK_ALERT, 0)
+            
+            print(f"📊 Results:")
+            print(f"   Current position: ~$200,000 (1,333 shares)")
+            print(f"   New trade: $300,000")
+            print(f"   Total position: ~$500,000")
+            print(f"   Portfolio concentration: 50% (threshold: 25%)")
+            print(f"   Block events: {block_events}")
+            print(f"   Risk evaluations: {agent_stats['evaluation_count']}")
+            
+            # Verify block was triggered
+            assert block_events > 0, f"Expected BLOCK for high concentration, got {block_events} events"
+            
+            print("✅ PASS: 4x ADV position correctly triggered BLOCK")
+            
+        finally:
+            await event_bus.stop()
+    
+    async def test_combined_sensor_scenarios(self, comprehensive_risk_config):
+        """Test multiple sensor conditions simultaneously."""
+        print("\n🧪 Testing Combined Sensor Scenarios")
+        print("=" * 60)
+        
+        event_bus = RiskEventBus(max_workers=2)
+        await event_bus.start()
+        
+        try:
+            risk_agent = create_risk_agent_v2(comprehensive_risk_config)
+            event_bus.register_handler(risk_agent)
+            
+            current_time = datetime.now()
+            stale_timestamp = current_time - timedelta(seconds=3.0)  # Very stale
+            
+            # Scenario: Multiple risk factors triggered simultaneously
+            trade_event = RiskEvent(
+                event_type=EventType.TRADE_REQUEST,
+                priority=EventPriority.CRITICAL,
+                source="CombinedRiskTest",
+                data={
+                    'symbol': 'AAPL',
+                    'trade_value': 400000.0,
+                    'portfolio_value': 900000.0,  # Portfolio down 10%
+                    'start_of_day_value': 1000000.0,
+                    'capital_base': 1000000.0,
+                    'timestamp': current_time.isoformat(),
+                    
+                    # RISK 1: Stale feeds (should trigger KILL_SWITCH)
+                    'feed_timestamps': {
+                        'market_data': stale_timestamp.timestamp(),  # 3s stale
+                        'order_book': stale_timestamp.timestamp(),
+                        'trades': stale_timestamp.timestamp()
+                    },
+                    
+                    # RISK 2: Thin order book (should trigger THROTTLE)
+                    'order_book_depth': {
+                        'AAPL': {
+                            'bids': [(150.00, 50), (149.95, 30)],
+                            'asks': [(150.05, 40), (150.10, 25)]
+                        }
+                    },
+                    'order_book_depth_ratio': 0.03,  # Very thin
+                    
+                    # RISK 3: High concentration (should trigger BLOCK)
+                    'positions': {'AAPL': 2000},  # Large existing position
+                    'position_concentration_ratio': 0.60,  # 60% concentration
+                    
+                    'daily_volumes': {'AAPL': [50000000] * 20}
+                }
+            )
+            
+            # Publish event
+            await event_bus.publish(trade_event)
+            await asyncio.sleep(0.05)
+            
+            # Verify most severe action was taken (KILL_SWITCH should win)
+            bus_metrics = event_bus.get_metrics()
+            agent_stats = risk_agent.get_performance_stats()
+            
+            kill_switch_events = bus_metrics['event_counts'].get(EventType.KILL_SWITCH, 0)
+            risk_alerts = bus_metrics['event_counts'].get(EventType.RISK_ALERT, 0)
+            
+            print(f"📊 Results:")
+            print(f"   Feed staleness: 3.0 seconds (KILL_SWITCH trigger)")
+            print(f"   Order book depth: 0.03 (THROTTLE trigger)")
+            print(f"   Position concentration: 60% (BLOCK trigger)")
+            print(f"   Kill switch events: {kill_switch_events}")
+            print(f"   Risk alert events: {risk_alerts}")
+            print(f"   Risk evaluations: {agent_stats['evaluation_count']}")
+            
+            # Most severe action (KILL_SWITCH) should be taken
+            assert kill_switch_events > 0, "Expected KILL_SWITCH as most severe action"
+            
+            print("✅ PASS: Combined sensor scenarios handled correctly")
+            print("   Most severe action (KILL_SWITCH) was triggered")
+            
+        finally:
+            await event_bus.stop()
+    
+    async def test_sensor_performance_benchmarks(self, comprehensive_risk_config):
+        """Benchmark sensor-based risk evaluation performance."""
+        print("\n🧪 Testing Sensor Performance Benchmarks")
+        print("=" * 60)
+        
+        event_bus = RiskEventBus(max_workers=2)
+        await event_bus.start()
+        
+        try:
+            risk_agent = create_risk_agent_v2(comprehensive_risk_config)
+            event_bus.register_handler(risk_agent)
+            
+            # Generate test events with full sensor data
+            num_events = 50
+            latencies = []
+            
+            for i in range(num_events):
+                current_time = datetime.now()
+                
+                event = RiskEvent(
+                    event_type=EventType.TRADE_REQUEST,
+                    priority=EventPriority.CRITICAL,
+                    source="PerformanceTest",
+                    data={
+                        'symbol': 'AAPL',
+                        'trade_value': 100000.0 + (i * 1000),
+                        'portfolio_value': 1000000.0,
+                        'start_of_day_value': 1000000.0,
+                        'capital_base': 1000000.0,
+                        'timestamp': current_time.isoformat(),
+                        'sequence': i,
+                        
+                        # Full sensor data
+                        'feed_timestamps': {
+                            'market_data': current_time.timestamp() - 0.1,
+                            'order_book': current_time.timestamp() - 0.05,
+                            'trades': current_time.timestamp() - 0.2
+                        },
+                        'order_book_depth': {
+                            'AAPL': {
+                                'bids': [(150.00, 10000), (149.95, 8000)],
+                                'asks': [(150.05, 12000), (150.10, 9000)]
+                            }
+                        },
+                        'order_book_depth_ratio': 0.5,
+                        'positions': {'AAPL': 1000 + i},
+                        'position_concentration_ratio': 0.15 + (i * 0.001),
+                        'daily_volumes': {'AAPL': [50000000] * 20}
+                    }
+                )
+                
+                # Measure individual event latency
+                start_time = time.time_ns()
+                await event_bus.publish(event)
+                await asyncio.sleep(0.001)  # Small delay for processing
+                end_time = time.time_ns()
+                
+                latencies.append((end_time - start_time) / 1000.0)  # Convert to microseconds
+            
+            # Wait for all processing to complete
+            await asyncio.sleep(0.1)
+            
+            # Calculate statistics
+            avg_latency = np.mean(latencies)
+            p50_latency = np.percentile(latencies, 50)
+            p95_latency = np.percentile(latencies, 95)
+            p99_latency = np.percentile(latencies, 99)
+            
+            # Get final metrics
+            bus_metrics = event_bus.get_metrics()
+            agent_stats = risk_agent.get_performance_stats()
+            
+            print(f"📊 Sensor Performance Results:")
+            print(f"   Events processed: {num_events}")
+            print(f"   Average latency: {avg_latency:.2f}µs")
+            print(f"   P50 latency: {p50_latency:.2f}µs")
+            print(f"   P95 latency: {p95_latency:.2f}µs")
+            print(f"   P99 latency: {p99_latency:.2f}µs")
+            print(f"   Risk evaluations: {agent_stats['evaluation_count']}")
+            print(f"   Avg evaluation time: {agent_stats.get('avg_evaluation_time_us', 0):.2f}µs")
+            
+            # Performance assertions
+            assert avg_latency < 5000.0, f"Average latency {avg_latency:.2f}µs exceeds 5ms target"
+            assert p95_latency < 10000.0, f"P95 latency {p95_latency:.2f}µs exceeds 10ms target"
+            
+            print("✅ PASS: Sensor performance within acceptable limits")
+            
+        finally:
+            await event_bus.stop()
+
+
+class TestSensorBasedRiskScenarios:
+    """Test specific sensor-based risk scenarios with expected actions."""
+    
+    @pytest.fixture
+    def sensor_risk_config(self):
+        """Configuration with sensor-based rules for testing specific scenarios."""
+        return {
+            'calculators': {
+                'drawdown': {
+                    'enabled': True,
+                    'config': {'lookback_periods': [1, 5]}
+                },
+                'turnover': {
+                    'enabled': True,
+                    'config': {'hourly_window_minutes': 60}
+                }
+            },
+            'policies': [{
+                'policy_id': 'sensor_test_policy',
+                'policy_name': 'Sensor Test Policy',
+                'rules': [
+                    {
+                        'rule_id': 'stale_feed_kill_switch',
+                        'rule_name': 'Stale Feed Kill Switch',
+                        'rule_type': 'threshold',
+                        'field': 'feed_staleness_seconds',
+                        'threshold': 1.0,  # 1 second staleness limit
+                        'operator': 'gt',
+                        'action': 'liquidate',  # KILL_SWITCH equivalent
+                        'severity': 'critical'
+                    },
+                    {
+                        'rule_id': 'liquidity_throttle',
+                        'rule_name': 'Liquidity Throttle',
+                        'rule_type': 'threshold',
+                        'field': 'order_book_depth_ratio',
+                        'threshold': 0.1,  # Deep orderbook sweep threshold
+                        'operator': 'lt',
+                        'action': 'reduce_position',  # THROTTLE equivalent
+                        'severity': 'medium'
+                    },
+                    {
+                        'rule_id': 'concentration_block',
+                        'rule_name': 'Concentration Block',
+                        'rule_type': 'threshold',
+                        'field': 'position_concentration_ratio',
+                        'threshold': 0.25,  # 25% of portfolio (4x ADV equivalent)
+                        'operator': 'gt',
+                        'action': 'block',
+                        'severity': 'high'
+                    }
+                ]
+            }],
+            'active_policy': 'sensor_test_policy'
+        }
+    
+    async def test_stale_tick_timestamp_kill_switch(self, sensor_risk_config):
+        """Test that stale tick timestamp triggers KILL_SWITCH (LIQUIDATE) action."""
+        print("\n🧪 Testing Stale Tick Timestamp → KILL_SWITCH")
+        
+        # Create rules engine directly for precise testing
+        from src.risk import RulesEngine, RiskPolicy, ThresholdRule
+        
+        engine = RulesEngine()
+        policy = RiskPolicy("test_policy", "Test Policy")
+        
+        stale_feed_rule = ThresholdRule(
+            "stale_feed_kill_switch",
+            "Stale Feed Kill Switch",
+            {
+                'field': 'feed_staleness_seconds',
+                'threshold': 1.0,
+                'operator': 'gt',
+                'action': 'liquidate',
+                'severity': 'critical'
+            }
+        )
+        policy.add_rule(stale_feed_rule)
+        engine.register_policy(policy)
+        
+        # Test data with stale feed timestamp
+        test_data = {
+            'symbol': 'AAPL',
+            'feed_staleness_seconds': 2.5,  # 2.5 seconds stale > 1.0 threshold
+            'order_book_depth_ratio': 0.5,  # Normal liquidity
+            'position_concentration_ratio': 0.15,  # Normal concentration
+        }
+        
+        # Evaluate policy
+        result = engine.evaluate_policy("test_policy", test_data)
+        
+        print(f"   Feed staleness: {test_data['feed_staleness_seconds']} seconds (threshold: 1.0s)")
+        print(f"   Overall action: {result.overall_action}")
+        print(f"   Triggered rules: {len(result.triggered_rules)}")
+        
+        # Verify LIQUIDATE action was triggered
+        assert result.overall_action.value == 'liquidate', f"Expected LIQUIDATE, got {result.overall_action}"
+        assert len(result.triggered_rules) > 0, "No rules were triggered"
+        
+        print("✅ PASS: Stale tick timestamp correctly triggered KILL_SWITCH")
+    
+    async def test_deep_orderbook_sweep_throttle(self, sensor_risk_config):
+        """Test that deep orderbook sweep triggers THROTTLE (REDUCE_POSITION) action."""
+        print("\n🧪 Testing Deep Orderbook Sweep → THROTTLE")
+        
+        # Create rules engine directly
+        from src.risk import RulesEngine, RiskPolicy, ThresholdRule
+        
+        engine = RulesEngine()
+        policy = RiskPolicy("test_policy", "Test Policy")
+        
+        liquidity_rule = ThresholdRule(
+            "liquidity_throttle",
+            "Liquidity Throttle",
+            {
+                'field': 'order_book_depth_ratio',
+                'threshold': 0.1,
+                'operator': 'lt',
+                'action': 'reduce_position',
+                'severity': 'medium'
+            }
+        )
+        policy.add_rule(liquidity_rule)
+        engine.register_policy(policy)
+        
+        # Test data with thin order book
+        test_data = {
+            'symbol': 'AAPL',
+            'feed_staleness_seconds': 0.1,  # Fresh feeds
+            'order_book_depth_ratio': 0.045,  # Thin liquidity < 0.1 threshold
+            'position_concentration_ratio': 0.15,  # Normal concentration
+        }
+        
+        # Evaluate policy
+        result = engine.evaluate_policy("test_policy", test_data)
+        
+        print(f"   Order book depth ratio: {test_data['order_book_depth_ratio']} (threshold: 0.1)")
+        print(f"   Overall action: {result.overall_action}")
+        print(f"   Triggered rules: {len(result.triggered_rules)}")
+        
+        # Verify REDUCE_POSITION action was triggered
+        assert result.overall_action.value == 'reduce_position', f"Expected REDUCE_POSITION, got {result.overall_action}"
+        assert len(result.triggered_rules) > 0, "No rules were triggered"
+        
+        print("✅ PASS: Deep orderbook sweep correctly triggered THROTTLE")
+    
+    async def test_4x_adv_position_block(self, sensor_risk_config):
+        """Test that 4x ADV position triggers BLOCK action."""
+        print("\n🧪 Testing 4x ADV Position → BLOCK")
+        
+        # Create rules engine directly
+        from src.risk import RulesEngine, RiskPolicy, ThresholdRule
+        
+        engine = RulesEngine()
+        policy = RiskPolicy("test_policy", "Test Policy")
+        
+        concentration_rule = ThresholdRule(
+            "concentration_block",
+            "Concentration Block",
+            {
+                'field': 'position_concentration_ratio',
+                'threshold': 0.25,
+                'operator': 'gt',
+                'action': 'block',
+                'severity': 'high'
+            }
+        )
+        policy.add_rule(concentration_rule)
+        engine.register_policy(policy)
+        
+        # Test data with high position concentration
+        test_data = {
+            'symbol': 'AAPL',
+            'feed_staleness_seconds': 0.1,  # Fresh feeds
+            'order_book_depth_ratio': 0.5,  # Good liquidity
+            'position_concentration_ratio': 0.50,  # 50% concentration > 25% threshold
+        }
+        
+        # Evaluate policy
+        result = engine.evaluate_policy("test_policy", test_data)
+        
+        print(f"   Position concentration: {test_data['position_concentration_ratio']*100:.0f}% (threshold: 25%)")
+        print(f"   Overall action: {result.overall_action}")
+        print(f"   Triggered rules: {len(result.triggered_rules)}")
+        
+        # Verify BLOCK action was triggered
+        assert result.overall_action.value == 'block', f"Expected BLOCK, got {result.overall_action}"
+        assert len(result.triggered_rules) > 0, "No rules were triggered"
+        
+        print("✅ PASS: 4x ADV position correctly triggered BLOCK")
+    
+    async def test_combined_sensor_scenarios(self, sensor_risk_config):
+        """Test multiple sensor conditions simultaneously to verify priority handling."""
+        print("\n🧪 Testing Combined Sensor Scenarios")
+        
+        # Create rules engine with all sensor rules
+        from src.risk import RulesEngine, RiskPolicy, ThresholdRule
+        
+        engine = RulesEngine()
+        policy = RiskPolicy("test_policy", "Test Policy")
+        
+        # Add all sensor rules
+        rules = [
+            ThresholdRule("stale_feed", "Stale Feed", {
+                'field': 'feed_staleness_seconds', 'threshold': 1.0, 'operator': 'gt',
+                'action': 'liquidate', 'severity': 'critical'
+            }),
+            ThresholdRule("liquidity", "Liquidity", {
+                'field': 'order_book_depth_ratio', 'threshold': 0.1, 'operator': 'lt',
+                'action': 'reduce_position', 'severity': 'medium'
+            }),
+            ThresholdRule("concentration", "Concentration", {
+                'field': 'position_concentration_ratio', 'threshold': 0.25, 'operator': 'gt',
+                'action': 'block', 'severity': 'high'
+            })
+        ]
+        
+        for rule in rules:
+            policy.add_rule(rule)
+        engine.register_policy(policy)
+        
+        # Test data with multiple risk factors
+        test_data = {
+            'symbol': 'AAPL',
+            'feed_staleness_seconds': 3.0,  # LIQUIDATE trigger
+            'order_book_depth_ratio': 0.03,  # REDUCE_POSITION trigger
+            'position_concentration_ratio': 0.60,  # BLOCK trigger
+        }
+        
+        # Evaluate policy
+        result = engine.evaluate_policy("test_policy", test_data)
+        
+        print(f"   Feed staleness: {test_data['feed_staleness_seconds']}s (LIQUIDATE)")
+        print(f"   Order book depth: {test_data['order_book_depth_ratio']} (REDUCE_POSITION)")
+        print(f"   Position concentration: {test_data['position_concentration_ratio']*100:.0f}% (BLOCK)")
+        print(f"   Overall action: {result.overall_action}")
+        print(f"   Triggered rules: {len(result.triggered_rules)}")
+        
+        # Most severe action (LIQUIDATE) should be taken
+        assert result.overall_action.value == 'liquidate', f"Expected LIQUIDATE as most severe, got {result.overall_action}"
+        assert len(result.triggered_rules) == 3, f"Expected 3 triggered rules, got {len(result.triggered_rules)}"
+        
+        print("✅ PASS: Combined sensor scenarios handled correctly")
+        print("   Most severe action (LIQUIDATE) was triggered")
 
 
 if __name__ == "__main__":

@@ -310,9 +310,9 @@ class CompositeRule(BaseRule):
             action_priority = {
                 RuleAction.ALLOW: 0,
                 RuleAction.WARN: 1,
-                RuleAction.BLOCK: 2,
+                RuleAction.HEDGE: 2,
                 RuleAction.REDUCE_POSITION: 3,
-                RuleAction.HEDGE: 4,
+                RuleAction.BLOCK: 4,
                 RuleAction.HALT: 5,
                 RuleAction.LIQUIDATE: 6
             }
@@ -406,9 +406,9 @@ class RiskPolicy:
             action_priority = {
                 RuleAction.ALLOW: 0,
                 RuleAction.WARN: 1,
-                RuleAction.BLOCK: 2,
+                RuleAction.HEDGE: 2,
                 RuleAction.REDUCE_POSITION: 3,
-                RuleAction.HEDGE: 4,
+                RuleAction.BLOCK: 4,
                 RuleAction.HALT: 5,
                 RuleAction.LIQUIDATE: 6
             }
