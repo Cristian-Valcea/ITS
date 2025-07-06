@@ -6,7 +6,7 @@ Centralized to avoid magic strings and ensure consistency across modules.
 
 # Price data column names
 CLOSE = "close"
-OPEN = "open"
+OPEN_PRICE = "open"  # Renamed to avoid conflict with built-in open()
 HIGH = "high"
 LOW = "low"
 VOLUME = "volume"
@@ -45,16 +45,34 @@ MAX_RISK_EVALUATION_LATENCY_US = 50.0
 
 __all__ = [
     # Price columns
-    "CLOSE", "OPEN", "HIGH", "LOW", "VOLUME", "VWAP",
+    "CLOSE",
+    "OPEN",
+    "HIGH",
+    "LOW",
+    "VOLUME",
+    "VWAP",
     # Features
-    "RSI", "EMA_FAST", "EMA_SLOW", "BOLLINGER_UPPER", "BOLLINGER_LOWER", "VWAP_DEVIATION",
+    "RSI",
+    "EMA_FAST",
+    "EMA_SLOW",
+    "BOLLINGER_UPPER",
+    "BOLLINGER_LOWER",
+    "VWAP_DEVIATION",
     # Actions and positions
-    "ACTION_SELL", "ACTION_HOLD", "ACTION_BUY",
-    "POSITION_SHORT", "POSITION_FLAT", "POSITION_LONG",
+    "ACTION_SELL",
+    "ACTION_HOLD",
+    "ACTION_BUY",
+    "POSITION_SHORT",
+    "POSITION_FLAT",
+    "POSITION_LONG",
     # Risk defaults
-    "DEFAULT_MAX_DRAWDOWN_PCT", "DEFAULT_TRANSACTION_COST_PCT", "DEFAULT_POSITION_SIZE_PCT",
+    "DEFAULT_MAX_DRAWDOWN_PCT",
+    "DEFAULT_TRANSACTION_COST_PCT",
+    "DEFAULT_POSITION_SIZE_PCT",
     # Versioning
-    "MODEL_VERSION_FORMAT", "POLICY_BUNDLE_VERSION",
+    "MODEL_VERSION_FORMAT",
+    "POLICY_BUNDLE_VERSION",
     # Performance
-    "MAX_PREDICTION_LATENCY_US", "MAX_RISK_EVALUATION_LATENCY_US",
+    "MAX_PREDICTION_LATENCY_US",
+    "MAX_RISK_EVALUATION_LATENCY_US",
 ]

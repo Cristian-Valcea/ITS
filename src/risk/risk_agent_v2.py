@@ -133,6 +133,138 @@ class RiskAgentV2(EventHandler):
                 }
             )
     
+    async def calculate_only(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Run risk calculations without enforcement - for training/advisory use.
+        
+        This method provides the same risk calculations used in production
+        but without triggering any enforcement actions. Perfect for:
+        - Training-time risk evaluation
+        - Risk-aware reward shaping
+        - Advisory risk monitoring
+        
+        Args:
+            event_data: Event data dictionary (same format as production)
+            
+        Returns:
+            Dictionary with risk metrics:
+            {
+                'drawdown_pct': float,
+                'drawdown_velocity': float, 
+                'var_breach_severity': float,
+                'position_concentration': float,
+                'liquidity_risk': float,
+                'overall_risk_score': float,
+                'breach_severity': float,
+                'penalty': float,
+                # ... other calculator results
+            }
+        """
+        try:
+            # Step 1: Enhance data with state (same as production)
+            enhanced_data = self._enhance_data_with_state(event_data)
+            
+            # Step 2: Run all calculators (same as production)
+            calc_results = await self._run_calculators(enhanced_data)
+            
+            # Step 3: Flatten results (same as production)
+            flat_data = self._flatten_calculation_results(calc_results, enhanced_data)
+            
+            # Step 4: Extract and normalize key risk metrics
+            risk_metrics = self._extract_risk_metrics(flat_data)
+            
+            return risk_metrics
+            
+        except Exception as e:
+            self.logger.error(f"Risk calculation failed: {e}")
+            # Return safe defaults on error
+            return self._get_default_risk_metrics()
+    
+    def _extract_risk_metrics(self, flat_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract and normalize risk metrics from calculator results."""
+        metrics = {}
+        
+        # Drawdown metrics
+        metrics['drawdown_pct'] = abs(flat_data.get('daily_drawdown', 0.0))
+        metrics['drawdown_velocity'] = abs(flat_data.get('drawdown_velocity', 0.0))
+        
+        # VaR and risk metrics
+        metrics['var_breach_severity'] = max(0.0, flat_data.get('var_breach', 0.0))
+        metrics['expected_shortfall'] = abs(flat_data.get('expected_shortfall', 0.0))
+        
+        # Position and liquidity risk
+        metrics['position_concentration'] = flat_data.get('position_concentration', 0.0)
+        metrics['liquidity_risk'] = flat_data.get('liquidity_risk', 0.0)
+        metrics['kyle_lambda'] = flat_data.get('kyle_lambda', 0.0)
+        
+        # Turnover and execution risk
+        metrics['turnover_risk'] = flat_data.get('turnover_risk', 0.0)
+        metrics['adv_participation'] = flat_data.get('adv_participation', 0.0)
+        
+        # Market microstructure risk
+        metrics['depth_shock'] = flat_data.get('depth_shock', 0.0)
+        metrics['feed_staleness'] = flat_data.get('feed_staleness', 0.0)
+        metrics['latency_drift'] = flat_data.get('latency_drift', 0.0)
+        
+        # Compute overall risk score (0-1 scale)
+        risk_components = [
+            metrics['drawdown_pct'] / 0.05,  # Normalize by 5% drawdown
+            metrics['drawdown_velocity'] / 0.02,  # Normalize by 2% velocity
+            metrics['var_breach_severity'],  # Already 0-1
+            metrics['position_concentration'],  # Already 0-1
+            metrics['liquidity_risk'],  # Already 0-1
+            metrics['turnover_risk'] / 2.0,  # Normalize by 2x turnover
+        ]
+        
+        # Filter out invalid components
+        valid_components = [max(0.0, min(1.0, comp)) for comp in risk_components if comp is not None]
+        
+        if valid_components:
+            metrics['overall_risk_score'] = min(1.0, sum(valid_components) / len(valid_components))
+        else:
+            metrics['overall_risk_score'] = 0.0
+        
+        metrics['breach_severity'] = metrics['overall_risk_score']
+        
+        # Compute penalty for reward shaping (weighted combination)
+        penalty_weights = {
+            'drawdown_pct': 2.0,
+            'drawdown_velocity': 1.5,
+            'var_breach_severity': 3.0,
+            'position_concentration': 1.0,
+            'liquidity_risk': 1.0,
+            'turnover_risk': 0.5,
+        }
+        
+        penalty = 0.0
+        for metric, weight in penalty_weights.items():
+            if metric in metrics and metrics[metric] is not None:
+                penalty += weight * metrics[metric]
+        
+        metrics['penalty'] = penalty
+        
+        return metrics
+    
+    def _get_default_risk_metrics(self) -> Dict[str, Any]:
+        """Return default risk metrics when calculation fails."""
+        return {
+            'drawdown_pct': 0.0,
+            'drawdown_velocity': 0.0,
+            'var_breach_severity': 0.0,
+            'expected_shortfall': 0.0,
+            'position_concentration': 0.0,
+            'liquidity_risk': 0.0,
+            'kyle_lambda': 0.0,
+            'turnover_risk': 0.0,
+            'adv_participation': 0.0,
+            'depth_shock': 0.0,
+            'feed_staleness': 0.0,
+            'latency_drift': 0.0,
+            'overall_risk_score': 0.0,
+            'breach_severity': 0.0,
+            'penalty': 0.0,
+        }
+    
     def _update_state_from_event(self, event: RiskEvent) -> None:
         """Update internal state from incoming event."""
         data = event.data

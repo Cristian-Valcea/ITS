@@ -54,3 +54,11 @@ python-multipart>=0.0.20
 pytest>=7.0.0
 black>=22.0.0
 flake8>=4.0.0
+ruff>=0.1.0
+mypy>=1.0.0
+isort>=5.10.0
+
+# Additional ML/RL dependencies
+tensorboard>=2.8.0
+wandb>=0.15.0
+optuna>=3.0.0

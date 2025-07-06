@@ -1,0 +1,15 @@
+# Training environment dependencies (includes all base requirements)
+-r requirements.txt
+
+# Additional training-specific dependencies
+stable-baselines3[extra]>=2.0.0
+sb3-contrib>=2.0.0
+tensorboard>=2.8.0
+wandb>=0.15.0
+optuna>=3.0.0
+
+# GPU support (optional)
+# torch[cuda]>=1.11.0  # Uncomment for CUDA support
+
+# Advanced RL libraries (optional)
+# ray[rllib]>=2.0.0    # Uncomment for Ray RLlib support
