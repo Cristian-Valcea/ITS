@@ -1,95 +1,145 @@
 # src/agents/trainer_agent.py
-import os
+"""
+DEPRECATED: This module has been refactored and moved to src/training/trainer_agent.py
+
+This file is kept for backward compatibility but should not be used for new development.
+Use the new production-grade TrainerAgent from src.training.trainer_agent instead.
+
+Key improvements in the new version:
+- Clean SB3 integration without dummy fallbacks
+- Risk-aware training with callbacks and reward shaping  
+- TorchScript policy bundle export for production deployment
+- Comprehensive type hints and error handling
+- Latency SLO validation (<100µs per prediction)
+"""
+
 import logging
-from datetime import datetime
+import warnings
+from typing import Dict, Any, Optional
 
-# Attempt to import Stable-Baselines3 components
+# Import the new implementation
 try:
-    from stable_baselines3 import DQN # Using DQN as the base for C51-like features
-    # from stable_baselines3.dqn import CnnPolicy, MlpPolicy # Policies
-    # from sb3_contrib import QRDQN, C51 # If using sb3_contrib for true C51 or QRDQN
-    from stable_baselines3.common.monitor import Monitor
-    from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
-    from stable_baselines3.common.vec_env import DummyVecEnv
-    # For PER, SB3's DQN has built-in support via a parameter.
-    # If a custom ReplayBuffer is needed:
-    # from stable_baselines3.common.buffers import ReplayBuffer, PrioritizedReplayBuffer # (PrioritizedReplayBuffer might be in contrib or custom)
-    SB3_AVAILABLE = True
-    SB3_MODEL_CLASSES = {
-        'DQN': DQN,
-        # Add other SB3 models here if supported, e.g.
-        # 'A2C': A2C,
-        # 'PPO': PPO,
-        # 'C51': C51, # If using from sb3_contrib
-        # 'QRDQN': QRDQN, # If using from sb3_contrib
-    }
-except ImportError:
-    SB3_AVAILABLE = False
-    logging.warning("Stable-Baselines3 components not found. TrainerAgent will use dummy implementations.")
-    # Define dummy classes if SB3 is not available, to allow skeleton to run
-    class DummySB3Model:
-        def __init__(self, policy, env, **kwargs): self.logger = logging.getLogger("DummySB3Model"); self.env = env; self.kwargs = kwargs; self.num_timesteps = 0 # Added num_timesteps for predict
-        def predict(self, observation, state=None, episode_start=None, deterministic=False): # Added predict
-            self.logger.info(f"Dummy predict called with observation shape: {observation.shape if hasattr(observation, 'shape') else 'N/A'}, deterministic: {deterministic}")
-            # Return a dummy action (e.g., random action from env space if env is available)
-            if self.env and hasattr(self.env, 'action_space'):
-                action = self.env.action_space.sample()
-                self.logger.info(f"Dummy predict returning action: {action}")
-                return action, None # action, state (None for SB3)
-            self.logger.info(f"Dummy predict returning default action: 0")
-            return 0, None # Default dummy action if no env
-        def learn(self, total_timesteps, callback=None, tb_log_name="DummyRun", **kwargs):
-            self.logger.info(f"Dummy learn for {total_timesteps} timesteps. TB log: {tb_log_name}. Callbacks: {callback}")
-            if callback: callback.init_callback(self) # Mimic SB3 callback init
-            for i in range(0, int(total_timesteps), 1000): # Simulate steps
-                if callback:
-                    if hasattr(callback, 'on_step'):
-                         if not callback.on_step(): break # Callback signals to stop
-                if (i/1000) % self.kwargs.get('log_interval', 100) == 0:
-                    self.logger.info(f"Dummy learn: Timestep {i+1000}/{total_timesteps}")
-            if callback and hasattr(callback, 'on_training_end'): callback.on_training_end()
+    from ..training.trainer_agent import TrainerAgent as NewTrainerAgent, create_trainer_agent
+    from ..gym_env.intraday_trading_env import IntradayTradingEnv
+    NEW_TRAINER_AVAILABLE = True
+except ImportError as e:
+    NEW_TRAINER_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.error(f"New TrainerAgent not available: {e}")
 
-        def save(self, path): self.logger.info(f"Dummy save model to {path}"); os.makedirs(os.path.dirname(path), exist_ok=True); open(path + ".dummy", "w").write("dummy")
-        @classmethod
-        def load(cls, path, env=None, **kwargs): logger = logging.getLogger("DummySB3Model"); logger.info(f"Dummy load model from {path}"); return cls(None,env) # Simplified
+# Issue deprecation warning
+warnings.warn(
+    "src.agents.trainer_agent is deprecated. Use src.training.trainer_agent instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
+
+logger = logging.getLogger(__name__)
+logger.warning(
+    "DEPRECATED: src.agents.trainer_agent is deprecated. "
+    "Use src.training.trainer_agent.TrainerAgent instead."
+)
+
+
+class TrainerAgent:
+    """
+    DEPRECATED: Compatibility wrapper for the old TrainerAgent.
     
-    class Monitor: # Dummy Monitor
-        def __init__(self, env, filename=None, **kwargs): self.env = env; self.logger = logging.getLogger("DummyMonitor") ; self.logger.info(f"Dummy Monitor initialized for env. Log: {filename}")
-        def __getattr__(self, name): return getattr(self.env, name) # Pass through attributes
-        def reset(self, **kwargs): self.logger.debug("Dummy Monitor reset called"); return self.env.reset(**kwargs)
-        def step(self, action): self.logger.debug(f"Dummy Monitor step with action {action}"); return self.env.step(action)
-        def close(self): self.env.close()
+    This class provides basic compatibility but lacks the advanced features
+    of the new production-grade implementation.
+    """
+    
+    def __init__(self, config: Dict[str, Any], training_env: Optional[IntradayTradingEnv] = None):
+        warnings.warn(
+            "TrainerAgent from src.agents.trainer_agent is deprecated. "
+            "Use src.training.trainer_agent.TrainerAgent for production features.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
+        if NEW_TRAINER_AVAILABLE:
+            # Delegate to new implementation
+            self._new_trainer = NewTrainerAgent(config, training_env)
+            logger.info("Using new TrainerAgent implementation via compatibility wrapper")
+        else:
+            # Minimal fallback
+            self.config = config
+            self.logger = logging.getLogger("DeprecatedTrainerAgent")
+            self.logger.error("New TrainerAgent not available, using minimal fallback")
+            raise ImportError(
+                "New TrainerAgent implementation not available. "
+                "Please install required dependencies: pip install stable-baselines3[extra]"
+            )
+    
+    def __getattr__(self, name):
+        """Delegate all method calls to the new implementation."""
+        if hasattr(self, '_new_trainer'):
+            return getattr(self._new_trainer, name)
+        else:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
-    class CheckpointCallback: # Dummy CheckpointCallback
-         def __init__(self, save_freq, save_path, name_prefix="rl_model", **kwargs): self.sf=save_freq; self.sp=save_path; self.np=name_prefix; self.logger=logging.getLogger("DummyCheckpointCb"); self.num_timesteps=0; os.makedirs(save_path, exist_ok=True)
-         def init_callback(self, model): self.model = model # SB3 style
-         def _on_step(self) -> bool: self.num_timesteps+=1; self.logger.debug(f"Dummy CB step {self.num_timesteps}"); return True
-         def on_step(self) -> bool: # For the dummy model's loop
-             self.num_timesteps+=1
-             if self.num_timesteps % self.sf == 0: model_path=os.path.join(self.sp,f"{self.np}_{self.num_timesteps}_steps.zip"); self.logger.info(f"Dummy Checkpoint: Saving model to {model_path}"); self.model.save(model_path)
-             return True
-    class EvalCallback: # Dummy EvalCallback
-        def __init__(self, eval_env, **kwargs): self.logger = logging.getLogger("DummyEvalCallback"); self.logger.info("Dummy EvalCallback initialized.")
-        def init_callback(self, model): self.model = model
-        def _on_step(self) -> bool: return True
-        def on_step(self) -> bool: return True # Simplified for dummy loop
 
-    # Assign dummy if real ones not available
-    if not SB3_AVAILABLE:
-        DQN_dummy_assign = DummySB3Model # Use a different name to avoid confusion with potential later import
-        # MlpPolicy = "MlpPolicy" # Keep as string for DummySB3Model
-        # CnnPolicy = "CnnPolicy"
-        SB3_MODEL_CLASSES = { # Ensure SB3_MODEL_CLASSES is defined in the else block too
-            'DQN': DQN_dummy_assign,
-        }
+# Export compatibility symbols
+if NEW_TRAINER_AVAILABLE:
+    # Re-export from new module for compatibility
+    __all__ = ["TrainerAgent", "create_trainer_agent"]
+else:
+    __all__ = ["TrainerAgent"]
 
 
-from .base_agent import BaseAgent
-# Ensure IntradayTradingEnv is available for type hinting even if SB3 is not
-if SB3_AVAILABLE:
-    from src.gym_env.intraday_trading_env import IntradayTradingEnv
-else: # Define a placeholder if gym_env might also be missing or for type hinting consistency
-    class IntradayTradingEnv: pass
+# Migration guide
+MIGRATION_GUIDE = """
+MIGRATION GUIDE: src.agents.trainer_agent → src.training.trainer_agent
+================================================================
+
+OLD USAGE:
+    from src.agents.trainer_agent import TrainerAgent
+    
+    trainer = TrainerAgent(config, env)
+    model_path = trainer.run(env)
+
+NEW USAGE:
+    from src.training.trainer_agent import TrainerAgent, create_trainer_agent
+    
+    # Option 1: Direct instantiation
+    trainer = TrainerAgent(config, env)
+    model_path = trainer.run(env)
+    
+    # Option 2: Factory function (recommended)
+    trainer = create_trainer_agent(config, env)
+    model_path = trainer.run(env)
+
+NEW FEATURES:
+    ✅ Risk-aware training with RiskAdvisor integration
+    ✅ TorchScript policy bundle export for production
+    ✅ Latency SLO validation (<100µs per prediction)
+    ✅ Clean SB3 integration without dummy fallbacks
+    ✅ Comprehensive type hints and error handling
+    ✅ Production-ready callbacks and monitoring
+
+CONFIGURATION CHANGES:
+    # Add risk-aware training (optional)
+    config['risk_config'] = {
+        'enabled': True,
+        'policy_yaml': 'config/risk_limits.yaml',
+        'penalty_weight': 0.1,
+        'early_stop_threshold': 0.8
+    }
+    
+    # Simplified algorithm configuration
+    config['algorithm'] = 'DQN'  # No more dummy fallbacks
+    config['algo_params'] = {...}
+    config['training_params'] = {...}
+
+BREAKING CHANGES:
+    ❌ Removed SB3 dummy fallbacks - SB3 is now required
+    ❌ Removed incomplete C51 implementation
+    ❌ Changed model save format to TorchScript bundles
+    ❌ Updated callback interface for risk-aware training
+"""
+
+if __name__ == "__main__":
+    print(MIGRATION_GUIDE)
 
 
 class TrainerAgent(BaseAgent):

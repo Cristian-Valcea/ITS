@@ -803,9 +803,18 @@ class OrchestratorAgent:
 
             if shares_to_trade > 0 and order_action:
                 self.logger.info(f"Trade Decision for {symbol}: {order_action} {shares_to_trade:.0f} @ Px={current_price:.2f}")
-                is_safe, reason = self.risk_agent.assess_trade_risk(abs(shares_to_trade * current_price), current_time_of_bar)
+                # Comprehensive pre-trade risk check using all sensors
+                quantity_signed = shares_to_trade if order_action == "BUY" else -shares_to_trade
+                is_safe, action, detailed_reason = self.risk_agent.pre_trade_check(
+                    symbol=symbol,
+                    quantity=quantity_signed,
+                    price=current_price,
+                    timestamp=current_time_of_bar,
+                    market_data=self._gather_market_data_for_risk_check(symbol, current_time_of_bar)
+                )
+                
                 if is_safe:
-                    self.logger.info(f"Trade for {symbol} safe by RiskAgent: {reason}")
+                    self.logger.info(f"Trade for {symbol} approved by comprehensive risk check: {detailed_reason}")
                     live_cfg = self.main_config.get('live_trading', {})
                     contract_cfg = live_cfg.get('contract_details', {})
                     order_details = {'symbol': symbol, 'sec_type': contract_cfg.get('sec_type','STK'), 'exchange': contract_cfg.get('exchange','SMART'), 'currency': contract_cfg.get('currency','USD'), 'primary_exchange': contract_cfg.get('primary_exchange'), 'action': order_action, 'quantity': shares_to_trade, 'order_type': live_cfg.get('order_type',"MKT").upper(), 'limit_price': None, 'tif': live_cfg.get('time_in_force',"DAY").upper(), 'account': self.main_config.get('ibkr_connection',{}).get('account_id')}
@@ -816,8 +825,21 @@ class OrchestratorAgent:
                         self.open_trades[trade_obj.order.orderId] = trade_obj
                     else: self.logger.error(f"Failed to place order for {symbol} or trade_obj invalid.")
                 else:
-                    self.logger.warning(f"Trade for {symbol} blocked by RiskAgent: {reason}")
-                    if "HALT" in reason and self.risk_agent.halt_on_breach: # Check RiskAgent's own halt_on_breach config first
+                    # Handle different risk actions
+                    if action == "LIQUIDATE":
+                        self.logger.critical(f"LIQUIDATE signal for {symbol}: {detailed_reason}")
+                        # Use existing halt logic for liquidation
+                        if self.risk_limits_config.get('liquidate_on_halt', False):
+                            self.logger.critical(f"LIQUIDATION required for {symbol} as per configuration.")
+                    elif action == "HALT":
+                        self.logger.critical(f"Trading halted for {symbol}: {detailed_reason}")
+                        if self.risk_agent.halt_on_breach:
+                            self.logger.critical(f"HALT signal from comprehensive risk check is active for {symbol}.")
+                    else:
+                        self.logger.warning(f"Trade blocked for {symbol}: {detailed_reason}")
+                        if "HALT" in detailed_reason and self.risk_agent.halt_on_breach:
+                            self.logger.critical(f"HALT signal from comprehensive risk check is active for {symbol}.")
+                    if "HALT" in detailed_reason and self.risk_agent.halt_on_breach: # Check RiskAgent's own halt_on_breach config first
                         self.logger.critical(f"HALT signal from RiskAgent is active for {symbol} due to: {reason}.")
                         if self.risk_limits_config.get('liquidate_on_halt', False): # Now check Orchestrator's config for liquidation
                             self.logger.critical(f"LIQUIDATION required for {symbol} as per configuration.")
@@ -1371,9 +1393,18 @@ class OrchestratorAgent:
 
             if shares_to_trade > 0 and order_action:
                 self.logger.info(f"Trade Decision for {symbol}: {order_action} {shares_to_trade:.0f} @ Px={current_price:.2f}")
-                is_safe, reason = self.risk_agent.assess_trade_risk(abs(shares_to_trade * current_price), current_time_of_bar)
+                # Comprehensive pre-trade risk check using all sensors
+                quantity_signed = shares_to_trade if order_action == "BUY" else -shares_to_trade
+                is_safe, action, detailed_reason = self.risk_agent.pre_trade_check(
+                    symbol=symbol,
+                    quantity=quantity_signed,
+                    price=current_price,
+                    timestamp=current_time_of_bar,
+                    market_data=self._gather_market_data_for_risk_check(symbol, current_time_of_bar)
+                )
+                
                 if is_safe:
-                    self.logger.info(f"Trade for {symbol} safe by RiskAgent: {reason}")
+                    self.logger.info(f"Trade for {symbol} approved by comprehensive risk check: {detailed_reason}")
                     live_cfg = self.main_config.get('live_trading', {})
                     contract_cfg = live_cfg.get('contract_details', {})
                     order_details = {'symbol': symbol, 'sec_type': contract_cfg.get('sec_type','STK'), 'exchange': contract_cfg.get('exchange','SMART'), 'currency': contract_cfg.get('currency','USD'), 'primary_exchange': contract_cfg.get('primary_exchange'), 'action': order_action, 'quantity': shares_to_trade, 'order_type': live_cfg.get('order_type',"MKT").upper(), 'limit_price': None, 'tif': live_cfg.get('time_in_force',"DAY").upper(), 'account': self.main_config.get('ibkr_connection',{}).get('account_id')}
@@ -1384,8 +1415,21 @@ class OrchestratorAgent:
                         self.open_trades[trade_obj.order.orderId] = trade_obj
                     else: self.logger.error(f"Failed to place order for {symbol} or trade_obj invalid.")
                 else: 
-                    self.logger.warning(f"Trade for {symbol} blocked by RiskAgent: {reason}")
-                    if "HALT" in reason and self.risk_agent.halt_on_breach:
+                    # Handle different risk actions
+                    if action == "LIQUIDATE":
+                        self.logger.critical(f"LIQUIDATE signal for {symbol}: {detailed_reason}")
+                        # Use existing halt logic for liquidation
+                        if self.risk_limits_config.get('liquidate_on_halt', False):
+                            self.logger.critical(f"LIQUIDATION required for {symbol} as per configuration.")
+                    elif action == "HALT":
+                        self.logger.critical(f"Trading halted for {symbol}: {detailed_reason}")
+                        if self.risk_agent.halt_on_breach:
+                            self.logger.critical(f"HALT signal from comprehensive risk check is active for {symbol}.")
+                    else:
+                        self.logger.warning(f"Trade blocked for {symbol}: {detailed_reason}")
+                        if "HALT" in detailed_reason and self.risk_agent.halt_on_breach:
+                            self.logger.critical(f"HALT signal from comprehensive risk check is active for {symbol}.")
+                    if "HALT" in detailed_reason and self.risk_agent.halt_on_breach:
                         self.logger.critical(f"HALT signal from RiskAgent is active for {symbol} due to: {reason}.")
                         if self.risk_limits_config.get('liquidate_on_halt', False):
                             self.logger.critical(f"LIQUIDATION required for {symbol} as per configuration.")
@@ -1574,7 +1618,164 @@ class OrchestratorAgent:
         # [schedule_weekly_retrain logic as previously defined]
         self.logger.info("--- Starting Scheduled Weekly Retrain ---") # Simplified for brevity
         pass # Placeholder
-
+    
+    def _gather_market_data_for_risk_check(self, symbol: str, timestamp: datetime) -> Dict[str, Any]:
+        """
+        Gather market data for comprehensive risk assessment.
+        
+        In production, this would collect:
+        - Order book depth and spread
+        - Recent trade history and volumes
+        - Feed timestamps and latencies
+        - Market volatility and liquidity metrics
+        
+        For now, returns basic data structure that sensors can work with.
+        """
+        try:
+            # Get current market data from data agent if available
+            market_data = {}
+            
+            # Try to get recent price data
+            if hasattr(self.data_agent, 'get_recent_bars'):
+                try:
+                    recent_bars = self.data_agent.get_recent_bars(symbol, count=100)
+                    if recent_bars is not None and len(recent_bars) > 0:
+                        market_data['recent_prices'] = recent_bars[COL_CLOSE].values.tolist()
+                        market_data['recent_volumes'] = recent_bars[COL_VOLUME].values.tolist()
+                        market_data['recent_highs'] = recent_bars[COL_HIGH].values.tolist()
+                        market_data['recent_lows'] = recent_bars[COL_LOW].values.tolist()
+                except Exception as e:
+                    self.logger.debug(f"Could not get recent bars for {symbol}: {e}")
+            
+            # Add portfolio context
+            market_data.update({
+                'symbol': symbol,
+                'current_positions': self.portfolio_state.get('positions', {}),
+                'available_funds': self.portfolio_state.get('available_funds', 0.0),
+                'net_liquidation': self.portfolio_state.get('net_liquidation', 0.0),
+                'timestamp': timestamp,
+                
+                # Mock feed timestamps (in production, get from actual feeds)
+                'feed_timestamps': {
+                    'market_data': timestamp.timestamp() - 0.1,  # 100ms old
+                    'order_book': timestamp.timestamp() - 0.05,  # 50ms old
+                    'trades': timestamp.timestamp() - 0.2,       # 200ms old
+                    'news': timestamp.timestamp() - 1.0         # 1s old
+                },
+                
+                # Mock order book (in production, get from actual order book)
+                'order_book_depth': {
+                    symbol: {
+                        'bids': [(149.95, 1000), (149.90, 2000), (149.85, 1500)],
+                        'asks': [(150.05, 1200), (150.10, 1800), (150.15, 2200)]
+                    }
+                },
+                
+                # Mock recent order latencies (in production, track actual latencies)
+                'order_latencies': [45.0, 52.0, 48.0, 55.0, 47.0],  # milliseconds
+                
+                # Daily volume data (mock - in production get from market data)
+                'daily_volumes': {
+                    symbol: [50000000] * 20  # Mock 20-day volume history
+                }
+            })
+            
+            return market_data
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to gather market data for risk check: {e}")
+            return {
+                'symbol': symbol,
+                'timestamp': timestamp,
+                'feed_timestamps': {
+                    'market_data': timestamp.timestamp() - 0.1,
+                    'order_book': timestamp.timestamp() - 0.05,
+                    'trades': timestamp.timestamp() - 0.2,
+                }
+            }
+    
+    def _gather_market_data_for_risk_check(self, symbol: str, timestamp: datetime) -> Dict[str, Any]:
+        """
+        Gather market data for comprehensive risk assessment.
+        
+        In production, this would collect:
+        - Order book depth and spread
+        - Recent trade history and volumes
+        - Feed timestamps and latencies
+        - Market volatility and liquidity metrics
+        
+        For now, returns basic data structure that sensors can work with.
+        """
+        try:
+            # Get current market data from data agent if available
+            market_data = {}
+            
+            # Try to get recent price data
+            if hasattr(self.data_agent, 'get_recent_bars'):
+                try:
+                    recent_bars = self.data_agent.get_recent_bars(symbol, count=100)
+                    if recent_bars is not None and len(recent_bars) > 0:
+                        market_data['recent_prices'] = recent_bars[COL_CLOSE].values.tolist()
+                        market_data['recent_volumes'] = recent_bars[COL_VOLUME].values.tolist()
+                        market_data['recent_highs'] = recent_bars[COL_HIGH].values.tolist()
+                        market_data['recent_lows'] = recent_bars[COL_LOW].values.tolist()
+                except Exception as e:
+                    self.logger.debug(f"Could not get recent bars for {symbol}: {e}")
+            
+            # Add portfolio context
+            market_data.update({
+                'symbol': symbol,
+                'current_positions': self.portfolio_state.get('positions', {}),
+                'available_funds': self.portfolio_state.get('available_funds', 0.0),
+                'net_liquidation': self.portfolio_state.get('net_liquidation', 0.0),
+                'timestamp': timestamp,
+                
+                # Mock feed timestamps (in production, get from actual feeds)
+                'feed_timestamps': {
+                    'market_data': timestamp.timestamp() - 0.1,  # 100ms old
+                    'order_book': timestamp.timestamp() - 0.05,  # 50ms old
+                    'trades': timestamp.timestamp() - 0.2,       # 200ms old
+                    'news': timestamp.timestamp() - 1.0         # 1s old
+                },
+                
+                # Mock order book (in production, get from actual order book)
+                'order_book_depth': {
+                    symbol: {
+                        'bids': [(149.95, 1000), (149.90, 2000), (149.85, 1500)],
+                        'asks': [(150.05, 1200), (150.10, 1800), (150.15, 2200)]
+                    }
+                },
+                
+                # Mock recent order latencies (in production, track actual latencies)
+                'order_latencies': [45.0, 52.0, 48.0, 55.0, 47.0],  # milliseconds
+                
+                # Additional data for calculators
+                'portfolio_values': [self.portfolio_state.get('net_liquidation', 0.0)] * 10,
+                'trade_values': [100000.0] * 5,  # Recent trade values
+                'timestamps': [timestamp.timestamp() - i*60 for i in range(5)],
+                'price_changes': [0.001, -0.002, 0.0015, -0.0005, 0.0008],
+                'returns': [0.001, -0.002, 0.0015, -0.0005, 0.0008],
+                'positions': self.portfolio_state.get('positions', {}),
+                
+                # Daily volume data (mock - in production get from market data)
+                'daily_volumes': {
+                    symbol: [50000000] * 20  # Mock 20-day volume history
+                }
+            })
+            
+            return market_data
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to gather market data for risk check: {e}")
+            return {
+                'symbol': symbol,
+                'timestamp': timestamp,
+                'feed_timestamps': {
+                    'market_data': timestamp.timestamp() - 0.1,
+                    'order_book': timestamp.timestamp() - 0.05,
+                    'trades': timestamp.timestamp() - 0.2,
+                }
+            }
 
 
 if __name__ == '__main__':

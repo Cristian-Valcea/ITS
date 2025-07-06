@@ -17,72 +17,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from wsgiref.simple_server import demo_app
 from .event_types import RiskEvent, EventType, EventPriority
-from .obs.audit_sink import JsonAuditSink
-
-class EventPriority(Enum):
-    """Event priority levels for latency-sensitive processing."""
-    CRITICAL = 0    # Pre-trade, kill switches (5-20 µs)
-    HIGH = 1        # Risk calculations (100-150 µs)  
-    MEDIUM = 2      # Rules evaluation (50-100 µs)
-    LOW = 3         # Monitoring, alerts (0.5-1s)
-    ANALYTICS = 4   # Batch processing (minutes)
-
-
-class EventType(Enum):
-    """Risk event types."""
-    MARKET_DATA = "market_data"
-    POSITION_UPDATE = "position_update"
-    TRADE_REQUEST = "trade_request"
-    RISK_CALCULATION = "risk_calculation"
-    RULE_EVALUATION = "rule_evaluation"
-    LIMIT_BREACH = "limit_breach"
-    KILL_SWITCH = "kill_switch"
-    ALERT = "alert"
-    CONFIG_UPDATE = "config_update"
-    RISK_MONITORING = "risk_monitoring"
-    POSITION_MANAGEMENT = "position_management"
-    HEARTBEAT = "heartbeat"         
-
-@dataclass
-class RiskEvent:
-    """
-    Immutable risk event with microsecond precision timing.
-    Designed for high-frequency, low-latency processing.
-    """
-    event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    event_type: EventType = EventType.MARKET_DATA
-    priority: EventPriority = EventPriority.MEDIUM
-    timestamp_ns: int = field(default_factory=lambda: time.time_ns())
-    source: str = "unknown"
-    data: Dict[str, Any] = field(default_factory=dict)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    
-    def __post_init__(self):
-        """Ensure immutability and add processing metadata."""
-        # Add latency tracking
-        self.metadata.setdefault('created_at_ns', self.timestamp_ns)
-        self.metadata.setdefault('processing_start_ns', None)
-        self.metadata.setdefault('processing_end_ns', None)
-    
-    def start_processing(self) -> None:
-        """Mark start of processing for latency tracking."""
-        self.metadata['processing_start_ns'] = time.time_ns()
-    
-    def end_processing(self) -> None:
-        """Mark end of processing for latency tracking."""
-        self.metadata['processing_end_ns'] = time.time_ns()
-    
-    def get_processing_latency_us(self) -> Optional[float]:
-        """Get processing latency in microseconds."""
-        start = self.metadata.get('processing_start_ns')
-        end = self.metadata.get('processing_end_ns')
-        if start and end:
-            return (end - start) / 1000.0  # Convert ns to µs
-        return None
-    
-    def get_total_latency_us(self) -> float:
-        """Get total latency from creation to now in microseconds."""
-        return (time.time_ns() - self.timestamp_ns) / 1000.0
+from .obs.enhanced_audit_sink import EnhancedJsonAuditSink
 
 
 class EventHandler(ABC):
@@ -128,7 +63,8 @@ class RiskEventBus:
     def __init__(self, 
                  max_workers: int = 10,
                  enable_latency_monitoring: bool = True,
-                 latency_slo_us: Dict[EventPriority, float] = None):
+                 latency_slo_us: Dict[EventPriority, float] = None,
+                 audit_log_path: str = None):
         """
         Initialize the event bus.
         
@@ -136,8 +72,9 @@ class RiskEventBus:
             max_workers: Maximum number of worker threads
             enable_latency_monitoring: Whether to track latency metrics
             latency_slo_us: SLO thresholds in microseconds per priority
+            audit_log_path: Path for audit logs (uses env var or default if None)
         """
-        self._audit_sink = JsonAuditSink()
+        self._audit_sink = EnhancedJsonAuditSink(path=audit_log_path)
         self.logger = logging.getLogger(self.__class__.__name__)
         
         # Event routing

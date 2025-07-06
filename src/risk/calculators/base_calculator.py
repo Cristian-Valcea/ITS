@@ -22,6 +22,19 @@ class RiskMetricType(Enum):
     CONCENTRATION = "concentration"
     LIQUIDITY = "liquidity"
     CORRELATION = "correlation"
+    
+    # New sensor-based metrics
+    ULCER_INDEX = "ulcer_index"
+    DRAWDOWN_VELOCITY = "drawdown_velocity"
+    EXPECTED_SHORTFALL = "expected_shortfall"
+    VOL_OF_VOL = "vol_of_vol"
+    KYLE_LAMBDA = "kyle_lambda"
+    DEPTH_SHOCK = "depth_shock"
+    ADV_PARTICIPATION = "adv_participation"
+    FEED_STALENESS = "feed_staleness"
+    LATENCY_DRIFT = "latency_drift"
+    TIME_TO_MARGIN_EXHAUSTION = "time_to_margin_exhaustion"
+    REGIME_SWITCH = "regime_switch"
 
 
 @dataclass

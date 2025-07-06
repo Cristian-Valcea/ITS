@@ -26,7 +26,8 @@ from .calculators import (
     BaseRiskCalculator, DrawdownCalculator, TurnoverCalculator
 )
 from .rules_engine import RulesEngine, RiskPolicy, PolicyValidator, ThresholdRule, RuleAction
-from .event_bus import RiskEventBus, RiskEvent, EventType, EventPriority
+from .event_bus import RiskEventBus
+from .event_types import RiskEvent, EventType, EventPriority
 from .risk_agent_v2 import RiskAgentV2, create_risk_agent_v2
 
 __all__ = [
