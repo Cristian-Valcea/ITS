@@ -9,10 +9,17 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from .event_bus import EventHandler, RiskEvent, EventType, EventPriority
+from .event_bus import EventHandler
+from .event_types import RiskEvent, EventType, EventPriority
 from .calculators.base_calculator import BaseRiskCalculator, RiskCalculationResult
 from .rules_engine import RulesEngine, RuleAction, PolicyEvaluationResult
-from .calculators import DrawdownCalculator, TurnoverCalculator
+from .calculators import (
+    DrawdownCalculator, TurnoverCalculator,
+    UlcerIndexCalculator, DrawdownVelocityCalculator,
+    ExpectedShortfallCalculator, KyleLambdaCalculator,
+    DepthShockCalculator, FeedStalenessCalculator,
+    LatencyDriftCalculator, ADVParticipationCalculator
+)
 
 
 class RiskAgentV2(EventHandler):
@@ -475,6 +482,47 @@ def create_risk_agent_v2(config: Dict[str, Any]) -> RiskAgentV2:
         )
         calculators.append(turnover_calc)
     
+    # Add new sensor calculators with minimal config (pull thresholds from YAML)
+    if calc_configs.get('ulcer_index', {}).get('enabled', True):
+        calculators.append(UlcerIndexCalculator(
+            config=calc_configs.get('ulcer_index', {}).get('config', {})
+        ))
+    
+    if calc_configs.get('drawdown_velocity', {}).get('enabled', True):
+        calculators.append(DrawdownVelocityCalculator(
+            config=calc_configs.get('drawdown_velocity', {}).get('config', {})
+        ))
+    
+    if calc_configs.get('expected_shortfall', {}).get('enabled', True):
+        calculators.append(ExpectedShortfallCalculator(
+            config=calc_configs.get('expected_shortfall', {}).get('config', {})
+        ))
+    
+    if calc_configs.get('kyle_lambda', {}).get('enabled', True):
+        calculators.append(KyleLambdaCalculator(
+            config=calc_configs.get('kyle_lambda', {}).get('config', {})
+        ))
+    
+    if calc_configs.get('depth_shock', {}).get('enabled', True):
+        calculators.append(DepthShockCalculator(
+            config=calc_configs.get('depth_shock', {}).get('config', {})
+        ))
+    
+    if calc_configs.get('feed_staleness', {}).get('enabled', True):
+        calculators.append(FeedStalenessCalculator(
+            config=calc_configs.get('feed_staleness', {}).get('config', {})
+        ))
+    
+    if calc_configs.get('latency_drift', {}).get('enabled', True):
+        calculators.append(LatencyDriftCalculator(
+            config=calc_configs.get('latency_drift', {}).get('config', {})
+        ))
+    
+    if calc_configs.get('adv_participation', {}).get('enabled', True):
+        calculators.append(ADVParticipationCalculator(
+            config=calc_configs.get('adv_participation', {}).get('config', {})
+        ))
+    
     # Create rules engine
     rules_engine = RulesEngine()
     
@@ -513,3 +561,20 @@ def create_risk_agent_v2(config: Dict[str, Any]) -> RiskAgentV2:
     }
     
     return RiskAgentV2(calculators, rules_engine, limits_config)
+
+
+if __name__ == "__main__":
+    """Diagnostic check to see what calculators are loaded in RiskAgentV2."""
+    import inspect
+    import sys
+    import pathlib
+    import pprint
+    
+    # Note: This won't work when run directly due to relative imports
+    # Use diagnostic_risk_agent_v2.py in the project root instead
+    print("❌ Cannot run directly due to relative imports.")
+    print("✅ Use: python diagnostic_risk_agent_v2.py")
+    print()
+    print("Expected output format:")
+    print("RiskAgentV2 is initialised with calculators:")
+    print("['DrawdownCalculator', 'TurnoverCalculator', ...]")
