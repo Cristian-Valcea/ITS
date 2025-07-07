@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(__file__))
 
 from src.risk.risk_agent_adapter import RiskAgentAdapter
-from src.agents.orchestrator_agent import OrchestratorAgent
+from src.execution.orchestrator_agent import OrchestratorAgent
 
 
 def create_test_configs():

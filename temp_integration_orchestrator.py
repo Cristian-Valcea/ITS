@@ -23,7 +23,7 @@ from src.column_names import COL_CLOSE, COL_OPEN, COL_HIGH, COL_LOW, COL_VOLUME 
 from src.agents.data_agent import DataAgent
 from src.agents.feature_agent import FeatureAgent
 from src.agents.env_agent import EnvAgent
-from src.agents.trainer_agent import TrainerAgent
+from src.training.trainer_agent import create_trainer_agent
 from src.agents.evaluator_agent import EvaluatorAgent
 from src.agents.risk_agent import RiskAgent
 

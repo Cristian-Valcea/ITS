@@ -33,7 +33,7 @@ PROJECT_ROOT = SCRIPT_DIR
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.agents.orchestrator_agent import OrchestratorAgent
+from src.execution.orchestrator_agent import OrchestratorAgent
 
 def setup_logging():
     """Setup comprehensive logging."""
