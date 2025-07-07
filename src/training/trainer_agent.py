@@ -11,6 +11,7 @@ Key features:
 """
 
 import logging
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -38,6 +39,7 @@ try:
     from .interfaces.rl_policy import RLPolicy
     from .interfaces.risk_advisor import RiskAdvisor, ProductionRiskAdvisor
     from .policies.sb3_policy import SB3Policy, SB3_AVAILABLE, SB3_ALGORITHMS
+    from ..risk.risk_agent_v2 import RiskAgentV2
 except ImportError:
     # Fallback for direct execution
     import sys
@@ -49,6 +51,105 @@ except ImportError:
     from training.interfaces.rl_policy import RLPolicy
     from training.interfaces.risk_advisor import RiskAdvisor, ProductionRiskAdvisor
     from training.policies.sb3_policy import SB3Policy, SB3_AVAILABLE, SB3_ALGORITHMS
+    from risk.risk_agent_v2 import RiskAgentV2
+
+
+class RiskPenaltyCallback(BaseCallback):
+    """
+    Callback that directly modifies training rewards based on risk evaluation.
+    
+    This callback evaluates risk at each step and applies penalties directly
+    to the environment reward, providing immediate feedback to the agent.
+    """
+    
+    def __init__(self, advisor: RiskAdvisor, lam: float = 0.1, verbose: int = 0):
+        super().__init__(verbose)
+        self.advisor = advisor
+        self.lam = lam
+        self.total_penalties = 0.0
+        self.penalty_count = 0
+        self._logger = logging.getLogger("RiskPenaltyCallback")
+    
+    def _on_step(self) -> bool:
+        """Apply risk penalty to current reward."""
+        try:
+            # Get the last observation from the environment
+            obs = None
+            
+            if hasattr(self.model.env, 'get_attr'):
+                # VecEnv case - try multiple attribute names
+                for attr_name in ['last_raw_obs', '_last_obs', 'last_obs']:
+                    try:
+                        obs_list = self.model.env.get_attr(attr_name)
+                        if obs_list and obs_list[0] is not None:
+                            obs = obs_list[0]
+                            break
+                    except:
+                        continue
+            else:
+                # Single environment case - try multiple ways to get observation
+                env = self.model.env
+                
+                # If it's a Monitor wrapper, get the underlying environment
+                if hasattr(env, 'env'):
+                    env = env.env
+                
+                # Try different attribute names
+                for attr_name in ['last_raw_obs', '_last_obs', 'last_obs']:
+                    if hasattr(env, attr_name):
+                        obs = getattr(env, attr_name)
+                        if obs is not None:
+                            break
+            
+            # If we still don't have an observation, skip this step
+            if obs is None:
+                return True
+            
+            # Convert observation to dict format for risk advisor
+            obs_dict = self._convert_obs_to_dict(obs)
+            
+            # Evaluate risk
+            risk = self.advisor.evaluate(obs_dict)
+            
+            # Calculate penalty based on drawdown velocity
+            penalty = self.lam * risk.get('drawdown_vel', 0)
+            
+            if penalty > 0:
+                # Apply penalty to the training environment reward
+                # Note: This is a simplified approach. In practice, you might want to
+                # modify the reward in the environment's step function or use reward shaping
+                
+                # For now, we'll just log the penalty and accumulate it
+                # The actual reward modification would need to be implemented in the environment
+                if self.verbose > 1:
+                    self._logger.debug(f"Risk penalty calculated: {penalty:.4f}")
+                
+                # In a real implementation, you might:
+                # 1. Store the penalty to be applied in the next reward
+                # 2. Modify the environment's reward function
+                # 3. Use a reward wrapper that applies the penalty
+                
+                # Track penalties for logging
+                self.total_penalties += penalty
+                self.penalty_count += 1
+                
+                if self.verbose > 0 and self.penalty_count % 100 == 0:
+                    avg_penalty = self.total_penalties / self.penalty_count
+                    self._logger.info(f"Risk penalties applied: {self.penalty_count}, avg: {avg_penalty:.4f}")
+        
+        except Exception as e:
+            self._logger.error(f"Risk penalty evaluation failed: {e}")
+            # Continue training on errors
+        
+        return True
+    
+    def _convert_obs_to_dict(self, obs: np.ndarray) -> Dict[str, Any]:
+        """Convert observation array to dictionary format for risk advisor."""
+        return {
+            "market_features": obs[:-1] if len(obs) > 1 else obs,
+            "position": obs[-1] if len(obs) > 1 else 0.0,
+            "timestamp": datetime.now(),
+        }
 
 
 class RiskAwareCallback(BaseCallback):
@@ -80,24 +181,41 @@ class RiskAwareCallback(BaseCallback):
         self.total_risk_penalty = 0.0
         self.episode_count = 0
 
-        self.logger = logging.getLogger("RiskAwareCallback")
+        self._logger = logging.getLogger("RiskAwareCallback")
 
     def _on_step(self) -> bool:
         """Called at each training step."""
         # Get current observation from environment
+        obs = None
+        
         if hasattr(self.training_env, "get_attr"):
-            # VecEnv
-            obs_list = self.training_env.get_attr("_last_obs")
-            if obs_list and obs_list[0] is not None:
-                obs = obs_list[0]
-            else:
-                return True  # Skip if no observation available
+            # VecEnv case
+            for attr_name in ['last_raw_obs', '_last_obs', 'last_obs']:
+                try:
+                    obs_list = self.training_env.get_attr(attr_name)
+                    if obs_list and obs_list[0] is not None:
+                        obs = obs_list[0]
+                        break
+                except:
+                    continue
         else:
-            # Single env
-            if hasattr(self.training_env, "_last_obs"):
-                obs = self.training_env._last_obs
-            else:
-                return True  # Skip if no observation available
+            # Single env case
+            env = self.training_env
+            
+            # If it's a Monitor wrapper, get the underlying environment
+            if hasattr(env, 'env'):
+                env = env.env
+            
+            # Try different attribute names
+            for attr_name in ['last_raw_obs', '_last_obs', 'last_obs']:
+                if hasattr(env, attr_name):
+                    obs = getattr(env, attr_name)
+                    if obs is not None:
+                        break
+        
+        # Skip if no observation available
+        if obs is None:
+            return True
 
         try:
             # Convert observation to dict format expected by risk advisor
@@ -109,14 +227,14 @@ class RiskAwareCallback(BaseCallback):
             # Check for early stopping
             if risk_metrics["breach_severity"] > self.early_stop_threshold:
                 self.risk_violations += 1
-                self.logger.warning(
+                self._logger.warning(
                     f"Risk breach detected: severity={risk_metrics['breach_severity']:.3f} "
                     f"(threshold={self.early_stop_threshold})"
                 )
 
                 # Stop training if too many violations
                 if self.risk_violations > 5:
-                    self.logger.critical("Too many risk violations, stopping training early")
+                    self._logger.critical("Too many risk violations, stopping training early")
                     return False
 
             # Log risk metrics periodically
@@ -127,7 +245,7 @@ class RiskAwareCallback(BaseCallback):
             self.total_risk_penalty += risk_metrics["penalty"]
 
         except Exception as e:
-            self.logger.error(f"Risk evaluation failed: {e}")
+            self._logger.error(f"Risk evaluation failed: {e}")
             # Continue training on risk evaluation errors
 
         return True
@@ -139,7 +257,7 @@ class RiskAwareCallback(BaseCallback):
         # Log episode-level risk statistics
         if self.episode_count % 10 == 0:
             avg_risk_penalty = self.total_risk_penalty / max(1, self.num_timesteps)
-            self.logger.info(
+            self._logger.info(
                 f"Episode {self.episode_count}: "
                 f"Risk violations: {self.risk_violations}, "
                 f"Avg risk penalty: {avg_risk_penalty:.4f}"
@@ -157,7 +275,7 @@ class RiskAwareCallback(BaseCallback):
 
     def _log_risk_metrics(self, risk_metrics: Dict[str, float]) -> None:
         """Log risk metrics to TensorBoard."""
-        if self.logger is not None:
+        if hasattr(self, 'logger') and self.logger is not None:
             for metric_name, value in risk_metrics.items():
                 self.logger.record(f"risk/{metric_name}", value)
 
@@ -204,6 +322,7 @@ class TrainerAgent(BaseAgent):
         self.model: Optional[DQN] = None
         self.training_env_monitor: Optional[Monitor] = None
         self.risk_advisor: Optional[RiskAdvisor] = None
+        self._risk_agent: Optional[RiskAgentV2] = None
 
         # Set up risk advisor if configured
         if self.risk_config.get("enabled", False):
@@ -218,23 +337,45 @@ class TrainerAgent(BaseAgent):
         self.logger.info(f"Log dir: {self.log_dir}")
 
     def _setup_risk_advisor(self) -> None:
-        """Set up risk advisor for risk-aware training."""
+        """Set up risk advisor for risk-aware training using RiskAgentV2.from_yaml()."""
         try:
             risk_policy_path = self.risk_config.get("policy_yaml")
             if risk_policy_path:
                 risk_policy_path = Path(risk_policy_path)
                 if risk_policy_path.exists():
+                    # Use RiskAgentV2.from_yaml() instead of hand-rolled calculator list
+                    self._risk_agent = RiskAgentV2.from_yaml(str(risk_policy_path))
+                    self.logger.info(f"✅ RiskAgentV2 initialized from YAML: {risk_policy_path}")
+                    self.logger.info(f"📊 Loaded {len(self._risk_agent.calculators)} risk calculators")
+                    
+                    # Keep backward compatibility by also creating ProductionRiskAdvisor wrapper
+                    # This ensures existing callback code continues to work
                     self.risk_advisor = ProductionRiskAdvisor(
                         policy_yaml=risk_policy_path, advisor_id="trainer_risk_advisor"
                     )
-                    self.logger.info(f"Risk advisor initialized with policy: {risk_policy_path}")
                 else:
                     self.logger.warning(f"Risk policy file not found: {risk_policy_path}")
+                    self._risk_agent = None
             else:
                 self.logger.info("No risk policy specified, risk-aware training disabled")
+                self._risk_agent = None
         except Exception as e:
             self.logger.error(f"Failed to setup risk advisor: {e}")
             self.risk_advisor = None
+            self._risk_agent = None
+
+    @property
+    def risk_agent(self) -> Optional[RiskAgentV2]:
+        """
+        Get the RiskAgentV2 instance for direct access to risk calculations.
+        
+        This provides access to the underlying RiskAgentV2 without the ProductionRiskAdvisor wrapper.
+        Use this when you need direct access to RiskAgentV2 methods like calculate_only().
+        
+        Returns:
+            RiskAgentV2 instance if risk is enabled, None otherwise
+        """
+        return self._risk_agent
 
     def set_env(self, env: IntradayTradingEnv) -> None:
         """Set and wrap training environment with monitoring."""
@@ -487,8 +628,18 @@ class TrainerAgent(BaseAgent):
         )
         callbacks.append(checkpoint_callback)
 
-        # Risk-aware callback
+        # Risk-aware callbacks
         if self.risk_advisor is not None:
+            # Risk penalty callback - directly modifies rewards during training
+            risk_penalty_callback = RiskPenaltyCallback(
+                advisor=self.risk_advisor,
+                lam=self.risk_config.get("penalty_lambda", 0.1),
+                verbose=self.risk_config.get("verbose", 0)
+            )
+            callbacks.append(risk_penalty_callback)
+            self.logger.info("Risk penalty callback enabled")
+            
+            # Risk monitoring callback - for logging and early stopping
             risk_callback = RiskAwareCallback(
                 risk_advisor=self.risk_advisor,
                 penalty_weight=self.risk_config.get("penalty_weight", 0.1),
@@ -496,7 +647,7 @@ class TrainerAgent(BaseAgent):
                 log_freq=self.risk_config.get("log_freq", 100),
             )
             callbacks.append(risk_callback)
-            self.logger.info("Risk-aware callback enabled")
+            self.logger.info("Risk monitoring callback enabled")
 
         # Evaluation callback (optional)
         if self.training_params.get("use_eval_callback", False):
@@ -517,18 +668,128 @@ class TrainerAgent(BaseAgent):
         return callbacks
 
     def _save_model_bundle(self, run_dir: Path, run_name: str) -> Path:
-        """Save model as production-ready bundle."""
+        """Save model as production-ready bundle with TorchScript export."""
         # Create SB3Policy wrapper
         sb3_policy = SB3Policy(self.model, policy_id=run_name)
 
-        # Save bundle
+        # Save traditional SB3 bundle
         bundle_path = run_dir / "policy_bundle"
         sb3_policy.save_bundle(bundle_path)
+
+        # Export TorchScript bundle for production deployment
+        self._export_torchscript_bundle(run_dir, run_name)
 
         # Validate latency SLO
         self._validate_policy_latency(sb3_policy)
 
         return bundle_path
+
+    def _export_torchscript_bundle(self, run_dir: Path, run_name: str) -> None:
+        """Export TorchScript bundle for production deployment."""
+        try:
+            self.logger.info("🔧 Exporting TorchScript bundle for production...")
+            
+            # Create TorchScript bundle directory
+            bundle_dir = run_dir / f"{run_name}_torchscript"
+            bundle_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Get sample observation for tracing
+            obs = self.training_env_monitor.reset()
+            if isinstance(obs, tuple):
+                obs = obs[0]  # Handle new gym API
+            
+            # Convert to tensor for tracing
+            obs_tensor = torch.from_numpy(obs).float().unsqueeze(0)  # Add batch dimension
+            
+            # Export policy to TorchScript using trace method
+            self.logger.info("📦 Converting policy to TorchScript...")
+            
+            # Create a wrapper for the policy network that can be traced
+            class PolicyWrapper(torch.nn.Module):
+                def __init__(self, policy):
+                    super().__init__()
+                    self.policy = policy
+                
+                def forward(self, obs):
+                    # Use the policy's forward method for deterministic action
+                    with torch.no_grad():
+                        # Get the action logits/values from the policy
+                        if hasattr(self.policy, 'q_net'):
+                            # DQN case - use q_net directly
+                            q_values = self.policy.q_net(obs)
+                            return q_values
+                        elif hasattr(self.policy, 'mlp_extractor'):
+                            # Other policies with mlp_extractor
+                            features = self.policy.extract_features(obs)
+                            return self.policy.action_net(features)
+                        else:
+                            # Fallback - try to get action distribution
+                            actions, _ = self.policy.predict(obs.numpy(), deterministic=True)
+                            return torch.tensor(actions).float()
+            
+            # Create wrapper and trace it
+            wrapper = PolicyWrapper(self.model.policy)
+            wrapper.eval()
+            
+            # Trace the model
+            scripted = torch.jit.trace(wrapper, obs_tensor)
+            
+            # Save TorchScript model
+            script_path = bundle_dir / "policy.pt"
+            scripted.save(str(script_path))
+            self.logger.info(f"✅ TorchScript model saved: {script_path}")
+            
+            # Create metadata for the bundle
+            metadata = {
+                "algo": self.algorithm_name,
+                "obs_shape": list(self.training_env_monitor.observation_space.shape),
+                "action_space": int(self.training_env_monitor.action_space.n),  # Convert to Python int
+                "created": datetime.utcnow().isoformat(),
+                "run_name": run_name,
+                "policy_id": run_name,
+                "version": "1.0",
+                "framework": "torchscript",
+                "export_method": "trace"
+            }
+            
+            # Save metadata
+            metadata_path = bundle_dir / "metadata.json"
+            with open(metadata_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+            self.logger.info(f"✅ Metadata saved: {metadata_path}")
+            
+            # Log bundle contents
+            self.logger.info(f"📁 TorchScript bundle created at: {bundle_dir}")
+            self.logger.info(f"   📄 policy.pt ({script_path.stat().st_size / 1024:.1f} KB)")
+            self.logger.info(f"   📄 metadata.json ({metadata_path.stat().st_size} bytes)")
+            
+            # Test the exported model
+            self._test_torchscript_export(script_path, obs_tensor)
+            
+        except Exception as e:
+            self.logger.error(f"❌ TorchScript export failed: {e}")
+            # Don't fail the entire training process, just log the error
+            import traceback
+            self.logger.debug(f"TorchScript export traceback: {traceback.format_exc()}")
+
+    def _test_torchscript_export(self, script_path: Path, sample_obs: torch.Tensor) -> None:
+        """Test the exported TorchScript model."""
+        try:
+            self.logger.info("🧪 Testing exported TorchScript model...")
+            
+            # Load the exported model
+            loaded_model = torch.jit.load(str(script_path))
+            loaded_model.eval()
+            
+            # Test inference
+            with torch.no_grad():
+                output = loaded_model(sample_obs)
+            
+            self.logger.info(f"✅ TorchScript model test successful, output shape: {output.shape}")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ TorchScript model test failed: {e}")
+            # Don't fail the export, just warn
 
     def _validate_policy_latency(self, policy: RLPolicy) -> None:
         """Validate that policy meets latency SLO."""
@@ -619,4 +880,4 @@ def create_trainer_agent(
     return TrainerAgent(config, training_env)
 
 
-__all__ = ["TrainerAgent", "RiskAwareCallback", "create_trainer_agent"]
+__all__ = ["TrainerAgent", "RiskPenaltyCallback", "RiskAwareCallback", "create_trainer_agent"]

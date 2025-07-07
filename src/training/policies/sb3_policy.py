@@ -272,16 +272,25 @@ class TorchScriptPolicy(RLPolicy):
         self.logger.info(f"TorchScriptPolicy loaded: {self.policy_id}")
 
     def predict(self, obs: np.ndarray, deterministic: bool = True) -> Tuple[int, Dict[str, Any]]:
-        """Predict using TorchScript model."""
+        """Predict using TorchScript model with soft-deadline latency check."""
+        import time
+        
         try:
             # Convert to tensor
             obs_tensor = torch.from_numpy(obs).float()
             if obs_tensor.dim() == 1:
                 obs_tensor = obs_tensor.unsqueeze(0)  # Add batch dimension
 
+            # High-precision timing for policy forward pass
+            start = time.perf_counter_ns()
+            
             # Predict
             with torch.no_grad():
                 action_tensor = self.model(obs_tensor)
+            
+            # Soft-deadline assertion - fail fast on SLA violation
+            lat_us = (time.perf_counter_ns() - start) / 1_000
+            assert lat_us < 100, f"Inference {lat_us:.1f}µs exceeds SLA"
 
             # Convert to action
             if action_tensor.dim() > 1:
@@ -297,6 +306,7 @@ class TorchScriptPolicy(RLPolicy):
                 "policy_id": self.policy_id,
                 "deterministic": deterministic,
                 "framework": "torchscript",
+                "inference_latency_us": lat_us,
             }
 
             return action, info

@@ -1,0 +1,134 @@
+# config/risk_limits_v2.yaml
+# RiskAgentV2 compatible configuration
+# This format is required for RiskAgentV2.from_yaml() method
+
+# Calculator configurations
+calculators:
+  drawdown:
+    enabled: true
+    config:
+      lookback_periods: [1, 5, 20]
+      min_periods: 1
+  
+  turnover:
+    enabled: true
+    config:
+      hourly_window_minutes: 60
+      daily_window_hours: 24
+      use_absolute_values: true
+  
+  ulcer_index:
+    enabled: true
+    config:
+      lookback_periods: [14, 30]
+  
+  drawdown_velocity:
+    enabled: true
+    config:
+      velocity_window: 5
+  
+  expected_shortfall:
+    enabled: true
+    config:
+      confidence_level: 0.95  # 95% confidence level (5% tail risk)
+      lookback_periods: [20, 60]
+  
+  kyle_lambda:
+    enabled: true
+    config:
+      estimation_window: 20
+  
+  depth_shock:
+    enabled: true
+    config:
+      shock_threshold: 0.1
+  
+  feed_staleness:
+    enabled: true
+    config:
+      staleness_threshold_seconds: 30
+  
+  latency_drift:
+    enabled: true
+    config:
+      baseline_latency_ms: 10
+      drift_threshold: 2.0
+  
+  adv_participation:
+    enabled: true
+    config:
+      adv_lookback_days: 20
+      participation_threshold: 0.05
+
+# Risk policies and rules
+policies:
+  - policy_id: "main_risk_policy"
+    policy_name: "Main Risk Policy"
+    rules:
+      # Drawdown limits
+      - rule_id: "daily_drawdown_limit"
+        rule_name: "Daily Drawdown Limit"
+        rule_type: "threshold"
+        field: "daily_drawdown"
+        threshold: -0.02  # -2% (from original config)
+        operator: "lt"
+        action: "halt"
+        severity: "critical"
+      
+      - rule_id: "max_drawdown_warning"
+        rule_name: "Max Drawdown Warning"
+        rule_type: "threshold"
+        field: "max_drawdown"
+        threshold: -0.05  # -5% warning level
+        operator: "lt"
+        action: "warn"
+        severity: "medium"
+      
+      # Turnover limits
+      - rule_id: "hourly_turnover_limit"
+        rule_name: "Hourly Turnover Limit"
+        rule_type: "threshold"
+        field: "hourly_turnover_ratio"
+        threshold: 5.0  # 5x capital per hour (from original config)
+        operator: "gt"
+        action: "block"
+        severity: "high"
+      
+      - rule_id: "daily_turnover_limit"
+        rule_name: "Daily Turnover Limit"
+        rule_type: "threshold"
+        field: "total_turnover_ratio"
+        threshold: 20.0  # 20x capital per day (from original config)
+        operator: "gt"
+        action: "halt"
+        severity: "critical"
+      
+      # Risk score limits
+      - rule_id: "overall_risk_warning"
+        rule_name: "Overall Risk Warning"
+        rule_type: "threshold"
+        field: "overall_risk_score"
+        threshold: 0.7
+        operator: "gt"
+        action: "warn"
+        severity: "medium"
+      
+      - rule_id: "overall_risk_critical"
+        rule_name: "Overall Risk Critical"
+        rule_type: "threshold"
+        field: "overall_risk_score"
+        threshold: 0.9
+        operator: "gt"
+        action: "halt"
+        severity: "critical"
+
+# Active policy
+active_policy: "main_risk_policy"
+
+# Legacy limits (for backward compatibility)
+limits:
+  max_daily_drawdown_pct: 0.02
+  max_hourly_turnover_ratio: 5.0
+  max_daily_turnover_ratio: 20.0
+  halt_on_breach: true
+  liquidate_on_halt: false

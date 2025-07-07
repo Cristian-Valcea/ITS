@@ -2,6 +2,7 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
+from numpy.typing import NDArray  # for type hints
 import pandas as pd
 import logging
 
@@ -31,7 +32,7 @@ class IntradayTradingEnv(gym.Env):
     metadata = {'render_modes': ['human', 'logs'], 'render_fps': 1}
 
     def __init__(self,
-                 processed_feature_data: np.ndarray, # Market features only
+                 processed_feature_data: NDArray[np.float32], # Market features only
                  price_data: pd.Series, # Unscaled close prices for P&L, aligned with feature_data
                  initial_capital: float = 100000.0,
                  lookback_window: int = 1,
@@ -153,7 +154,7 @@ class IntradayTradingEnv(gym.Env):
         self.reset()
 
 
-    def _get_observation(self):
+    def _get_observation(self) -> NDArray[np.float32]:
         """Constructs the observation: market features + current position."""
         market_obs_part = self.market_feature_data[self.current_step].astype(np.float32)
         position_feature = float(self.current_position) # Current position (-1, 0, or 1)

@@ -585,6 +585,53 @@ class RiskAgentV2(EventHandler):
         if old_policy != new_policy:
             self.logger.info(f"Active policy changed: {old_policy} -> {new_policy}")
 
+    @classmethod
+    def from_yaml(cls, policy_yaml_path: str) -> 'RiskAgentV2':
+        """
+        Create RiskAgentV2 instance from YAML configuration file.
+        
+        This is the recommended way to instantiate RiskAgentV2 as it:
+        1. Loads and validates the YAML configuration
+        2. Creates all configured calculators automatically
+        3. Sets up the rules engine with policies
+        4. Provides a clean, single-point-of-configuration interface
+        
+        Args:
+            policy_yaml_path: Path to the YAML configuration file
+            
+        Returns:
+            Fully configured RiskAgentV2 instance
+            
+        Example:
+            risk_agent = RiskAgentV2.from_yaml('config/risk_limits.yaml')
+        """
+        import yaml
+        from pathlib import Path
+        
+        policy_path = Path(policy_yaml_path)
+        if not policy_path.exists():
+            raise FileNotFoundError(f"Risk policy file not found: {policy_path}")
+        
+        try:
+            with open(policy_path, 'r') as f:
+                config = yaml.safe_load(f)
+            
+            # Use the factory function to create the instance
+            instance = create_risk_agent_v2(config)
+            
+            # Log successful creation
+            logger = logging.getLogger(cls.__name__)
+            logger.info(f"RiskAgentV2 created from YAML: {policy_path}")
+            logger.info(f"Loaded {len(instance.calculators)} calculators")
+            logger.info(f"Active policy: {instance.limits_config.get('active_policy')}")
+            
+            return instance
+            
+        except yaml.YAMLError as e:
+            raise ValueError(f"Invalid YAML in {policy_path}: {e}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to create RiskAgentV2 from {policy_path}: {e}")
+
 
 # Factory function for easy setup
 def create_risk_agent_v2(config: Dict[str, Any]) -> RiskAgentV2:

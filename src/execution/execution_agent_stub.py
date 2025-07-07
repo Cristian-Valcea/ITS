@@ -33,14 +33,16 @@ class ExecutionAgentStub:
     - CPU-only inference
     """
 
-    def __init__(self, policy_bundle_path: Path):
+    def __init__(self, policy_bundle_path: Path, enable_soft_deadline: bool = True):
         """
         Initialize ExecutionAgentStub with policy bundle.
 
         Args:
             policy_bundle_path: Path to policy bundle directory
+            enable_soft_deadline: Whether to enable soft-deadline assertions (default: True)
         """
         self.policy_bundle_path = Path(policy_bundle_path)
+        self.enable_soft_deadline = enable_soft_deadline
         self.logger = logging.getLogger(self.__class__.__name__)
 
         # Load policy
@@ -52,6 +54,8 @@ class ExecutionAgentStub:
         self.slo_violations = 0
 
         self.logger.info(f"ExecutionAgentStub initialized with bundle: {policy_bundle_path}")
+        if not enable_soft_deadline:
+            self.logger.warning("⚠️ Soft-deadline assertions disabled for testing")
 
     def _load_policy_bundle(self):
         """Load policy from bundle directory."""
@@ -72,7 +76,7 @@ class ExecutionAgentStub:
 
     def predict(self, obs: np.ndarray, deterministic: bool = True) -> Tuple[int, Dict[str, Any]]:
         """
-        Predict action with latency monitoring.
+        Predict action with latency monitoring and soft-deadline assertion.
 
         Args:
             obs: Observation array
@@ -81,39 +85,46 @@ class ExecutionAgentStub:
         Returns:
             Tuple of (action, info_dict)
         """
-        start_time = time.perf_counter()
+        # High-precision timing for soft-deadline check
+        start = time.perf_counter_ns()
 
         try:
             # Make prediction
             action, info = self.policy.predict(obs, deterministic=deterministic)
 
-            # Calculate latency
-            end_time = time.perf_counter()
-            latency_us = (end_time - start_time) * 1_000_000
+            # Calculate latency with nanosecond precision
+            lat_us = (time.perf_counter_ns() - start) / 1_000
+
+            # Soft-deadline assertion - fail fast on SLA violation
+            if self.enable_soft_deadline:
+                assert lat_us < 100, f"Inference {lat_us:.1f}µs exceeds SLA"
 
             # Update performance tracking
             self.prediction_count += 1
-            self.total_prediction_time_us += latency_us
+            self.total_prediction_time_us += lat_us
 
-            # Check SLO violation
-            if latency_us > MAX_PREDICTION_LATENCY_US:
+            # Check SLO violation (for logging/monitoring)
+            if lat_us > MAX_PREDICTION_LATENCY_US:
                 self.slo_violations += 1
                 self.logger.warning(
-                    f"SLO violation: prediction took {latency_us:.1f}µs "
+                    f"SLO violation: prediction took {lat_us:.1f}µs "
                     f"(limit: {MAX_PREDICTION_LATENCY_US}µs)"
                 )
 
             # Add performance info
             info.update(
                 {
-                    "latency_us": latency_us,
-                    "slo_violation": latency_us > MAX_PREDICTION_LATENCY_US,
+                    "latency_us": lat_us,
+                    "slo_violation": lat_us > MAX_PREDICTION_LATENCY_US,
                     "prediction_count": self.prediction_count,
                 }
             )
 
             return action, info
 
+        except AssertionError:
+            # Re-raise assertion errors (soft-deadline violations)
+            raise
         except Exception as e:
             self.logger.error(f"Prediction failed: {e}")
             # Return safe default
@@ -165,14 +176,22 @@ class ExecutionAgentStub:
 
         latencies = []
 
-        # Run trials
-        for i in range(num_trials):
-            start_time = time.perf_counter()
-            action, info = self.predict(sample_obs, deterministic=True)
-            end_time = time.perf_counter()
+        # Temporarily disable soft-deadline assertions for validation
+        original_soft_deadline = self.enable_soft_deadline
+        self.enable_soft_deadline = False
+        
+        try:
+            # Run trials
+            for i in range(num_trials):
+                start_time = time.perf_counter()
+                action, info = self.predict(sample_obs, deterministic=True)
+                end_time = time.perf_counter()
 
-            latency_us = (end_time - start_time) * 1_000_000
-            latencies.append(latency_us)
+                latency_us = (end_time - start_time) * 1_000_000
+                latencies.append(latency_us)
+        finally:
+            # Restore original setting
+            self.enable_soft_deadline = original_soft_deadline
 
         # Calculate statistics
         latencies = np.array(latencies)
@@ -245,12 +264,13 @@ class ExecutionAgentStub:
         return benchmark_results
 
 
-def create_execution_agent_stub(policy_bundle_path: Path) -> ExecutionAgentStub:
+def create_execution_agent_stub(policy_bundle_path: Path, enable_soft_deadline: bool = True) -> ExecutionAgentStub:
     """
     Factory function to create ExecutionAgentStub with validation.
 
     Args:
         policy_bundle_path: Path to policy bundle
+        enable_soft_deadline: Whether to enable soft-deadline assertions
 
     Returns:
         Configured ExecutionAgentStub
@@ -268,7 +288,7 @@ def create_execution_agent_stub(policy_bundle_path: Path) -> ExecutionAgentStub:
         if not file_path.exists():
             raise FileNotFoundError(f"Required bundle file missing: {file_path}")
 
-    return ExecutionAgentStub(bundle_path)
+    return ExecutionAgentStub(bundle_path, enable_soft_deadline)
 
 
 __all__ = ["ExecutionAgentStub", "create_execution_agent_stub"]
