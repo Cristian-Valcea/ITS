@@ -13,8 +13,15 @@ from pathlib import Path
 from typing import Dict, Any, List
 from unittest.mock import Mock, MagicMock
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Add src to path (from tests directory, go up one level)
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+# Import the RiskPenaltyCallback after adding src to path
+try:
+    from training.trainer_agent import RiskPenaltyCallback
+except ImportError as e:
+    print(f"❌ Failed to import RiskPenaltyCallback: {e}")
+    RiskPenaltyCallback = None
 
 def create_high_drawdown_observation() -> Dict[str, Any]:
     """Create an observation representing high drawdown scenario."""
@@ -151,7 +158,9 @@ def test_risk_penalty_callback_basic():
     print("🧪 Testing RiskPenaltyCallback basic functionality...")
     
     try:
-        from src.training.trainer_agent import RiskPenaltyCallback
+        if RiskPenaltyCallback is None:
+            print("❌ RiskPenaltyCallback not available")
+            return False
         
         # Create mock components
         risk_advisor = MockRiskAdvisor()
@@ -186,7 +195,9 @@ def test_high_vs_low_drawdown_penalty():
     print("\n🧪 Testing high vs low drawdown penalty calculation...")
     
     try:
-        from src.training.trainer_agent import RiskPenaltyCallback
+        if RiskPenaltyCallback is None:
+            print("❌ RiskPenaltyCallback not available")
+            return False
         
         # Create mock components
         risk_advisor = MockRiskAdvisor()
@@ -280,7 +291,9 @@ def test_callback_lowers_average_reward():
     print("\n🧪 Testing callback effect on average reward...")
     
     try:
-        from src.training.trainer_agent import RiskPenaltyCallback
+        if RiskPenaltyCallback is None:
+            print("❌ RiskPenaltyCallback not available")
+            return False
         
         # Create mock components
         risk_advisor = MockRiskAdvisor()
@@ -374,7 +387,9 @@ def test_penalty_proportional_to_lambda():
     print("\n🧪 Testing penalty scaling with lambda parameter...")
     
     try:
-        from src.training.trainer_agent import RiskPenaltyCallback
+        if RiskPenaltyCallback is None:
+            print("❌ RiskPenaltyCallback not available")
+            return False
         
         # Test different lambda values
         lambda_values = [0.05, 0.1, 0.2, 0.3]

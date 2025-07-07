@@ -12,12 +12,14 @@ from pathlib import Path
 from typing import List, Optional
 import statistics
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Add src to path (from tests directory, go up one level)
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 def find_policy_file() -> Optional[Path]:
     """Find the most recent policy.pt file in the models directory."""
-    models_dir = Path("c:/Projects/IntradayJules/models")
+    # Get project root (parent of tests directory)
+    project_root = Path(__file__).parent.parent
+    models_dir = project_root / "models"
     
     if not models_dir.exists():
         print(f"❌ Models directory not found: {models_dir}")
