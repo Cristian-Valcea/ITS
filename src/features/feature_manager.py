@@ -36,7 +36,11 @@ class FeatureManager:
         if not self.feature_config:
             self.feature_config = self.config
             
-        self.feature_list = self.feature_config.get('features', [])
+        # Support both 'features' and 'features_to_calculate' for backward compatibility
+        self.feature_list = (
+            self.feature_config.get('features', []) or 
+            self.feature_config.get('features_to_calculate', [])
+        )
         self.calculators: Dict[str, BaseFeatureCalculator] = {}
         
         # Initialize registry and performance tracking

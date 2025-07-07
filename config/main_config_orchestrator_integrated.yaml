@@ -22,8 +22,9 @@ feature_engineering:
   rsi: {'window': 14}
   ema: {'windows': [10, 20], 'ema_diff': True}
   vwap: {'window': None, 'group_by_day': True } # Daily VWAP
-  time_features: ['hour_of_day', 'day_of_week'] # Raw time features
-  sin_cos_encode: ['hour_of_day', 'day_of_week'] # Which of the time_features to sin/cos encode
+  time: # Time feature calculator configuration
+    time_features: ['hour_of_day', 'day_of_week'] # Raw time features
+    sin_cos_encode: ['hour_of_day', 'day_of_week'] # Which of the time_features to sin/cos encode
   lookback_window: 5 # For RL agent's observation sequence
   # Columns to be scaled by StandardScaler
   feature_cols_to_scale: 

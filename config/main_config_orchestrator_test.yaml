@@ -44,8 +44,9 @@ feature_engineering:
   - Close
   rsi:
     window: 14
-  time_features:
-  - hour_of_day
+  time: # Time feature calculator configuration
+    time_features:
+    - hour_of_day
 ibkr_connection: null
 paths:
   data_dir_processed: data/processed_orch_test/

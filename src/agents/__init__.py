@@ -9,13 +9,13 @@
 # Or, more generally, allow selective imports using __all__
 __all__ = [
     "DataAgent",
-    "FeatureAgent",
+    "FeatureAgent", 
     "EnvAgent",
-    "TrainerAgent",
     "RiskAgent",
     "EvaluatorAgent",
-    "OrchestratorAgent",
     # "BaseAgent" # if you create a BaseAgent
+    # Note: TrainerAgent moved to src.training.trainer_agent
+    # Note: OrchestratorAgent moved to src.execution.orchestrator_agent
 ]
 
 # It's also a good place for any package-level initializations

@@ -1,6 +1,19 @@
 # src/execution/__init__.py
-"""Execution module for production trading with minimal dependencies."""
+"""
+Execution context for production trading.
 
-from .execution_agent_stub import ExecutionAgentStub
+This module contains components optimized for low-latency production execution:
+- ExecutionAgentStub: Policy bundle loading and <100µs prediction SLO
+- OrchestratorAgent: Production entry point for live trading coordination
+- Contract testing and SLO validation
+- Minimal dependencies (PyTorch CPU only)
+"""
 
-__all__ = ["ExecutionAgentStub"]
+from .execution_agent_stub import ExecutionAgentStub, create_execution_agent_stub
+from .orchestrator_agent import OrchestratorAgent
+
+__all__ = [
+    'ExecutionAgentStub',
+    'create_execution_agent_stub', 
+    'OrchestratorAgent',
+]

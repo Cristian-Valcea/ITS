@@ -15,6 +15,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 import numpy as np
+import platform
+import torch
+
+# Optional dependency for detailed system info
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
 
 # Core dependencies
 from stable_baselines3 import DQN
@@ -153,6 +162,8 @@ class RiskAwareCallback(BaseCallback):
                 self.logger.record(f"risk/{metric_name}", value)
 
 
+
+
 class TrainerAgent(BaseAgent):
     """
     Production-grade trainer for RL models with risk-aware training.
@@ -273,6 +284,115 @@ class TrainerAgent(BaseAgent):
             self.logger.error(f"Failed to create {self.algorithm_name} model: {e}")
             return None
 
+    def _log_hardware_info(self) -> None:
+        """Log comprehensive hardware information for training."""
+        self.logger.info("=" * 60)
+        self.logger.info("🖥️  TRAINING HARDWARE CONFIGURATION")
+        self.logger.info("=" * 60)
+        
+        # System information
+        self.logger.info(f"🔧 System: {platform.system()} {platform.release()}")
+        self.logger.info(f"🔧 Architecture: {platform.machine()}")
+        self.logger.info(f"🔧 Processor: {platform.processor()}")
+        
+        # CPU information
+        if PSUTIL_AVAILABLE:
+            try:
+                cpu_count = psutil.cpu_count(logical=False)  # Physical cores
+                cpu_count_logical = psutil.cpu_count(logical=True)  # Logical cores
+                cpu_freq = psutil.cpu_freq()
+                
+                self.logger.info(f"🔧 CPU Cores: {cpu_count} physical, {cpu_count_logical} logical")
+                if cpu_freq:
+                    self.logger.info(f"🔧 CPU Frequency: {cpu_freq.current:.0f} MHz (max: {cpu_freq.max:.0f} MHz)")
+            except Exception as e:
+                self.logger.warning(f"Could not get CPU info: {e}")
+        else:
+            # Fallback to basic info
+            import os
+            cpu_count = os.cpu_count()
+            self.logger.info(f"🔧 CPU Cores: {cpu_count} (logical)")
+        
+        # Memory information
+        if PSUTIL_AVAILABLE:
+            try:
+                memory = psutil.virtual_memory()
+                self.logger.info(f"🔧 RAM: {memory.total / (1024**3):.1f} GB total, "
+                               f"{memory.available / (1024**3):.1f} GB available")
+            except Exception as e:
+                self.logger.warning(f"Could not get memory info: {e}")
+        else:
+            self.logger.info("🔧 RAM: Detailed memory info requires 'psutil' package")
+        
+        # PyTorch and GPU information
+        self.logger.info(f"🔧 PyTorch Version: {torch.__version__}")
+        
+        if torch.cuda.is_available():
+            gpu_count = torch.cuda.device_count()
+            current_device = torch.cuda.current_device()
+            gpu_name = torch.cuda.get_device_name(current_device)
+            gpu_memory = torch.cuda.get_device_properties(current_device).total_memory
+            
+            self.logger.info("🚀 GPU ACCELERATION ENABLED")
+            self.logger.info(f"🚀 GPU Count: {gpu_count}")
+            self.logger.info(f"🚀 Current GPU: {gpu_name}")
+            self.logger.info(f"🚀 GPU Memory: {gpu_memory / (1024**3):.1f} GB")
+            self.logger.info(f"🚀 CUDA Version: {torch.version.cuda}")
+            
+            # GPU utilization
+            try:
+                gpu_util = torch.cuda.utilization(current_device)
+                gpu_memory_used = torch.cuda.memory_allocated(current_device)
+                gpu_memory_cached = torch.cuda.memory_reserved(current_device)
+                
+                self.logger.info(f"🚀 GPU Utilization: {gpu_util}%")
+                self.logger.info(f"🚀 GPU Memory Used: {gpu_memory_used / (1024**2):.0f} MB")
+                self.logger.info(f"🚀 GPU Memory Cached: {gpu_memory_cached / (1024**2):.0f} MB")
+            except Exception as e:
+                self.logger.debug(f"Could not get GPU utilization: {e}")
+                
+            # Set device for training
+            device = torch.device(f"cuda:{current_device}")
+            self.logger.info(f"🚀 Training Device: {device}")
+            
+        else:
+            self.logger.info("💻 CPU-ONLY TRAINING")
+            self.logger.info("💻 No CUDA-capable GPU detected")
+            device = torch.device("cpu")
+            self.logger.info(f"💻 Training Device: {device}")
+            
+            # CPU-specific optimizations
+            try:
+                if PSUTIL_AVAILABLE:
+                    cpu_count_logical = psutil.cpu_count(logical=True)
+                else:
+                    import os
+                    cpu_count_logical = os.cpu_count()
+                    
+                if hasattr(torch, 'set_num_threads'):
+                    num_threads = min(cpu_count_logical, 8) if cpu_count_logical else 4
+                    torch.set_num_threads(num_threads)
+                    self.logger.info(f"💻 PyTorch CPU Threads: {num_threads}")
+            except Exception as e:
+                self.logger.debug(f"Could not set CPU threads: {e}")
+        
+        # Training-specific information
+        self.logger.info("=" * 60)
+        self.logger.info("🎯 TRAINING CONFIGURATION")
+        self.logger.info("=" * 60)
+        self.logger.info(f"🎯 Algorithm: {self.algorithm_name}")
+        self.logger.info(f"🎯 Total Timesteps: {self.training_params.get('total_timesteps', 'N/A'):,}")
+        self.logger.info(f"🎯 Learning Rate: {self.algo_params.get('learning_rate', 'default')}")
+        self.logger.info(f"🎯 Batch Size: {self.algo_params.get('batch_size', 'default')}")
+        self.logger.info(f"🎯 Buffer Size: {self.algo_params.get('buffer_size', 'default')}")
+        
+        if hasattr(self, 'risk_advisor') and self.risk_advisor:
+            self.logger.info("🎯 Risk-Aware Training: ENABLED")
+        else:
+            self.logger.info("🎯 Risk-Aware Training: DISABLED")
+            
+        self.logger.info("=" * 60)
+
     def train(self, existing_model_path: Optional[str] = None) -> Optional[str]:
         """
         Train the RL model with risk-aware callbacks.
@@ -313,6 +433,9 @@ class TrainerAgent(BaseAgent):
         if self.model is None:
             self.logger.error("Model creation/loading failed")
             return None
+
+        # Log comprehensive hardware information
+        self._log_hardware_info()
 
         # Setup callbacks
         callbacks = self._create_callbacks(run_dir, run_name)
@@ -447,6 +570,13 @@ class TrainerAgent(BaseAgent):
             Path to saved model bundle
         """
         self.logger.info("Starting TrainerAgent run")
+        
+        # Quick hardware check for immediate visibility
+        if torch.cuda.is_available():
+            gpu_name = torch.cuda.get_device_name(torch.cuda.current_device())
+            self.logger.info(f"🚀 GPU Training Mode: {gpu_name}")
+        else:
+            self.logger.info("💻 CPU Training Mode")
 
         # Set environment
         self.set_env(training_env)

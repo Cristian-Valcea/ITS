@@ -63,11 +63,12 @@ feature_engineering:
     levels_to_consider: 5 # Number of bid/ask levels for imbalance calculation
     # Requires DataAgent to provide order book snapshots.
 
-  time_features: # Which time components to encode
-    - "hour_of_day"       # Integer hour
-    - "minute_of_hour"    # Integer minute
-    - "day_of_week"       # Integer day of week (Monday=0)
-    # - "month_of_year"
+  time: # Time feature calculator configuration
+    time_features: # Which time components to encode
+      - "hour_of_day"       # Integer hour
+      - "minute_of_hour"    # Integer minute
+      - "day_of_week"       # Integer day of week (Monday=0)
+      # - "month_of_year"
     sin_cos_encode: # Apply sin/cos transformation for cyclical features
       - "hour_of_day"
       - "minute_of_hour"
