@@ -8,6 +8,7 @@ from .base_agent import BaseAgent
 # from ..utils.config_loader import load_config # Example for loading config
 from src.tools.ibkr_tools import fetch_5min_bars
 from src.column_names import COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME
+from src.shared import get_feature_store
 
 class DataAgent(BaseAgent):
     """
@@ -410,6 +411,43 @@ class DataAgent(BaseAgent):
         else:
             self.logger.error(f"Failed to fetch data for {symbol}.")
             return None
+
+    def warm_feature_cache_for_symbol(self, symbol: str, feature_agent, **fetch_kwargs):
+        """
+        Warm feature cache by fetching data and pre-computing features.
+        This is useful for offline preloading before training runs.
+        
+        Args:
+            symbol: Stock symbol to warm cache for
+            feature_agent: FeatureAgent instance to use for feature computation
+            **fetch_kwargs: Additional arguments for data fetching
+        """
+        self.logger.info(f"Warming feature cache for {symbol}")
+        
+        try:
+            # Use default parameters if not provided
+            end_date = fetch_kwargs.get('end_date', datetime.now().strftime("%Y%m%d %H:%M:%S"))
+            duration_str = fetch_kwargs.get('duration_str', "30 D")
+            interval = fetch_kwargs.get('interval', "5 mins")
+            
+            # Fetch raw data
+            raw_data = self.fetch_ibkr_bars(
+                symbol=symbol,
+                end_datetime_str=end_date,
+                duration_str=duration_str,
+                bar_size_str=interval,
+                **fetch_kwargs
+            )
+            
+            if raw_data is not None and not raw_data.empty:
+                # Warm the feature cache
+                feature_agent.warm_feature_cache(raw_data, symbol)
+                self.logger.info(f"Successfully warmed feature cache for {symbol}")
+            else:
+                self.logger.warning(f"No data available to warm cache for {symbol}")
+                
+        except Exception as e:
+            self.logger.error(f"Error warming feature cache for {symbol}: {e}")
 
     def disconnect_ibkr(self):
         """Disconnects from IBKR if connected by this agent instance."""

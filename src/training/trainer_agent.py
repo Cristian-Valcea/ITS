@@ -639,15 +639,51 @@ class TrainerAgent(BaseAgent):
             callbacks.append(risk_penalty_callback)
             self.logger.info("Risk penalty callback enabled")
             
-            # Risk monitoring callback - for logging and early stopping
-            risk_callback = RiskAwareCallback(
-                risk_advisor=self.risk_advisor,
-                penalty_weight=self.risk_config.get("penalty_weight", 0.1),
-                early_stop_threshold=self.risk_config.get("early_stop_threshold", 0.8),
-                log_freq=self.risk_config.get("log_freq", 100),
-            )
-            callbacks.append(risk_callback)
-            self.logger.info("Risk monitoring callback enabled")
+            # Enhanced risk callback with λ-weighted multi-risk early stopping
+            use_enhanced_callback = self.risk_config.get("use_enhanced_callback", True)
+            
+            if use_enhanced_callback:
+                try:
+                    from .callbacks.enhanced_risk_callback import create_enhanced_risk_callback
+                    
+                    enhanced_risk_callback = create_enhanced_risk_callback(
+                        risk_advisor=self.risk_advisor,
+                        config={
+                            'risk_weights': self.risk_config.get('risk_weights', {
+                                'drawdown_pct': 0.30,
+                                'ulcer_index': 0.25,
+                                'kyle_lambda': 0.25,
+                                'feed_staleness': 0.20
+                            }),
+                            'early_stop_threshold': self.risk_config.get("early_stop_threshold", 0.75),
+                            'liquidity_penalty_multiplier': self.risk_config.get("liquidity_penalty_multiplier", 2.0),
+                            'consecutive_violations_limit': self.risk_config.get("consecutive_violations_limit", 5),
+                            'evaluation_frequency': self.risk_config.get("evaluation_frequency", 100),
+                            'log_frequency': self.risk_config.get("log_freq", 1000),
+                            'enable_risk_decomposition': self.risk_config.get("enable_risk_decomposition", True),
+                            'verbose': self.risk_config.get("verbose", 1)
+                        }
+                    )
+                    callbacks.append(enhanced_risk_callback)
+                    self.logger.info("Enhanced λ-weighted multi-risk callback enabled")
+                    self.logger.info(f"Risk weights: {self.risk_config.get('risk_weights', 'default')}")
+                    self.logger.info(f"Liquidity penalty multiplier: {self.risk_config.get('liquidity_penalty_multiplier', 2.0)}")
+                    
+                except ImportError as e:
+                    self.logger.warning(f"Enhanced risk callback not available: {e}")
+                    self.logger.info("Falling back to basic risk callback")
+                    use_enhanced_callback = False
+            
+            if not use_enhanced_callback:
+                # Fallback to basic risk monitoring callback
+                risk_callback = RiskAwareCallback(
+                    risk_advisor=self.risk_advisor,
+                    penalty_weight=self.risk_config.get("penalty_weight", 0.1),
+                    early_stop_threshold=self.risk_config.get("early_stop_threshold", 0.8),
+                    log_freq=self.risk_config.get("log_freq", 100),
+                )
+                callbacks.append(risk_callback)
+                self.logger.info("Basic risk monitoring callback enabled")
 
         # Evaluation callback (optional)
         if self.training_params.get("use_eval_callback", False):
@@ -681,6 +717,9 @@ class TrainerAgent(BaseAgent):
 
         # Validate latency SLO
         self._validate_policy_latency(sb3_policy)
+
+        # Register in experiment registry if available
+        self._register_in_experiment_registry(run_dir, run_name)
 
         return bundle_path
 
@@ -790,6 +829,82 @@ class TrainerAgent(BaseAgent):
         except Exception as e:
             self.logger.warning(f"⚠️ TorchScript model test failed: {e}")
             # Don't fail the export, just warn
+    
+    def _register_in_experiment_registry(self, run_dir: Path, run_name: str) -> None:
+        """Register model in experiment registry if available."""
+        try:
+            # Check if experiment registry is configured
+            registry_config = self.config.get('experiment_registry')
+            if not registry_config:
+                self.logger.debug("No experiment registry configured")
+                return
+            
+            # Import registry components
+            from .experiment_registry import create_experiment_registry
+            
+            # Initialize registry
+            registry = create_experiment_registry(registry_config)
+            
+            # Find TorchScript bundle
+            torchscript_dirs = list(run_dir.glob("*_torchscript"))
+            if not torchscript_dirs:
+                self.logger.warning("No TorchScript bundle found for registry")
+                return
+            
+            torchscript_dir = torchscript_dirs[0]
+            model_path = torchscript_dir / "policy.pt"
+            metadata_path = torchscript_dir / "metadata.json"
+            
+            if not model_path.exists() or not metadata_path.exists():
+                self.logger.warning("Missing policy.pt or metadata.json for registry")
+                return
+            
+            # Prepare tags and metrics
+            tags = {
+                'training_algorithm': self.algorithm_name,
+                'training_timesteps': str(self.config.get('total_timesteps', 'unknown')),
+                'training_date': datetime.now().strftime('%Y-%m-%d'),
+                'trainer_version': 'TrainerAgent_v2'
+            }
+            
+            # Extract metrics from training (basic implementation)
+            metrics = {}
+            
+            # Register model
+            experiment_name = registry_config.get('experiment_name', 'intraday_trading')
+            
+            model_version_info = registry.register_model(
+                model_path=model_path,
+                metadata_path=metadata_path,
+                experiment_name=experiment_name,
+                tags=tags,
+                metrics=metrics,
+                validate_model=registry_config.get('auto_validate', True)
+            )
+            
+            if model_version_info:
+                self.logger.info(f"✅ Model registered in experiment registry: {model_version_info.version_id}")
+                
+                # Save version info for reference
+                version_info_path = run_dir / "registry_info.json"
+                with open(version_info_path, 'w') as f:
+                    json.dump({
+                        'version_id': model_version_info.version_id,
+                        'run_id': model_version_info.run_id,
+                        'experiment_id': model_version_info.experiment_id,
+                        'status': model_version_info.status,
+                        'registered_at': datetime.now().isoformat()
+                    }, f, indent=2)
+                
+                self.logger.info(f"📄 Registry info saved: {version_info_path}")
+            else:
+                self.logger.warning("⚠️ Model registration failed")
+                
+        except ImportError:
+            self.logger.debug("Experiment registry not available (missing dependencies)")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Failed to register in experiment registry: {e}")
+            # Don't fail the training process, just log the warning
 
     def _validate_policy_latency(self, policy: RLPolicy) -> None:
         """Validate that policy meets latency SLO."""

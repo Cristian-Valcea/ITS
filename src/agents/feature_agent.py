@@ -7,6 +7,7 @@ from collections import deque
 
 from src.column_names import COL_CLOSE
 from src.features import FeatureManager, DataProcessor
+from src.shared import FeatureStore, get_feature_store
 from .base_agent import BaseAgent
 
 
@@ -38,6 +39,11 @@ class FeatureAgent(BaseAgent):
             logger=self.logger
         )
         
+        # Initialize FeatureStore for high-performance caching
+        feature_store_root = self.config.get('feature_store_root', None)
+        self.feature_store = get_feature_store(root=feature_store_root, logger=self.logger)
+        self.use_feature_cache = self.config.get('use_feature_cache', True)
+        
         # Live trading attributes
         self.live_data_buffer = pd.DataFrame()
         self.normalized_feature_history_buffer = deque(
@@ -54,18 +60,52 @@ class FeatureAgent(BaseAgent):
         self.logger.info(f"Active feature calculators: {self.feature_manager.list_active_calculators()}")
         self.logger.info(f"Lookback window: {self.data_processor.lookback_window}")
         self.logger.info(f"Max indicator lookback: {self.feature_manager.get_max_lookback()}")
+        self.logger.info(f"Feature caching enabled: {self.use_feature_cache}")
+        if self.use_feature_cache:
+            cache_stats = self.feature_store.get_cache_stats()
+            self.logger.info(f"Feature cache stats: {cache_stats.get('total_entries', 0)} entries, "
+                           f"{cache_stats.get('total_size_mb', 0)} MB")
     
-    def compute_features(self, raw_data_df: pd.DataFrame) -> Optional[pd.DataFrame]:
+    def compute_features(self, raw_data_df: pd.DataFrame, symbol: str = "default") -> Optional[pd.DataFrame]:
         """
-        Compute features using the FeatureManager.
+        Compute features using the FeatureManager with FeatureStore caching.
         
         Args:
             raw_data_df: DataFrame with OHLCV data and DatetimeIndex
+            symbol: Symbol name for cache key generation
             
         Returns:
             DataFrame with computed features or None if error
         """
-        return self.feature_manager.compute_features(raw_data_df)
+        if not self.use_feature_cache:
+            # Direct computation without caching
+            return self.feature_manager.compute_features(raw_data_df)
+        
+        # Use FeatureStore for cached computation
+        try:
+            # Create feature configuration for cache key
+            feature_config = {
+                'active_calculators': self.feature_manager.list_active_calculators(),
+                'feature_config': self.feature_manager.feature_config,
+                'max_lookback': self.feature_manager.get_max_lookback()
+            }
+            
+            # Define computation function for FeatureStore
+            def compute_func(raw_df: pd.DataFrame, config: dict) -> pd.DataFrame:
+                return self.feature_manager.compute_features(raw_df)
+            
+            return self.feature_store.get_or_compute(
+                symbol=symbol,
+                raw_df=raw_data_df,
+                config=feature_config,
+                compute_func=compute_func
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error in cached feature computation: {e}")
+            # Fallback to direct computation
+            self.logger.info("Falling back to direct feature computation")
+            return self.feature_manager.compute_features(raw_data_df)
     
     def normalize_features(self, features_df: pd.DataFrame, fit_scaler: bool = False, 
                           symbol: str = "default") -> Optional[pd.DataFrame]:
@@ -119,8 +159,8 @@ class FeatureAgent(BaseAgent):
             self.logger.error("Raw data is empty")
             return None, None, None
 
-        # 1. Compute features
-        features_df = self.compute_features(raw_data_df)
+        # 1. Compute features (with caching)
+        features_df = self.compute_features(raw_data_df, symbol=symbol)
         if features_df is None:
             self.logger.error("Feature computation failed")
             return None, None, None
@@ -164,6 +204,68 @@ class FeatureAgent(BaseAgent):
 
         self.logger.info(f"FeatureAgent processing completed for {symbol}")
         return normalized_features_df, feature_sequences, price_data_for_env
+    
+    def warm_feature_cache(self, raw_data_df: pd.DataFrame, symbol: str):
+        """
+        Warm the feature cache by pre-computing features for given data.
+        Useful for offline preloading before training runs.
+        
+        Args:
+            raw_data_df: Raw market data
+            symbol: Stock symbol
+        """
+        if not self.use_feature_cache:
+            self.logger.info("Feature caching disabled, skipping cache warming")
+            return
+            
+        self.logger.info(f"Warming feature cache for {symbol} with {len(raw_data_df)} rows")
+        
+        try:
+            # Create feature configuration for cache key
+            feature_config = {
+                'active_calculators': self.feature_manager.list_active_calculators(),
+                'feature_config': self.feature_manager.feature_config,
+                'max_lookback': self.feature_manager.get_max_lookback()
+            }
+            
+            # Define computation function
+            def compute_func(raw_df: pd.DataFrame, config: dict) -> pd.DataFrame:
+                return self.feature_manager.compute_features(raw_df)
+            
+            self.feature_store.warm_cache(
+                symbol=symbol,
+                raw_df=raw_data_df,
+                config=feature_config,
+                compute_func=compute_func
+            )
+            
+            self.logger.info(f"Feature cache warming completed for {symbol}")
+            
+        except Exception as e:
+            self.logger.error(f"Error warming feature cache for {symbol}: {e}")
+    
+    def get_cache_stats(self) -> dict:
+        """Get feature cache statistics."""
+        if not self.use_feature_cache:
+            return {'caching_disabled': True}
+        return self.feature_store.get_cache_stats()
+    
+    def clear_feature_cache(self, symbol: Optional[str] = None):
+        """
+        Clear feature cache.
+        
+        Args:
+            symbol: If provided, only clear cache for this symbol
+        """
+        if not self.use_feature_cache:
+            self.logger.info("Feature caching disabled, nothing to clear")
+            return
+            
+        self.feature_store.clear_cache(symbol=symbol)
+        if symbol:
+            self.logger.info(f"Cleared feature cache for {symbol}")
+        else:
+            self.logger.info("Cleared entire feature cache")
     
     def _extract_price_data(self, final_features_df: pd.DataFrame, 
                            features_df: pd.DataFrame, 
@@ -264,7 +366,7 @@ class FeatureAgent(BaseAgent):
         
         # Pre-compute features and populate history buffer
         if len(self.live_data_buffer) >= max_lookback:
-            warmup_features = self.compute_features(self.live_data_buffer)
+            warmup_features = self.compute_features(self.live_data_buffer, symbol=symbol)
             if warmup_features is not None and not warmup_features.empty:
                 warmup_normalized = self.normalize_features(
                     warmup_features, fit_scaler=False, symbol=symbol
@@ -310,7 +412,7 @@ class FeatureAgent(BaseAgent):
         self._update_live_buffer(new_bar_df)
 
         # 2. Compute features on current buffer
-        current_features = self.compute_features(self.live_data_buffer)
+        current_features = self.compute_features(self.live_data_buffer, symbol=symbol)
         if current_features is None or current_features.empty:
             self.logger.warning("Feature computation on live buffer yielded no data")
             return None, latest_price_series

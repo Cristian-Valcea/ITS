@@ -1890,7 +1890,7 @@ if __name__ == '__main__':
         'ibkr_connection': None,
         'feature_engineering': {
             'features': ['RSI', 'EMA', 'Time'], 'rsi': {'window': 14}, 'ema': {'windows': [10, 20]},
-            'time_features': ['hour_of_day'], 'lookback_window': 3,
+            'time': ['hour_of_day'], 'lookback_window': 3,
             'feature_cols_to_scale': ['rsi_14', 'ema_10', 'ema_20', 'hour_of_day'],
             'observation_feature_cols': ['rsi_14', 'ema_10', 'ema_20', 'hour_of_day', 'Close']
         },

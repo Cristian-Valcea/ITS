@@ -29,6 +29,15 @@ pandas-ta>=0.3.14b
 ib_insync>=0.9.70
 ta>=0.10.2
 
+# Feature Store dependencies
+duckdb>=0.9.0
+zstandard>=0.21.0
+pyarrow>=10.0.0
+
+# Survivorship Bias Analysis
+sqlite3  # Built into Python
+openpyxl>=3.0.0  # For Excel file support
+
 # Configuration
 PyYAML>=6.0
 python-dotenv>=0.19.0
