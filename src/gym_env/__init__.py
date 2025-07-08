@@ -1,8 +1,18 @@
 # src/gym_env/__init__.py
 
 from .intraday_trading_env import IntradayTradingEnv
+from .kyle_lambda_fill_simulator import (
+    KyleLambdaFillSimulator, 
+    SimpleFillSimulator, 
+    FillPriceSimulatorFactory
+)
 
-__all__ = ["IntradayTradingEnv"]
+__all__ = [
+    "IntradayTradingEnv",
+    "KyleLambdaFillSimulator",
+    "SimpleFillSimulator", 
+    "FillPriceSimulatorFactory"
+]
 
 # This allows `from src.gym_env import IntradayTradingEnv`
 # Register the environment with Gymnasium if you want to use `gym.make()`

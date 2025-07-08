@@ -6,6 +6,15 @@ from numpy.typing import NDArray  # for type hints
 import pandas as pd
 import logging
 
+try:
+    from .kyle_lambda_fill_simulator import KyleLambdaFillSimulator, FillPriceSimulatorFactory
+except ImportError:
+    # Fallback for direct execution
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent))
+    from kyle_lambda_fill_simulator import KyleLambdaFillSimulator, FillPriceSimulatorFactory
+
 class IntradayTradingEnv(gym.Env):
     """
     A Gymnasium-compatible environment for simulating intraday trading.
@@ -46,7 +55,11 @@ class IntradayTradingEnv(gym.Env):
                  position_sizing_pct_capital: float = 0.25, # Pct of capital to use for sizing
                  trade_cooldown_steps: int = 0, # Number of steps to wait after a trade
                  terminate_on_turnover_breach: bool = False, # Terminate if turnover cap breached significantly
-                 turnover_termination_threshold_multiplier: float = 2.0 # e.g. 2x the cap
+                 turnover_termination_threshold_multiplier: float = 2.0, # e.g. 2x the cap
+                 # New parameters for Kyle Lambda fill simulation
+                 enable_kyle_lambda_fills: bool = True, # Enable Kyle Lambda fill price simulation
+                 fill_simulator_config: dict = None, # Configuration for fill simulator
+                 volume_data: pd.Series = None # Optional volume data for better impact modeling
                  ):
         """
         Args:
@@ -65,6 +78,9 @@ class IntradayTradingEnv(gym.Env):
             trade_cooldown_steps (int): Minimum number of steps to wait before executing another trade.
             terminate_on_turnover_breach (bool): Whether to terminate the episode if hourly turnover cap is breached by a significant margin.
             turnover_termination_threshold_multiplier (float): Multiplier for `hourly_turnover_cap` to determine termination threshold.
+            enable_kyle_lambda_fills (bool): Whether to use Kyle Lambda fill price simulation instead of mid-price fills.
+            fill_simulator_config (dict): Configuration for the fill price simulator.
+            volume_data (pd.Series): Optional volume data for better market impact modeling.
         """
         super().__init__()
         self.logger = logging.getLogger(f"RLTradingPlatform.Env.IntradayTradingEnv")
@@ -96,6 +112,20 @@ class IntradayTradingEnv(gym.Env):
         self.trade_cooldown_steps = trade_cooldown_steps
         self.terminate_on_turnover_breach = terminate_on_turnover_breach
         self.turnover_termination_threshold_multiplier = turnover_termination_threshold_multiplier
+        
+        # Kyle Lambda fill simulation setup
+        self.enable_kyle_lambda_fills = enable_kyle_lambda_fills
+        self.volume_data = volume_data
+        
+        if self.enable_kyle_lambda_fills:
+            # Initialize Kyle Lambda fill simulator
+            self.fill_simulator = FillPriceSimulatorFactory.create_kyle_lambda_simulator(
+                config=fill_simulator_config
+            )
+            self.logger.info("Kyle Lambda fill price simulation enabled")
+        else:
+            self.fill_simulator = None
+            self.logger.info("Using mid-price fills (Kyle Lambda simulation disabled)")
 
         if not (0.01 <= self.position_sizing_pct_capital <= 1.0):
             self.logger.warning(f"position_sizing_pct_capital ({self.position_sizing_pct_capital}) is outside the recommended range [0.01, 1.0]. Clamping to 0.25.")
@@ -173,7 +203,45 @@ class IntradayTradingEnv(gym.Env):
         return obs
 
     def _get_current_price(self) -> float:
+        """Get current mid-market price."""
         return self.price_data.iloc[self.current_step]
+    
+    def _get_fill_price(self, mid_price: float, trade_size: float, side: str) -> tuple:
+        """
+        Get realistic fill price using Kyle Lambda simulation or mid-price.
+        
+        Args:
+            mid_price: Current mid-market price
+            trade_size: Size of trade (number of shares)
+            side: Trade side ("buy" or "sell")
+        
+        Returns:
+            Tuple of (fill_price, impact_info)
+        """
+        if self.enable_kyle_lambda_fills and self.fill_simulator:
+            # Get current volume if available
+            current_volume = None
+            if self.volume_data is not None and self.current_step < len(self.volume_data):
+                current_volume = self.volume_data.iloc[self.current_step]
+            
+            # Calculate fill price with market impact
+            fill_price, impact_info = self.fill_simulator.calculate_fill_price(
+                mid_price=mid_price,
+                trade_size=trade_size,
+                side=side,
+                current_volume=current_volume
+            )
+            
+            return fill_price, impact_info
+        else:
+            # Use mid-price fill (original behavior)
+            impact_info = {
+                'mid_price': mid_price,
+                'fill_price': mid_price,
+                'total_impact_bps': 0.0,
+                'kyle_lambda_enabled': False
+            }
+            return mid_price, impact_info
 
     def _update_portfolio_value(self):
         """Updates total portfolio value based on current position and price."""
@@ -256,6 +324,9 @@ class IntradayTradingEnv(gym.Env):
             self.trade_log = []
         self.portfolio_history = [self.initial_capital]
 
+        # Reset fill simulator
+        if self.enable_kyle_lambda_fills and self.fill_simulator:
+            self.fill_simulator.reset()
 
         self._handle_new_day() 
         
@@ -292,6 +363,18 @@ class IntradayTradingEnv(gym.Env):
         current_price = self._get_current_price()
         timestamp = self.dates[self.current_step]
 
+        # Update fill simulator with current market data
+        if self.enable_kyle_lambda_fills and self.fill_simulator:
+            current_volume = None
+            if self.volume_data is not None and self.current_step < len(self.volume_data):
+                current_volume = self.volume_data.iloc[self.current_step]
+            
+            self.fill_simulator.update_market_data(
+                price=current_price,
+                volume=current_volume,
+                timestamp=timestamp
+            )
+
         # Store portfolio value before action
         portfolio_value_before_action = self.portfolio_value
         
@@ -326,19 +409,38 @@ class IntradayTradingEnv(gym.Env):
             
             # 1. Exit current position if any (calculate realized P&L)
             if self.current_position == 1: # Was long, now closing or flipping to short
-                realized_pnl_this_step = (current_price - self.entry_price) * self.position_quantity
-                self.current_capital += (self.position_quantity * current_price) # Add sale proceeds to cash
-                self.current_capital -= (self.transaction_cost_pct * self.position_quantity * current_price) # Exit cost
-                trade_value_executed += self.position_quantity * current_price
+                # Get fill price for selling
+                exit_fill_price, exit_impact_info = self._get_fill_price(
+                    mid_price=current_price,
+                    trade_size=self.position_quantity,
+                    side="sell"
+                )
+                
+                realized_pnl_this_step = (exit_fill_price - self.entry_price) * self.position_quantity
+                self.current_capital += (self.position_quantity * exit_fill_price) # Add sale proceeds to cash
+                self.current_capital -= (self.transaction_cost_pct * self.position_quantity * exit_fill_price) # Exit cost
+                trade_value_executed += self.position_quantity * exit_fill_price
                 shares_traded_this_step += self.position_quantity
-                self.logger.debug(f"Closed LONG: {self.position_quantity} @ {current_price:.2f}. Entry: {self.entry_price:.2f}. P&L: {realized_pnl_this_step:.2f}")
+                
+                impact_bps = exit_impact_info.get('total_impact_bps', 0.0)
+                self.logger.debug(f"Closed LONG: {self.position_quantity} @ {exit_fill_price:.4f} (mid: {current_price:.4f}, impact: {impact_bps:.1f}bps). Entry: {self.entry_price:.4f}. P&L: {realized_pnl_this_step:.2f}")
+                
             elif self.current_position == -1: # Was short, now closing or flipping to long
-                realized_pnl_this_step = (self.entry_price - current_price) * self.position_quantity
-                self.current_capital -= (self.position_quantity * current_price) # Cost to buy back
-                self.current_capital -= (self.transaction_cost_pct * self.position_quantity * current_price) # Exit cost
-                trade_value_executed += self.position_quantity * current_price
+                # Get fill price for buying to cover
+                cover_fill_price, cover_impact_info = self._get_fill_price(
+                    mid_price=current_price,
+                    trade_size=self.position_quantity,
+                    side="buy"
+                )
+                
+                realized_pnl_this_step = (self.entry_price - cover_fill_price) * self.position_quantity
+                self.current_capital -= (self.position_quantity * cover_fill_price) # Cost to buy back
+                self.current_capital -= (self.transaction_cost_pct * self.position_quantity * cover_fill_price) # Exit cost
+                trade_value_executed += self.position_quantity * cover_fill_price
                 shares_traded_this_step += self.position_quantity
-                self.logger.debug(f"Covered SHORT: {self.position_quantity} @ {current_price:.2f}. Entry: {self.entry_price:.2f}. P&L: {realized_pnl_this_step:.2f}")
+                
+                impact_bps = cover_impact_info.get('total_impact_bps', 0.0)
+                self.logger.debug(f"Covered SHORT: {self.position_quantity} @ {cover_fill_price:.4f} (mid: {current_price:.4f}, impact: {impact_bps:.1f}bps). Entry: {self.entry_price:.4f}. P&L: {realized_pnl_this_step:.2f}")
 
             self.daily_pnl += realized_pnl_this_step # Accumulate daily *realized* P&L
             self.position_quantity = 0 # Flat after exiting
@@ -358,12 +460,21 @@ class IntradayTradingEnv(gym.Env):
                     self.position_quantity = 0 # Cannot afford
 
                 if self.position_quantity > 0:
-                    self.entry_price = current_price
-                    self.current_capital -= (self.position_quantity * self.entry_price) # Cash used
-                    self.current_capital -= (self.transaction_cost_pct * self.position_quantity * self.entry_price) # Entry cost
-                    trade_value_executed += self.position_quantity * self.entry_price
+                    # Get fill price for buying
+                    entry_fill_price, entry_impact_info = self._get_fill_price(
+                        mid_price=current_price,
+                        trade_size=self.position_quantity,
+                        side="buy"
+                    )
+                    
+                    self.entry_price = entry_fill_price
+                    self.current_capital -= (self.position_quantity * entry_fill_price) # Cash used
+                    self.current_capital -= (self.transaction_cost_pct * self.position_quantity * entry_fill_price) # Entry cost
+                    trade_value_executed += self.position_quantity * entry_fill_price
                     shares_traded_this_step += self.position_quantity
-                    self.logger.debug(f"Opened LONG: {self.position_quantity} @ {self.entry_price:.2f}")
+                    
+                    impact_bps = entry_impact_info.get('total_impact_bps', 0.0)
+                    self.logger.debug(f"Opened LONG: {self.position_quantity} @ {entry_fill_price:.4f} (mid: {current_price:.4f}, impact: {impact_bps:.1f}bps)")
                 else: # Cannot afford to go long
                     desired_position_signal = 0 # Force flat
 
@@ -377,12 +488,21 @@ class IntradayTradingEnv(gym.Env):
                     self.position_quantity = 0
 
                 if self.position_quantity > 0:
-                    self.entry_price = current_price
-                    self.current_capital += (self.position_quantity * self.entry_price) # Cash received from shorting (simplified)
-                    self.current_capital -= (self.transaction_cost_pct * self.position_quantity * self.entry_price) # Entry cost
-                    trade_value_executed += self.position_quantity * self.entry_price
+                    # Get fill price for selling short
+                    entry_fill_price, entry_impact_info = self._get_fill_price(
+                        mid_price=current_price,
+                        trade_size=self.position_quantity,
+                        side="sell"
+                    )
+                    
+                    self.entry_price = entry_fill_price
+                    self.current_capital += (self.position_quantity * entry_fill_price) # Cash received from shorting (simplified)
+                    self.current_capital -= (self.transaction_cost_pct * self.position_quantity * entry_fill_price) # Entry cost
+                    trade_value_executed += self.position_quantity * entry_fill_price
                     shares_traded_this_step += self.position_quantity
-                    self.logger.debug(f"Opened SHORT: {self.position_quantity} @ {self.entry_price:.2f}")
+                    
+                    impact_bps = entry_impact_info.get('total_impact_bps', 0.0)
+                    self.logger.debug(f"Opened SHORT: {self.position_quantity} @ {entry_fill_price:.4f} (mid: {current_price:.4f}, impact: {impact_bps:.1f}bps)")
                 else: # Cannot short (e.g. no capital for margin, though simplified here)
                     desired_position_signal = 0 # Force flat
             

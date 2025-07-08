@@ -59,6 +59,34 @@ calculators:
     config:
       adv_lookback_days: 20
       participation_threshold: 0.05
+  
+  # VaR Calculator
+  var:
+    enabled: true
+    config:
+      confidence_levels: [0.95, 0.99, 0.999]
+      window_days: 250
+      method: "parametric"
+      distribution: "normal"
+      min_observations: 30
+  
+  # Stress Test Calculator
+  stress_test:
+    enabled: true
+    config:
+      scenarios: ["historical", "monte_carlo", "factor_shock"]
+      confidence_levels: [0.95, 0.99, 0.999]
+      monte_carlo_runs: 10000
+      factor_shocks: [1, 2, 3, 5]
+      historical_scenarios:
+        financial_crisis_2008:
+          start_date: "2008-09-01"
+          end_date: "2008-12-31"
+          description: "Financial Crisis 2008"
+        covid_crash_2020:
+          start_date: "2020-02-20"
+          end_date: "2020-04-30"
+          description: "COVID-19 Market Crash 2020"
 
 # Risk policies and rules
 policies:
@@ -121,9 +149,171 @@ policies:
         operator: "gt"
         action: "halt"
         severity: "critical"
+      
+      # VaR Limit Rules (MONITORING MODE - will enforce when FP < 1/week)
+      - rule_id: "var_95_limit"
+        rule_name: "VaR 95% Limit"
+        rule_type: "threshold"
+        field: "var_95"
+        threshold: 100000  # $100k
+        operator: "gt"
+        action: "warn"     # Monitoring mode
+        severity: "medium"
+        monitoring_mode: true
+        enforcement_enabled: false
+      
+      - rule_id: "var_99_limit"
+        rule_name: "VaR 99% Limit"
+        rule_type: "threshold"
+        field: "var_99"
+        threshold: 200000  # $200k
+        operator: "gt"
+        action: "throttle" # Will throttle when enforcement enabled
+        severity: "high"
+        monitoring_mode: true
+        enforcement_enabled: false
+      
+      - rule_id: "var_999_limit"
+        rule_name: "VaR 99.9% Limit"
+        rule_type: "threshold"
+        field: "var_999"
+        threshold: 500000  # $500k
+        operator: "gt"
+        action: "halt"     # Will halt when enforcement enabled
+        severity: "critical"
+        monitoring_mode: true
+        enforcement_enabled: false
+      
+      # Stress Test Rules (MONITORING MODE)
+      - rule_id: "stress_test_worst_case"
+        rule_name: "Stress Test Worst Case Loss"
+        rule_type: "threshold"
+        field: "stress_worst_case"
+        threshold: 1000000  # $1M
+        operator: "gt"
+        action: "reduce_position"
+        severity: "high"
+        monitoring_mode: true
+        enforcement_enabled: false
+      
+      - rule_id: "stress_test_scenario_failures"
+        rule_name: "Stress Test Scenario Failures"
+        rule_type: "threshold"
+        field: "failed_scenarios"
+        threshold: 3
+        operator: "gt"
+        action: "warn"
+        severity: "medium"
+        monitoring_mode: true
+        enforcement_enabled: false
+      
+      # Tail Risk Rules
+      - rule_id: "expected_shortfall_99"
+        rule_name: "Expected Shortfall 99% Limit"
+        rule_type: "threshold"
+        field: "expected_shortfall_99"
+        threshold: 250000  # $250k
+        operator: "gt"
+        action: "throttle"
+        severity: "high"
+        monitoring_mode: true
+        enforcement_enabled: false
+      
+      # Concentration Risk Rules
+      - rule_id: "max_position_concentration"
+        rule_name: "Maximum Position Concentration"
+        rule_type: "threshold"
+        field: "max_position_weight"
+        threshold: 0.20  # 20%
+        operator: "gt"
+        action: "reduce_position"
+        severity: "medium"
+        monitoring_mode: true
+        enforcement_enabled: false
+      
+      # Leverage Rules
+      - rule_id: "gross_leverage_limit"
+        rule_name: "Gross Leverage Limit"
+        rule_type: "threshold"
+        field: "gross_leverage"
+        threshold: 3.0  # 3x
+        operator: "gt"
+        action: "reduce_position"
+        severity: "high"
+        monitoring_mode: true
+        enforcement_enabled: false
 
 # Active policy
 active_policy: "main_risk_policy"
+
+# VaR/Stress Test Enforcement Configuration
+enforcement:
+  # Enforcement mode: monitoring, gradual, full
+  mode: "monitoring"
+  
+  # False positive threshold for automatic enforcement enablement
+  false_positive_threshold_per_week: 1.0
+  
+  # Monitoring period for false positive analysis
+  monitoring_period_days: 30
+  
+  # VaR limits for enforcement
+  var_limits:
+    var_95_limit: 100000    # $100k
+    var_99_limit: 200000    # $200k
+    var_999_limit: 500000   # $500k
+  
+  # Stress test limits
+  stress_limits:
+    max_stress_loss: 1000000      # $1M
+    max_scenario_failures: 3
+    max_tail_ratio: 1.5
+  
+  # Audit logging configuration
+  audit:
+    enabled: true
+    log_directory: "logs/risk_audit"
+    max_file_size_mb: 100
+    max_files: 30
+    compress_old_files: true
+    async_logging: true
+  
+  # Prometheus metrics configuration
+  metrics:
+    enabled: true
+    namespace: "risk"
+    subsystem: "management"
+    
+  # Sensor configurations for enforcement
+  sensors:
+    var_breach:
+      monitoring_mode: true
+      enforcement_enabled: false
+      false_positive_threshold: 1.0
+    
+    stress_test:
+      monitoring_mode: true
+      enforcement_enabled: false
+      false_positive_threshold: 1.0
+    
+    tail_risk:
+      monitoring_mode: true
+      enforcement_enabled: false
+      es_99_limit: 250000
+      tail_ratio_threshold: 1.5
+    
+    concentration:
+      monitoring_mode: true
+      enforcement_enabled: false
+      max_single_position_pct: 0.20
+      max_herfindahl_index: 0.25
+    
+    leverage:
+      monitoring_mode: true
+      enforcement_enabled: false
+      max_gross_leverage: 3.0
+      max_net_leverage: 2.0
+      max_margin_utilization: 0.80
 
 # Legacy limits (for backward compatibility)
 limits:

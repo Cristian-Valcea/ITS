@@ -22,6 +22,55 @@ except ImportError:
     from shared.constants import MAX_PREDICTION_LATENCY_US
 
 
+class HoldCashFallbackPolicy:
+    """
+    Ultra-fast fallback policy that always returns HOLD (action=1).
+    
+    Activated when primary policy.pt fails to load.
+    Guarantees <10µs P95 latency with zero dependencies.
+    """
+    
+    def __init__(self):
+        self.policy_id = "fallback_hold_cash"
+        self.action = 1  # HOLD action
+        self.prediction_count = 0
+        
+    def predict(self, obs: np.ndarray, deterministic: bool = True) -> Tuple[int, Dict[str, Any]]:
+        """
+        Ultra-fast prediction that always returns HOLD.
+        
+        Args:
+            obs: Observation array (ignored)
+            deterministic: Whether to use deterministic policy (ignored)
+        
+        Returns:
+            Tuple of (HOLD_action=1, info_dict)
+        """
+        # High-precision timing for latency tracking
+        start = time.perf_counter_ns()
+        
+        # Trivial computation - just return HOLD
+        action = self.action
+        
+        # Calculate latency
+        lat_us = (time.perf_counter_ns() - start) / 1_000
+        
+        # Update performance tracking
+        self.prediction_count += 1
+        
+        info = {
+            "policy_id": self.policy_id,
+            "policy_type": "fallback_hold_cash",
+            "action_reason": "fallback_safe_hold",
+            "deterministic": True,  # Always deterministic
+            "latency_us": lat_us,
+            "is_fallback": True,
+            "prediction_count": self.prediction_count,
+        }
+        
+        return action, info
+
+
 class ExecutionAgentStub:
     """
     Minimal execution agent stub for contract testing.
@@ -58,7 +107,7 @@ class ExecutionAgentStub:
             self.logger.warning("⚠️ Soft-deadline assertions disabled for testing")
 
     def _load_policy_bundle(self):
-        """Load policy from bundle directory."""
+        """Load policy from bundle directory with fallback to hold-cash policy."""
         try:
             # Import here to avoid circular dependencies
             try:
@@ -72,7 +121,10 @@ class ExecutionAgentStub:
 
         except Exception as e:
             self.logger.error(f"Failed to load policy bundle: {e}")
-            raise
+            self.logger.warning("🔄 Activating fallback hold-cash policy...")
+            
+            # Return fallback hold-cash policy
+            return HoldCashFallbackPolicy()
 
     def predict(self, obs: np.ndarray, deterministic: bool = True) -> Tuple[int, Dict[str, Any]]:
         """

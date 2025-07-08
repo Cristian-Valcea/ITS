@@ -17,6 +17,7 @@ class RiskMetricType(Enum):
     DRAWDOWN = "drawdown"
     TURNOVER = "turnover"
     VAR = "var"
+    STRESS_TEST = "stress_test"
     GREEKS = "greeks"
     VOLATILITY = "volatility"
     CONCENTRATION = "concentration"
