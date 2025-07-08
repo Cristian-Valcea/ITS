@@ -1,0 +1,235 @@
+# config/governance.yaml
+# Governance and Compliance Configuration for IntradayJules
+
+# Immutable Audit Configuration
+immutable_audit:
+  enabled: true
+  
+  # S3 WORM Storage Configuration
+  s3_worm_enabled: true
+  s3_config:
+    bucket_name: "intradayjules-audit-worm"
+    prefix: "audit-records/"
+    region: "us-east-1"
+    retention_years: 7
+  
+  # Kafka Streaming Configuration
+  kafka_enabled: true
+  kafka_config:
+    topic: "audit-stream"
+    bootstrap_servers: ["localhost:9092"]
+    
+  # Local WORM Storage (fallback)
+  local_worm_path: "./audit_worm"
+
+# Model Lineage Configuration
+model_lineage:
+  enabled: true
+  storage_path: "./model_lineage"
+  
+  # Dataset hashing configuration
+  dataset_hashing:
+    chunk_size: 8192
+    supported_formats: ["csv", "parquet", "json"]
+    
+  # Reproducibility requirements
+  reproducibility:
+    require_random_seed: true
+    require_dataset_hashes: true
+    require_dependency_versions: true
+
+# Four-Eyes Release Approval Configuration
+release_approval:
+  enabled: true
+  storage_path: "./approvals"
+  
+  # GitHub Integration
+  github_enabled: true
+  github_config:
+    repo_owner: "Cristian-Valcea"
+    repo_name: "ITS"
+    github_token: "${GITHUB_TOKEN}"  # Environment variable
+    
+  # ServiceNow Integration (for enterprise)
+  servicenow_enabled: false
+  servicenow_config:
+    instance_url: "https://company.service-now.com"
+    username: "${SERVICENOW_USER}"
+    password: "${SERVICENOW_PASS}"
+    table: "change_request"
+  
+  # Approval Groups and Policies
+  approval_groups:
+    senior_developers:
+      - "cristian.valcea"
+      - "senior.dev1"
+      - "senior.dev2"
+    
+    risk_managers:
+      - "risk.manager1"
+      - "risk.manager2"
+      - "chief.risk.officer"
+    
+    system_administrators:
+      - "sysadmin1"
+      - "sysadmin2"
+      - "devops.lead"
+    
+    compliance_officers:
+      - "compliance.officer1"
+      - "legal.counsel"
+      - "audit.manager"
+  
+  # Approval Policies by Type
+  approval_policies:
+    MODEL_DEPLOYMENT:
+      minimum_approvals: 2
+      required_approvers: []  # Any from approval groups
+      approval_groups: ["senior_developers", "risk_managers"]
+      expires_hours: 48
+      
+    CONFIG_CHANGE:
+      minimum_approvals: 1
+      required_approvers: []
+      approval_groups: ["senior_developers", "system_administrators"]
+      expires_hours: 24
+      
+    SYSTEM_UPDATE:
+      minimum_approvals: 2
+      required_approvers: []
+      approval_groups: ["senior_developers", "system_administrators"]
+      expires_hours: 72
+      
+    EMERGENCY_OVERRIDE:
+      minimum_approvals: 1
+      required_approvers: ["chief.risk.officer"]
+      approval_groups: ["risk_managers", "compliance_officers"]
+      expires_hours: 4
+
+# Compliance Reporting Configuration
+compliance_reporting:
+  enabled: true
+  
+  # Report Generation
+  reports:
+    daily_audit_summary:
+      enabled: true
+      schedule: "0 6 * * *"  # 6 AM daily
+      recipients: ["compliance.officer1", "audit.manager"]
+      
+    weekly_model_lineage:
+      enabled: true
+      schedule: "0 8 * * 1"  # 8 AM Monday
+      recipients: ["risk.manager1", "senior.dev1"]
+      
+    monthly_governance_report:
+      enabled: true
+      schedule: "0 9 1 * *"  # 9 AM first day of month
+      recipients: ["chief.risk.officer", "compliance.officer1"]
+  
+  # Regulatory Requirements
+  regulatory_compliance:
+    # Financial regulations
+    mifid_ii: true
+    dodd_frank: true
+    basel_iii: true
+    
+    # Data protection
+    gdpr: true
+    ccpa: false
+    
+    # Audit requirements
+    sox_compliance: true
+    audit_retention_years: 7
+    
+    # Model governance
+    sr_11_7: true  # Fed model risk management
+    model_validation_required: true
+
+# Integration with Existing Systems
+integration:
+  # Enhanced Audit Sink
+  enhanced_audit_sink:
+    enabled: true
+    legacy_audit_enabled: true  # Keep existing audit system
+    
+  # Risk Management Integration
+  risk_management:
+    audit_risk_decisions: true
+    audit_model_deployments: true
+    audit_config_changes: true
+    
+  # Deployment System Integration
+  deployment_system:
+    require_approval_for_production: true
+    require_approval_for_model_changes: true
+    block_deployment_without_approval: true
+
+# Security Configuration
+security:
+  # Digital Signatures
+  digital_signatures:
+    enabled: true
+    algorithm: "SHA-256"
+    key_rotation_days: 90
+    
+  # Encryption
+  encryption:
+    audit_records_encrypted: true
+    model_artifacts_encrypted: true
+    approval_records_encrypted: true
+    
+  # Access Control
+  access_control:
+    role_based_access: true
+    audit_log_access_restricted: true
+    approval_authority_verified: true
+
+# Monitoring and Alerting
+monitoring:
+  # Governance Metrics
+  metrics:
+    audit_record_count: true
+    approval_request_count: true
+    compliance_check_failures: true
+    model_deployment_frequency: true
+    
+  # Alerts
+  alerts:
+    audit_system_failure:
+      enabled: true
+      severity: "CRITICAL"
+      recipients: ["sysadmin1", "compliance.officer1"]
+      
+    approval_request_expired:
+      enabled: true
+      severity: "WARNING"
+      recipients: ["senior.dev1", "risk.manager1"]
+      
+    compliance_check_failure:
+      enabled: true
+      severity: "HIGH"
+      recipients: ["compliance.officer1", "audit.manager"]
+      
+    unauthorized_deployment_attempt:
+      enabled: true
+      severity: "CRITICAL"
+      recipients: ["chief.risk.officer", "sysadmin1"]
+
+# Development and Testing
+development:
+  # Test Configuration
+  test_mode: false
+  mock_external_systems: false
+  
+  # Local Development
+  local_development:
+    skip_github_integration: true
+    skip_servicenow_integration: true
+    use_local_storage_only: true
+    
+  # Compliance Testing
+  compliance_testing:
+    generate_test_audit_records: true
+    test_approval_workflows: true
+    validate_lineage_tracking: true
