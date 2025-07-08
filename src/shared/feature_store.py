@@ -78,13 +78,44 @@ class FeatureStore:
     
     def _compute_raw_data_hash(self, raw_df: pd.DataFrame) -> bytes:
         """
-        Compute hash of raw data content.
-        For large datasets, could be optimized to hash only header + footer.
+        Compute hash of raw data content with optimization for large tick data.
+        For large datasets (>100MB), only hash the footer to avoid memory issues.
         """
         try:
-            # Convert to parquet bytes for consistent hashing
+            # Convert to parquet bytes for size estimation
             parquet_bytes = raw_df.to_parquet(index=True)
-            return hashlib.sha256(parquet_bytes).digest()
+            data_size_mb = len(parquet_bytes) / 1024 / 1024
+            
+            # Use footer-only hashing for large tick data (>100MB)
+            if data_size_mb > 100:
+                self.logger.debug(f"Using footer hashing for large dataset ({data_size_mb:.1f} MB)")
+                
+                # Hash only the footer (last 1000 rows) + metadata for efficiency
+                footer_rows = min(1000, len(raw_df))
+                footer_df = raw_df.tail(footer_rows)
+                
+                # Include dataset metadata in hash for uniqueness
+                import json
+                metadata = {
+                    'total_rows': len(raw_df),
+                    'columns': raw_df.columns.tolist(),
+                    'dtypes': {col: str(dtype) for col, dtype in raw_df.dtypes.items()},
+                    'index_min': str(raw_df.index.min()),
+                    'index_max': str(raw_df.index.max()),
+                    'footer_rows': footer_rows
+                }
+                
+                # Combine footer data + metadata for hash
+                footer_parquet = footer_df.to_parquet(index=True)
+                metadata_json = json.dumps(metadata, sort_keys=True)
+                
+                hash_input = footer_parquet + metadata_json.encode()
+                return hashlib.sha256(hash_input).digest()
+            
+            else:
+                # Use full hashing for smaller datasets
+                return hashlib.sha256(parquet_bytes).digest()
+                
         except Exception as e:
             self.logger.warning(f"Failed to hash via parquet, using string representation: {e}")
             # Fallback to string representation hash
@@ -219,7 +250,7 @@ class FeatureStore:
     
     def _cache_features(self, cache_key: str, features_df: pd.DataFrame, 
                        symbol: str, start_ts: int, end_ts: int):
-        """Cache computed features to compressed parquet file."""
+        """Cache computed features to compressed parquet file with exclusive locking."""
         try:
             # Generate file path
             cache_file = self.base / f"{cache_key}.parquet.zst"
@@ -233,8 +264,8 @@ class FeatureStore:
             
             file_size = cache_file.stat().st_size
             
-            # Use transaction for thread safety
-            self.db.execute("BEGIN TRANSACTION")
+            # Use EXCLUSIVE transaction for parallel trainer safety
+            self.db.execute("BEGIN EXCLUSIVE TRANSACTION")
             try:
                 self.db.execute("""
                     INSERT OR REPLACE INTO manifest 
