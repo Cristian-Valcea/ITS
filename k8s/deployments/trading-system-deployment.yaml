@@ -1,0 +1,447 @@
+# k8s/deployments/trading-system-deployment.yaml
+"""
+IntradayJules Trading System Deployment with Blue/Green Rollout.
+
+Features:
+- Blue/green deployment with atomic symlink swapping
+- Secrets management integration
+- Prometheus monitoring on :9900
+- Health checks and readiness probes
+- Model bundle mounting with "current → v2025-07-06" symlink
+"""
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: intradayjules-trading-system
+  namespace: trading
+  labels:
+    app: intradayjules
+    component: trading-system
+    version: v1.0.0
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: intradayjules
+      component: trading-system
+  template:
+    metadata:
+      labels:
+        app: intradayjules
+        component: trading-system
+        version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9900"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: intradayjules-secrets
+      
+      # Init container to initialize secrets and validate model bundle
+      initContainers:
+      - name: secrets-init
+        image: intradayjules:latest
+        command: ["python3", "/app/config/init-secrets.py"]
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            secretKeyRef:
+              name: intradayjules-secrets-config
+              key: ENVIRONMENT
+        - name: AWS_REGION
+          valueFrom:
+            secretKeyRef:
+              name: intradayjules-secrets-config
+              key: AWS_REGION
+        - name: VAULT_URL
+          valueFrom:
+            secretKeyRef:
+              name: intradayjules-secrets-config
+              key: VAULT_URL
+        - name: VAULT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: intradayjules-vault-auth
+              key: VAULT_TOKEN
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: intradayjules-aws-auth
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: intradayjules-aws-auth
+              key: AWS_SECRET_ACCESS_KEY
+        volumeMounts:
+        - name: secrets-init-config
+          mountPath: /app/config
+        - name: model-bundles
+          mountPath: /opt/intradayjules/models
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+      
+      - name: model-bundle-validator
+        image: intradayjules:latest
+        command: ["python3", "-c"]
+        args:
+        - |
+          import sys
+          sys.path.insert(0, '/app/src')
+          from deployment.blue_green_rollout import create_blue_green_deployment
+          from pathlib import Path
+          
+          # Validate current model bundle
+          bg_deploy = create_blue_green_deployment('/opt/intradayjules/models')
+          status = bg_deploy.get_deployment_status()
+          
+          if not status['current_version']:
+              print("ERROR: No current model bundle found")
+              sys.exit(1)
+          
+          current_path = Path(status['current_bundle_path'])
+          if not current_path.exists():
+              print(f"ERROR: Current bundle path does not exist: {current_path}")
+              sys.exit(1)
+          
+          print(f"Model bundle validation passed: {status['current_version']}")
+        volumeMounts:
+        - name: model-bundles
+          mountPath: /opt/intradayjules/models
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+      
+      containers:
+      - name: trading-system
+        image: intradayjules:latest
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        - containerPort: 9900
+          name: metrics
+          protocol: TCP
+        
+        env:
+        # Application configuration
+        - name: ENVIRONMENT
+          valueFrom:
+            secretKeyRef:
+              name: intradayjules-secrets-config
+              key: ENVIRONMENT
+        - name: MODEL_BUNDLE_PATH
+          value: "/opt/intradayjules/models/current"
+        - name: CONFIG_PATH
+          value: "/app/config"
+        - name: LOG_LEVEL
+          value: "INFO"
+        
+        # Secrets management configuration
+        - name: AWS_REGION
+          valueFrom:
+            secretKeyRef:
+              name: intradayjules-secrets-config
+              key: AWS_REGION
+        - name: VAULT_URL
+          valueFrom:
+            secretKeyRef:
+              name: intradayjules-secrets-config
+              key: VAULT_URL
+        - name: VAULT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: intradayjules-vault-auth
+              key: VAULT_TOKEN
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: intradayjules-aws-auth
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: intradayjules-aws-auth
+              key: AWS_SECRET_ACCESS_KEY
+        
+        # Alerting configuration
+        - name: PAGERDUTY_INTEGRATION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: intradayjules-alerting
+              key: PAGERDUTY_INTEGRATION_KEY
+        - name: SLACK_WEBHOOK_URL
+          valueFrom:
+            secretKeyRef:
+              name: intradayjules-alerting
+              key: SLACK_WEBHOOK_URL
+        - name: SLACK_CHANNEL
+          valueFrom:
+            secretKeyRef:
+              name: intradayjules-alerting
+              key: SLACK_CHANNEL
+        
+        # Prometheus metrics
+        - name: PROMETHEUS_PORT
+          value: "9900"
+        - name: PROMETHEUS_ENABLED
+          value: "true"
+        
+        volumeMounts:
+        - name: model-bundles
+          mountPath: /opt/intradayjules/models
+          readOnly: true
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+        - name: logs-volume
+          mountPath: /app/logs
+        - name: audit-logs-volume
+          mountPath: /app/logs/audit
+        
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        
+        # Startup probe for model loading
+        startupProbe:
+          httpGet:
+            path: /startup
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30  # Allow 5 minutes for model loading
+        
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        
+        # Security context
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+      
+      # Prometheus metrics exporter sidecar
+      - name: prometheus-exporter
+        image: prom/node-exporter:latest
+        ports:
+        - containerPort: 9100
+          name: node-metrics
+        args:
+        - --path.procfs=/host/proc
+        - --path.sysfs=/host/sys
+        - --collector.filesystem.ignored-mount-points
+        - ^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)
+        volumeMounts:
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: sys
+          mountPath: /host/sys
+          readOnly: true
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      
+      volumes:
+      # Model bundles with blue/green deployment support
+      - name: model-bundles
+        persistentVolumeClaim:
+          claimName: intradayjules-model-bundles
+      
+      # Configuration files
+      - name: config-volume
+        configMap:
+          name: intradayjules-config
+      
+      # Secrets initialization script
+      - name: secrets-init-config
+        configMap:
+          name: intradayjules-secrets-init
+          defaultMode: 0755
+      
+      # Log volumes
+      - name: logs-volume
+        emptyDir: {}
+      
+      - name: audit-logs-volume
+        persistentVolumeClaim:
+          claimName: intradayjules-audit-logs
+      
+      # Node exporter volumes
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+      
+      # Pod scheduling
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - intradayjules
+              topologyKey: kubernetes.io/hostname
+      
+      tolerations:
+      - key: "trading-workload"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: intradayjules-trading-system
+  namespace: trading
+  labels:
+    app: intradayjules
+    component: trading-system
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9900"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  - port: 9900
+    targetPort: 9900
+    protocol: TCP
+    name: metrics
+  - port: 9100
+    targetPort: 9100
+    protocol: TCP
+    name: node-metrics
+  selector:
+    app: intradayjules
+    component: trading-system
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: intradayjules-model-bundles
+  namespace: trading
+  labels:
+    app: intradayjules
+    component: model-storage
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: efs-sc  # Use EFS for shared model storage
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: intradayjules-audit-logs
+  namespace: trading
+  labels:
+    app: intradayjules
+    component: audit-storage
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: gp3-sc  # Use GP3 for audit logs
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: intradayjules-network-policy
+  namespace: trading
+spec:
+  podSelector:
+    matchLabels:
+      app: intradayjules
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9900
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  - to: []  # Allow all egress for now
+    ports:
+    - protocol: TCP
+      port: 443  # HTTPS
+    - protocol: TCP
+      port: 80   # HTTP
+    - protocol: TCP
+      port: 5432 # PostgreSQL
+    - protocol: TCP
+      port: 8200 # Vault

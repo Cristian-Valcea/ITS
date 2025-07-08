@@ -1,0 +1,209 @@
+# config/prometheus/alerting_rules.yml
+"""
+Prometheus Alerting Rules for IntradayJules Trading System.
+
+Critical alerts for:
+- CRITICAL latency P99 > 25 µs
+- Audit log write errors
+- Circuit breaker trip count ≥ 1
+"""
+
+groups:
+  - name: intradayjules.critical
+    interval: 10s
+    rules:
+      # CRITICAL: P99 Latency > 25µs
+      - alert: CriticalLatencyP99High
+        expr: histogram_quantile(0.99, rate(risk_enforcement_duration_seconds_bucket[1m])) > 0.000025
+        for: 30s
+        labels:
+          severity: critical
+          service: risk_enforcement
+          team: trading
+        annotations:
+          summary: "CRITICAL: Risk enforcement P99 latency > 25µs"
+          description: "Risk enforcement P99 latency is {{ $value | humanizeDuration }}, exceeding critical threshold of 25µs. This may impact trading performance."
+          runbook_url: "https://wiki.company.com/runbooks/trading/latency-high"
+          dashboard_url: "http://grafana:3000/d/risk-enforcement/risk-enforcement-dashboard"
+
+      - alert: CriticalVaRCalculationLatencyHigh
+        expr: histogram_quantile(0.99, rate(var_calculation_duration_seconds_bucket[1m])) > 0.000025
+        for: 30s
+        labels:
+          severity: critical
+          service: var_calculation
+          team: trading
+        annotations:
+          summary: "CRITICAL: VaR calculation P99 latency > 25µs"
+          description: "VaR calculation P99 latency is {{ $value | humanizeDuration }}, exceeding critical threshold of 25µs."
+          runbook_url: "https://wiki.company.com/runbooks/trading/var-latency-high"
+
+      # CRITICAL: Audit Log Write Errors
+      - alert: CriticalAuditLogWriteErrors
+        expr: increase(audit_log_write_errors_total[5m]) > 0
+        for: 0s  # Alert immediately
+        labels:
+          severity: critical
+          service: audit_logging
+          team: trading
+        annotations:
+          summary: "CRITICAL: Audit log write errors detected"
+          description: "{{ $value }} audit log write errors in the last 5 minutes. Compliance logging is failing."
+          runbook_url: "https://wiki.company.com/runbooks/trading/audit-log-errors"
+          impact: "Regulatory compliance at risk - audit trail incomplete"
+
+      - alert: CriticalAuditLogDiskFull
+        expr: audit_log_disk_usage_percent > 90
+        for: 1m
+        labels:
+          severity: critical
+          service: audit_logging
+          team: trading
+        annotations:
+          summary: "CRITICAL: Audit log disk usage > 90%"
+          description: "Audit log disk usage is {{ $value }}%, approaching capacity. Risk of audit log write failures."
+          runbook_url: "https://wiki.company.com/runbooks/trading/disk-full"
+
+      # CRITICAL: Circuit Breaker Trips
+      - alert: CriticalCircuitBreakerTripped
+        expr: increase(circuit_breaker_trip_count_total[1m]) >= 1
+        for: 0s  # Alert immediately
+        labels:
+          severity: critical
+          service: circuit_breaker
+          team: trading
+        annotations:
+          summary: "CRITICAL: Circuit breaker tripped"
+          description: "Circuit breaker '{{ $labels.breaker_name }}' has tripped {{ $value }} times in the last minute. Trading may be halted."
+          runbook_url: "https://wiki.company.com/runbooks/trading/circuit-breaker-trip"
+          impact: "Trading operations may be suspended"
+
+      - alert: CriticalRiskLimitBreach
+        expr: increase(risk_limit_breach_total[1m]) >= 1
+        for: 0s  # Alert immediately
+        labels:
+          severity: critical
+          service: risk_management
+          team: trading
+        annotations:
+          summary: "CRITICAL: Risk limit breached"
+          description: "Risk limit '{{ $labels.limit_type }}' breached {{ $value }} times. Current value: {{ $labels.current_value }}, Limit: {{ $labels.limit_value }}"
+          runbook_url: "https://wiki.company.com/runbooks/trading/risk-limit-breach"
+          impact: "Risk exposure exceeds acceptable levels"
+
+      # CRITICAL: VaR Enforcement Failures
+      - alert: CriticalVaREnforcementFailure
+        expr: increase(var_enforcement_failures_total[5m]) > 0
+        for: 0s
+        labels:
+          severity: critical
+          service: var_enforcement
+          team: trading
+        annotations:
+          summary: "CRITICAL: VaR enforcement failures"
+          description: "{{ $value }} VaR enforcement failures in the last 5 minutes. Risk controls may not be functioning."
+          runbook_url: "https://wiki.company.com/runbooks/trading/var-enforcement-failure"
+
+  - name: intradayjules.warning
+    interval: 30s
+    rules:
+      # WARNING: High Latency (approaching critical)
+      - alert: WarningLatencyP99High
+        expr: histogram_quantile(0.99, rate(risk_enforcement_duration_seconds_bucket[5m])) > 0.000020
+        for: 2m
+        labels:
+          severity: warning
+          service: risk_enforcement
+          team: trading
+        annotations:
+          summary: "WARNING: Risk enforcement P99 latency > 20µs"
+          description: "Risk enforcement P99 latency is {{ $value | humanizeDuration }}, approaching critical threshold."
+
+      # WARNING: High Error Rate
+      - alert: WarningHighErrorRate
+        expr: rate(risk_enforcement_errors_total[5m]) > 0.01
+        for: 2m
+        labels:
+          severity: warning
+          service: risk_enforcement
+          team: trading
+        annotations:
+          summary: "WARNING: High risk enforcement error rate"
+          description: "Risk enforcement error rate is {{ $value | humanizePercentage }}, above normal levels."
+
+      # WARNING: Configuration Hot-Reload Failures
+      - alert: WarningConfigReloadFailures
+        expr: increase(config_reload_failures_total[10m]) > 2
+        for: 1m
+        labels:
+          severity: warning
+          service: config_management
+          team: trading
+        annotations:
+          summary: "WARNING: Multiple configuration reload failures"
+          description: "{{ $value }} configuration reload failures in the last 10 minutes."
+
+      # WARNING: False Positive Rate High
+      - alert: WarningFalsePositiveRateHigh
+        expr: rate(risk_false_positives_total[1h]) > 0.02  # >2% false positive rate
+        for: 5m
+        labels:
+          severity: warning
+          service: risk_management
+          team: trading
+        annotations:
+          summary: "WARNING: High false positive rate in risk management"
+          description: "False positive rate is {{ $value | humanizePercentage }} over the last hour, above acceptable threshold."
+
+  - name: intradayjules.info
+    interval: 60s
+    rules:
+      # INFO: System Health Checks
+      - alert: InfoSystemStartup
+        expr: increase(system_startup_total[5m]) > 0
+        for: 0s
+        labels:
+          severity: info
+          service: system
+          team: trading
+        annotations:
+          summary: "INFO: System startup detected"
+          description: "IntradayJules system has started up {{ $value }} times in the last 5 minutes."
+
+      - alert: InfoConfigurationReloaded
+        expr: increase(config_reload_success_total[5m]) > 0
+        for: 0s
+        labels:
+          severity: info
+          service: config_management
+          team: trading
+        annotations:
+          summary: "INFO: Configuration successfully reloaded"
+          description: "Configuration has been successfully reloaded {{ $value }} times in the last 5 minutes."
+
+      # INFO: Trading Activity
+      - alert: InfoHighTradingVolume
+        expr: rate(trades_executed_total[5m]) > 100
+        for: 2m
+        labels:
+          severity: info
+          service: trading
+          team: trading
+        annotations:
+          summary: "INFO: High trading volume detected"
+          description: "Trading volume is {{ $value }} trades/second, above normal levels."
+
+  - name: intradayjules.deadman
+    interval: 30s
+    rules:
+      # Deadman's switch - ensures alerting system is working
+      - alert: DeadMansSwitch
+        expr: vector(1)
+        for: 0s
+        labels:
+          severity: info
+          service: monitoring
+          team: trading
+        annotations:
+          summary: "Deadman's switch - monitoring system is alive"
+          description: "This alert should always be firing to ensure the alerting system is functional."
