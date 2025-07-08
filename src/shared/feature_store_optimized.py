@@ -24,8 +24,18 @@ from typing import Dict, Any, Optional, Callable, Union
 from datetime import datetime, timedelta
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
-import fcntl  # For file locking on Unix systems
-import msvcrt  # For file locking on Windows
+# Cross-platform file locking imports
+try:
+    import fcntl  # For file locking on Unix systems
+    HAS_FCNTL = True
+except ImportError:
+    HAS_FCNTL = False
+
+try:
+    import msvcrt  # For file locking on Windows
+    HAS_MSVCRT = True
+except ImportError:
+    HAS_MSVCRT = False
 
 
 class OptimizedFeatureStore:
@@ -222,10 +232,14 @@ class OptimizedFeatureStore:
             duration = time.time() - start_time
             
             with self._db_lock:
+                # Get next ID for gc_log
+                next_id_result = self.db.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM gc_log").fetchone()
+                next_id = next_id_result[0] if next_id_result else 1
+                
                 self.db.execute("""
-                    INSERT INTO gc_log (files_deleted, bytes_freed, duration_seconds, orphaned_files_found)
-                    VALUES (?, ?, ?, ?)
-                """, [files_deleted, bytes_freed, duration, orphaned_files])
+                    INSERT INTO gc_log (id, files_deleted, bytes_freed, duration_seconds, orphaned_files_found)
+                    VALUES (?, ?, ?, ?, ?)
+                """, [next_id, files_deleted, bytes_freed, duration, orphaned_files])
             
             # Update metrics
             self.metrics['gc_runs'] += 1
@@ -380,12 +394,13 @@ class OptimizedFeatureStore:
         Execute SQL with exclusive database lock for parallel trainer safety.
         
         This prevents race conditions when multiple trainers are writing to
-        the same cache simultaneously.
+        the same cache simultaneously. Uses thread-level locking since DuckDB
+        doesn't support EXCLUSIVE transactions.
         """
         with self._db_lock:
             try:
-                # Use exclusive transaction for thread safety
-                self.db.execute("BEGIN EXCLUSIVE TRANSACTION")
+                # Use regular transaction with thread-level locking for safety
+                self.db.execute("BEGIN TRANSACTION")
                 
                 if params:
                     result = self.db.execute(sql, params)
@@ -396,7 +411,10 @@ class OptimizedFeatureStore:
                 return result
                 
             except Exception as e:
-                self.db.execute("ROLLBACK")
+                try:
+                    self.db.execute("ROLLBACK")
+                except:
+                    pass  # Ignore rollback errors if no transaction is active
                 self.logger.error(f"Database operation failed: {e}")
                 raise
     
@@ -652,6 +670,14 @@ class OptimizedFeatureStore:
             self.cleanup_and_shutdown()
         except:
             pass  # Ignore errors during cleanup
+    
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.cleanup_and_shutdown()
 
 
 # Backward compatibility alias

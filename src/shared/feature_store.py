@@ -264,8 +264,8 @@ class FeatureStore:
             
             file_size = cache_file.stat().st_size
             
-            # Use EXCLUSIVE transaction for parallel trainer safety
-            self.db.execute("BEGIN EXCLUSIVE TRANSACTION")
+            # Use transaction for parallel trainer safety
+            self.db.execute("BEGIN TRANSACTION")
             try:
                 self.db.execute("""
                     INSERT OR REPLACE INTO manifest 
@@ -281,7 +281,10 @@ class FeatureStore:
                                f"({file_size:,} bytes compressed)")
                 
             except Exception as e:
-                self.db.execute("ROLLBACK")
+                try:
+                    self.db.execute("ROLLBACK")
+                except:
+                    pass  # Ignore rollback errors if no transaction is active
                 raise e
                 
         except Exception as e:

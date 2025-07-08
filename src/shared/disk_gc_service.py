@@ -23,8 +23,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
 import duckdb
-import fcntl
 import os
+
+# Cross-platform file locking
+try:
+    import fcntl
+    HAS_FCNTL = True
+except ImportError:
+    HAS_FCNTL = False
 
 
 class DiskGarbageCollector:
