@@ -647,7 +647,22 @@ class IntradayTradingEnv(gym.Env):
 
     def get_portfolio_history(self):
         """Returns the history of portfolio values at each step."""
-        return pd.Series(self.portfolio_history, index=self.dates[:len(self.portfolio_history)])
+        if not self.portfolio_history:
+            return pd.Series(dtype=float)
+        
+        # Ensure lengths match to avoid index mismatch
+        portfolio_len = len(self.portfolio_history)
+        dates_len = len(self.dates)
+        
+        if portfolio_len <= dates_len:
+            # Normal case: use dates up to portfolio length
+            return pd.Series(self.portfolio_history, index=self.dates[:portfolio_len])
+        else:
+            # Edge case: portfolio history is longer than dates
+            # This can happen if portfolio is updated after the last date
+            # Truncate portfolio history to match dates length
+            self.logger.warning(f"Portfolio history length ({portfolio_len}) > dates length ({dates_len}). Truncating.")
+            return pd.Series(self.portfolio_history[:dates_len], index=self.dates)
 
 
     def close(self):

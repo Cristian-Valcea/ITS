@@ -117,7 +117,7 @@ class SB3Policy(RLPolicy):
 
     def save_bundle(self, bundle_path: Path) -> None:
         """
-        Save policy as TorchScript bundle for production deployment.
+        Save policy bundle with both SB3 and TorchScript models.
 
         Args:
             bundle_path: Directory to save the bundle
@@ -126,9 +126,18 @@ class SB3Policy(RLPolicy):
         bundle_path.mkdir(parents=True, exist_ok=True)
 
         try:
-            # Save TorchScript model
-            policy_path = bundle_path / "policy.pt"
-            self._export_torchscript(policy_path)
+            # Save original SB3 model for evaluation compatibility
+            sb3_model_path = bundle_path / "policy.pt"
+            self.model.save(str(sb3_model_path))
+            self.logger.info(f"SB3 model saved to {sb3_model_path}")
+            
+            # Save TorchScript model for production deployment
+            torchscript_path = bundle_path / "policy_torchscript.pt"
+            self._export_torchscript(torchscript_path)
+            self.logger.info(f"TorchScript model saved to {torchscript_path}")
+            
+            # Use SB3 model path for metadata hash calculation
+            policy_path = sb3_model_path
 
             # Create metadata
             model_hash = self._compute_file_hash(policy_path)

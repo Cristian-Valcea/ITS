@@ -151,7 +151,7 @@ class OrchestratorAgent:
 
         self.data_agent = DataAgent(config={
             'data_dir_raw': paths.get('data_dir_raw', 'data/raw/'),
-            'ibkr_conn': self.main_config.get('ibkr_connection', None)
+            'ibkr_conn': self.main_config.get('ibkr_conn', None)
         })
         self.feature_agent = FeatureAgent(config={ # Pass full feature_engineering config
             **self.main_config.get('feature_engineering', {}), # Original content
@@ -390,7 +390,7 @@ class OrchestratorAgent:
 
         # New TrainerAgent returns policy bundle path, not model path
         policy_bundle_path = self.trainer_agent.run(
-            env=training_environment
+            training_env=training_environment
             # Note: continue_from_model not supported in new architecture yet
         )
         if policy_bundle_path is None:
@@ -871,7 +871,8 @@ class OrchestratorAgent:
     def _process_incoming_bar(self, new_bar_df: pd.DataFrame, symbol: str):
         if not self.live_trading_active: self.logger.debug(f"Bar for {symbol}, live trading inactive."); return
         current_time_of_bar = new_bar_df.index[-1].to_pydatetime()
-        self.logger.info(f"Processing bar for {symbol} at {current_time_of_bar}: Px={new_bar_df[COL_CLOSE].iloc[0]:.2f if COL_CLOSE in new_bar_df.columns else 'N/A'}")
+        price_str = f"{new_bar_df[COL_CLOSE].iloc[0]:.2f}" if COL_CLOSE in new_bar_df.columns else 'N/A'
+        self.logger.info(f"Processing bar for {symbol} at {current_time_of_bar}: Px={price_str}")
         try:
             observation_sequence, latest_price_series = self.feature_agent.process_live_bar(new_bar_df, symbol)
             if observation_sequence is None or latest_price_series is None: self.logger.debug(f"No valid obs for {symbol} at {current_time_of_bar}."); return
@@ -1271,12 +1272,15 @@ class OrchestratorAgent:
         Args:
             symbol (str): The trading symbol to trade live (e.g., "AAPL")
         """
+        print(f"🚀 STARTING LIVE TRADING FOR {symbol}")
         self.logger.info(f"=== STARTING LIVE TRADING FOR {symbol} ===")
         try:
             self._run_live_trading_loop_conceptual(symbol)
         except Exception as e:
+            print(f"❌ CRITICAL ERROR in live trading for {symbol}: {e}")
             self.logger.error(f"Critical error in live trading for {symbol}: {e}", exc_info=True)
         finally:
+            print(f"🏁 LIVE TRADING FOR {symbol} ENDED")
             self.logger.info(f"=== LIVE TRADING FOR {symbol} ENDED ===")
 
 
@@ -1298,10 +1302,35 @@ class OrchestratorAgent:
         return features
 
     def _run_live_trading_loop_conceptual(self, symbol: str) -> None:
+        print(f"🚀 LIVE TRADING STARTED FOR {symbol} - Check console for progress!")
         self.logger.info(f"--- Attempting to Start LIVE TRADING for {symbol} ---")
+        print(f"📝 Logger name: {self.logger.name}")
+        print(f"📝 Logger level: {self.logger.level}")
+        print(f"📝 Logger handlers: {self.logger.handlers}")
         live_trading_config = self.main_config.get('live_trading', {})
+        print(f"📋 Live trading config: {live_trading_config}")
         if not live_trading_config.get('enabled', False):
+            print(f"❌ Live trading is not enabled for '{symbol}' in config. Aborting.")
             self.logger.warning(f"Live trading is not enabled for '{symbol}' in config. Aborting."); return
+        else:
+            print(f"✅ Live trading is enabled for '{symbol}'")
+
+        # Check if we're in simulation mode early
+        ibkr_config = self.main_config.get('ibkr_conn', {}) or self.main_config.get('ibkr_connection', {})
+        self.simulation_mode = ibkr_config.get('simulation_mode', False)
+        simulation_mode = self.simulation_mode  # Keep local variable for compatibility
+
+        def check_connection_and_sleep():
+            """Helper function to handle connection checking and sleeping"""
+            if self.simulation_mode:
+                import time
+                time.sleep(1)
+                return True
+            elif self.data_agent.ib and self.data_agent.ib.isConnected():
+                self.data_agent.ib.sleep(1)
+                return True
+            else:
+                return False
 
         model_path = live_trading_config.get('production_model_path')
         initial_capital_for_risk = self.main_config.get('environment', {}).get('initial_capital', 100000) # Fallback
@@ -1327,27 +1356,96 @@ class OrchestratorAgent:
         self.open_trades = {}
 
         try:
-            if not self.data_agent.ib_connected: self.data_agent._connect_ibkr()
-            if not self.data_agent.ib_connected: self.logger.error("Failed to connect DataAgent to IBKR. Aborting."); return
-
-            self.logger.info("Fetching initial account summary...")
-            account_summary = self.data_agent.get_account_summary(tags="NetLiquidation,TotalCashValue,AvailableFunds")
-            if not account_summary: self.logger.error("Failed to fetch initial account summary. Aborting."); return
-            self.portfolio_state['cash'] = account_summary.get('TotalCashValue', initial_capital_for_risk)
-            self.portfolio_state['net_liquidation'] = account_summary.get('NetLiquidation', initial_capital_for_risk)
-            self.portfolio_state['available_funds'] = account_summary.get('AvailableFunds', initial_capital_for_risk)
-            self.portfolio_state['positions'] = {}
-            initial_positions = self.data_agent.get_portfolio_positions()
-            for pos_item in initial_positions:
-                self.portfolio_state['positions'][pos_item['symbol']] = {"shares": pos_item['position'], "average_cost": pos_item['average_cost'], "market_value": pos_item['market_value']}
-            self.logger.info(f"Initial portfolio: {self.portfolio_state}")
+            # Check if we're in simulation mode
+            ibkr_config = self.main_config.get('ibkr_conn', {})
+            simulation_mode = ibkr_config.get('simulation_mode', False)
+            
+            if simulation_mode:
+                print("🎮 SIMULATION MODE: Skipping IBKR connection, using cached data")
+                self.logger.info("🎮 SIMULATION MODE: Skipping IBKR connection, using cached data")
+            else:
+                print("🔌 Checking IBKR connection...")
+                self.logger.info("🔌 Checking IBKR connection...")
+                if not self.data_agent.ib_connected: 
+                    print("🔌 Connecting to IBKR...")
+                    self.logger.info("🔌 Connecting to IBKR...")
+                    
+                    # Add timeout for IBKR connection
+                    import threading
+                    import time
+                    
+                    connection_result = {"success": False, "error": None}
+                    
+                    def connect_with_timeout():
+                        try:
+                            self.data_agent._connect_ibkr()
+                            connection_result["success"] = self.data_agent.ib_connected
+                        except Exception as e:
+                            connection_result["error"] = str(e)
+                    
+                    # Start connection in separate thread
+                    connect_thread = threading.Thread(target=connect_with_timeout)
+                    connect_thread.daemon = True
+                    connect_thread.start()
+                    
+                    # Wait for connection with timeout
+                    connect_thread.join(timeout=15)  # 15 second timeout
+                    
+                    if connect_thread.is_alive():
+                        print("⏰ IBKR connection timed out after 15 seconds!")
+                        self.logger.error("❌ IBKR connection timed out!")
+                        return
+                    elif connection_result["error"]:
+                        print(f"❌ IBKR connection failed: {connection_result['error']}")
+                        self.logger.error(f"❌ IBKR connection failed: {connection_result['error']}")
+                        return
+                    elif connection_result["success"]:
+                        print("✅ Successfully connected to IBKR!")
+                        self.logger.info("✅ Successfully connected to IBKR!")
+                    else:
+                        print("❌ Failed to connect to IBKR!")
+                        self.logger.error("❌ Failed to connect to IBKR!")
+                        return
+                else:
+                    print("✅ Already connected to IBKR!")
+                    self.logger.info("✅ Already connected to IBKR!")
+            
+            # simulation_mode already defined at the top of function
+            
+            if not self.data_agent.ib_connected and not simulation_mode:
+                self.logger.error("Failed to connect DataAgent to IBKR. Aborting."); return
+            elif simulation_mode:
+                self.logger.info("Running in simulation mode - using mock portfolio data")
+                # Initialize mock portfolio for simulation
+                self.portfolio_state['cash'] = initial_capital_for_risk
+                self.portfolio_state['net_liquidation'] = initial_capital_for_risk
+                self.portfolio_state['available_funds'] = initial_capital_for_risk
+                self.portfolio_state['positions'] = {}
+                self.logger.info(f"Mock portfolio initialized: {self.portfolio_state}")
+            else:
+                self.logger.info("💰 Fetching initial account summary...")
+                account_summary = self.data_agent.get_account_summary(tags="NetLiquidation,TotalCashValue,AvailableFunds")
+                if not account_summary: 
+                    self.logger.error("❌ Failed to fetch initial account summary. Aborting."); return
+                else:
+                    self.logger.info(f"✅ Account summary received: {account_summary}")
+                self.portfolio_state['cash'] = account_summary.get('TotalCashValue', initial_capital_for_risk)
+                self.portfolio_state['net_liquidation'] = account_summary.get('NetLiquidation', initial_capital_for_risk)
+                self.portfolio_state['available_funds'] = account_summary.get('AvailableFunds', initial_capital_for_risk)
+                self.portfolio_state['positions'] = {}
+                initial_positions = self.data_agent.get_portfolio_positions()
+                for pos_item in initial_positions:
+                    self.portfolio_state['positions'][pos_item['symbol']] = {"shares": pos_item['position'], "average_cost": pos_item['average_cost'], "market_value": pos_item['market_value']}
+                self.logger.info(f"Initial portfolio: {self.portfolio_state}")
 
             # Fetch warmup data for FeatureAgent
             historical_warmup_bars = int(live_trading_config.get('historical_warmup_bars', 0))
             warmup_df = None
             if historical_warmup_bars > 0:
-                self.logger.info(f"Attempting to fetch {historical_warmup_bars} historical bars for FeatureAgent warmup...")
-                end_dt_warmup_str = "" # Empty string for "now" in reqHistoricalData
+                self.logger.info(f"📊 Attempting to fetch {historical_warmup_bars} historical bars for FeatureAgent warmup...")
+                # Use current date for end_datetime_str in YYYY-MM-DD format
+                from datetime import datetime
+                end_dt_warmup_str = datetime.now().strftime("%Y-%m-%d")
 
                 warmup_interval_str = live_trading_config.get('data_interval', '5 secs') # Use live data interval for warmup
                 
@@ -1391,19 +1489,57 @@ class OrchestratorAgent:
                 self.data_agent.ib.execDetailsEvent += self._on_execution_details
                 self.data_agent.ib.commissionReportEvent += self._on_commission_report
                 self.logger.info("Subscribed to IBKR order, execution, and commission events.")
-            else: self.logger.error("DataAgent.ib not initialized, cannot subscribe to order events."); return
+            elif not simulation_mode:
+                self.logger.error("DataAgent.ib not initialized, cannot subscribe to order events."); return
+            else:
+                self.logger.info("Simulation mode: Skipping IBKR event subscriptions")
 
             live_contract_details = live_trading_config.get('contract_details', {})
-            if not self.data_agent.subscribe_live_bars(symbol=symbol, sec_type=live_contract_details.get('sec_type', 'STK'), exchange=live_contract_details.get('exchange', 'SMART'), currency=live_contract_details.get('currency', 'USD')):
+            if not simulation_mode and not self.data_agent.subscribe_live_bars(symbol=symbol, sec_type=live_contract_details.get('sec_type', 'STK'), exchange=live_contract_details.get('exchange', 'SMART'), currency=live_contract_details.get('currency', 'USD')):
                 self.logger.error(f"Failed to subscribe to live bars for {symbol}. Aborting."); return
+            elif simulation_mode:
+                self.logger.info("Simulation mode: Skipping live bar subscription")
             
             self.live_trading_active = True
             self.logger.info(f"Live trading loop starting for {symbol}...")
             last_portfolio_sync_time = datetime.now()
             portfolio_sync_interval = timedelta(minutes=live_trading_config.get('portfolio_sync_interval_minutes', 15))
 
+            # Initialize simulation data feeding if in simulation mode
+            simulation_data_index = 0
+            simulation_data = None
+            if simulation_mode:
+                # Get the cached data for simulation
+                simulation_data = self.data_agent.get_cached_data(symbol)
+                if simulation_data is not None and not simulation_data.empty:
+                    self.logger.info(f"🎮 Simulation: Starting to feed {len(simulation_data)} cached bars for {symbol}")
+                else:
+                    self.logger.warning("🎮 Simulation: No cached data available for feeding")
+                    self.live_trading_active = False  # End simulation if no data
+
             while self.live_trading_active:
-                if self.data_agent.ib and self.data_agent.ib.isConnected(): self.data_agent.ib.sleep(1)
+                if simulation_mode:
+                    import time
+                    # Feed cached data bar by bar in simulation mode
+                    if simulation_data is not None and simulation_data_index < len(simulation_data):
+                        # Get current bar
+                        current_bar = simulation_data.iloc[simulation_data_index:simulation_data_index+1]
+                        self.logger.info(f"🎮 Simulation: Feeding bar {simulation_data_index+1}/{len(simulation_data)} for {symbol}")
+                        
+                        # Process the bar through the trading pipeline
+                        self._process_incoming_bar(current_bar, symbol)
+                        
+                        simulation_data_index += 1
+                        time.sleep(2)  # Simulate real-time delay between bars
+                    else:
+                        if simulation_data is not None and simulation_data_index >= len(simulation_data):
+                            self.logger.info(f"🎮 Simulation: All {len(simulation_data)} bars processed for {symbol}. Ending simulation.")
+                        else:
+                            self.logger.info("🎮 Simulation: No data available. Ending simulation.")
+                        self.live_trading_active = False
+                        break
+                elif self.data_agent.ib and self.data_agent.ib.isConnected():
+                    self.data_agent.ib.sleep(1)
                 else: self.logger.error("IB connection lost. Halting."); self.live_trading_active = False; break
                 
                 current_loop_time = datetime.now()
@@ -1461,7 +1597,8 @@ class OrchestratorAgent:
     def _process_incoming_bar(self, new_bar_df: pd.DataFrame, symbol: str):
         if not self.live_trading_active: self.logger.debug(f"Bar for {symbol}, live trading inactive."); return
         current_time_of_bar = new_bar_df.index[-1].to_pydatetime()
-        self.logger.info(f"Processing bar for {symbol} at {current_time_of_bar}: Px={new_bar_df[COL_CLOSE].iloc[0]:.2f if COL_CLOSE in new_bar_df.columns else 'N/A'}")
+        price_str = f"{new_bar_df[COL_CLOSE].iloc[0]:.2f}" if COL_CLOSE in new_bar_df.columns else 'N/A'
+        self.logger.info(f"Processing bar for {symbol} at {current_time_of_bar}: Px={price_str}")
         try:
             observation_sequence, latest_price_series = self.feature_agent.process_live_bar(new_bar_df, symbol)
             if observation_sequence is None or latest_price_series is None: self.logger.debug(f"No valid obs for {symbol} at {current_time_of_bar}."); return
@@ -1586,7 +1723,11 @@ class OrchestratorAgent:
                 return None
         elif "min" in bar_size_str:
             try:
-                mins = int(bar_size_str.split(" ")[0])
+                # Handle both "1 min" and "1min" formats
+                if " " in bar_size_str:
+                    mins = int(bar_size_str.split(" ")[0])
+                else:
+                    mins = int(bar_size_str.replace("min", ""))
                 total_seconds_needed = num_bars * mins * 60
             except:
                 self.logger.error(f"Could not parse minutes from bar_size_str: {bar_size_str}")

@@ -1,13 +1,21 @@
+import sys
+import os
+from pathlib import Path
+
+# Add project root to Python path
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 from fastapi import FastAPI, BackgroundTasks, HTTPException, APIRouter, Request, Form
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 import uuid
-import os
 from datetime import datetime, timedelta
 
-from src.agents.orchestrator_agent import OrchestratorAgent
+from src.execution.orchestrator_agent import OrchestratorAgent
 
 # --- In-memory task store ---
 task_store: Dict[str, Dict[str, Any]] = {}
@@ -23,11 +31,15 @@ app = FastAPI(title="RL Platform API")
 router = APIRouter()
 
 # --- OrchestratorAgent instance (singleton for demo) ---
-orchestrator = OrchestratorAgent(
-    main_config_path="config/main_config_orchestrator_test.yaml",
-    model_params_path="config/model_params_orchestrator_test.yaml",
-    risk_limits_path="config/risk_limits_orchestrator_test.yaml"
-)
+def get_orchestrator():
+    """Get or create orchestrator instance"""
+    return OrchestratorAgent(
+        main_config_path="config/main_config_orchestrator_test.yaml",
+        model_params_path="config/model_params_orchestrator_test.yaml",
+        risk_limits_path="config/risk_limits_orchestrator_test.yaml"
+    )
+
+orchestrator = get_orchestrator()
 
 # --- Request/Response Models ---
 class TrainingRequest(BaseModel):
@@ -188,6 +200,16 @@ def list_tasks():
 def health_check():
     return {"status": "ok"}
 
+@app.post("/api/v1/reload")
+def reload_orchestrator():
+    """Reload the orchestrator instance"""
+    global orchestrator
+    try:
+        orchestrator = get_orchestrator()
+        return {"status": "success", "message": "Orchestrator reloaded successfully"}
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to reload orchestrator: {e}"}
+
 # --- UI Endpoints ---
 
 @app.get("/", response_class=RedirectResponse)
@@ -287,6 +309,88 @@ async def ui_trigger_training_submit(
         "default_end_date": default_end_date
     }
     return templates.TemplateResponse("run_training.html", context)
+
+@app.get("/ui/nvda-dqn", response_class=HTMLResponse)
+async def ui_nvda_dqn_training_form(
+    request: Request,
+    message: Optional[str] = None,
+    success: Optional[bool] = None,
+    task_id: Optional[str] = None
+):
+    """Serves the specialized HTML form for NVDA DQN training."""
+    context = {
+        "request": request,
+        "title": "NVDA DQN Training Pipeline",
+        "message": message,
+        "success": success,
+        "task_id": task_id
+    }
+    return templates.TemplateResponse("nvda_dqn_training.html", context)
+
+@app.post("/ui/nvda-dqn", response_class=HTMLResponse)
+async def ui_nvda_dqn_training_submit(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    symbol: str = Form(...),
+    start_date: str = Form(...),
+    end_date: str = Form(...),
+    interval: str = Form(...),
+    use_cached_data: Optional[bool] = Form(False),
+    continue_from_model: Optional[str] = Form(None),
+    run_evaluation_after_train: Optional[bool] = Form(False),
+    eval_start_date: Optional[str] = Form(None),
+    eval_end_date: Optional[str] = Form(None),
+    eval_interval: Optional[str] = Form(None)
+):
+    """Processes the NVDA DQN training form submission."""
+    message = None
+    success = None
+    task_id_resp = None
+    
+    # Create training request
+    train_request = TrainingRequest(
+        symbol=symbol,
+        start_date=start_date,
+        end_date=end_date,
+        interval=interval,
+        use_cached_data=bool(use_cached_data),
+        continue_from_model=continue_from_model if continue_from_model else None
+    )
+    
+    try:
+        task_id = str(uuid.uuid4())
+        task_store[task_id] = {
+            'status': 'pending', 
+            'result': None, 
+            'error': None,
+            'description': f"NVDA DQN Training ({start_date} to {end_date}, {interval})"
+        }
+        background_tasks.add_task(run_training_pipeline_sync, task_id, train_request)
+        message = f"🚀 NVDA DQN Training pipeline initiated! Task ID: {task_id}"
+        success = True
+        task_id_resp = task_id
+    except Exception as e:
+        message = f"❌ Error starting NVDA DQN training: {str(e)}"
+        success = False
+    
+    # Re-render form with message
+    context = {
+        "request": request,
+        "title": "NVDA DQN Training Pipeline",
+        "message": message,
+        "success": success,
+        "task_id": task_id_resp
+    }
+    return templates.TemplateResponse("nvda_dqn_training.html", context)
+
+@app.get("/ui/live-trading", response_class=HTMLResponse)
+async def ui_live_trading_page(request: Request):
+    """Serves the live trading interface for NVDA."""
+    context = {
+        "request": request,
+        "title": "NVDA Live Trading"
+    }
+    return templates.TemplateResponse("live_trading_simple.html", context)
 
 @app.get("/ui/tasks/{task_id}", response_class=HTMLResponse)
 async def ui_task_status_page(request: Request, task_id: str):

@@ -6,6 +6,14 @@ data_augmentation:
   scale_min: 0.98
   window_size: 60
   window_slicing: false
+ibkr_conn:
+  host: 127.0.0.1
+  port: 7497
+  clientId: 103
+  timeout: 30
+  use_cache: true
+  cache_duration_minutes: 5
+  simulation_mode: true
 data_preprocessing:
   impute_missing: true
   normalize: false
@@ -30,7 +38,8 @@ feature_engineering:
   - rsi_14
   - ema_10
   - ema_20
-  - hour_of_day
+  - hour_sin
+  - hour_cos
   features:
   - RSI
   - EMA
@@ -40,12 +49,17 @@ feature_engineering:
   - rsi_14
   - ema_10
   - ema_20
-  - hour_of_day
+  - hour_sin
+  - hour_cos
   - Close
+  - Volume
   rsi:
     window: 14
   time:
-  - hour_of_day
+    time_features:
+    - hour_of_day
+    sin_cos_encode:
+    - hour_of_day
 ibkr_connection: null
 paths:
   data_dir_processed: data/processed_orch_test/
@@ -66,3 +80,18 @@ training:
   data_duration_for_fetch: 10 D
   log_interval: 50
   total_timesteps: 2000
+live_trading:
+  enabled: true
+  production_model_path: models/orch_test/DQN_2025-07-09_15-41-14/policy_bundle/policy.pt
+  data_interval: 1min
+  trade_quantity_type: fixed_shares
+  trade_quantity_value: 10
+  historical_warmup_bars: 20
+  contract_details:
+    use_rth_for_warmup: true
+    exchange: SMART
+    currency: USD
+  risk_controls:
+    max_position_size: 100
+    max_daily_loss: 1000
+    stop_loss_pct: 0.02

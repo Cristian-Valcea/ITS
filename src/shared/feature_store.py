@@ -60,9 +60,17 @@ class FeatureStore:
                 rows INTEGER NOT NULL,
                 file_size_bytes INTEGER,
                 created_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_accessed_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                last_accessed_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                access_count INTEGER DEFAULT 1
             )
         """)
+        
+        # Add access_count column if it doesn't exist (for existing databases)
+        try:
+            self.db.execute("ALTER TABLE manifest ADD COLUMN access_count INTEGER DEFAULT 1")
+        except Exception:
+            # Column already exists or other error - ignore
+            pass
         
         # Create indexes for efficient queries
         self.db.execute("CREATE INDEX IF NOT EXISTS idx_symbol ON manifest(symbol)")

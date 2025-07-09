@@ -2,6 +2,7 @@
 import os
 import pandas as pd
 from datetime import datetime, timedelta
+from typing import Optional, Dict, Any, Callable, List
 from ib_insync import IB, util, Contract, Stock # Assuming ib_insync is installed
 
 from .base_agent import BaseAgent
@@ -32,7 +33,7 @@ class DataAgent(BaseAgent):
         self.data_dir_raw = self.config.get('data_dir_raw', 'data/raw')
         os.makedirs(self.data_dir_raw, exist_ok=True)
         
-        self.ib_config = self.config.get('ibkr_conn', {})
+        self.ib_config = self.config.get('ibkr_conn', {}) or self.config.get('ibkr_connection', {})
         self.ib = None # Will be initialized
         self.ib_connected = False
         self._ib_managed_locally = False # Flag to track if this instance manages the connection
@@ -57,14 +58,38 @@ class DataAgent(BaseAgent):
             self.logger.info("IB client is already connected.")
             return
 
+        # Safety check for missing config
+        if not self.ib_config:
+            self.logger.error("IBKR configuration is missing. Cannot connect to Interactive Brokers.")
+            return
+
+        # Check for simulation mode
+        if self.ib_config.get('simulation_mode', False):
+            self.logger.warning("IBKR simulation mode enabled. Using cached data only.")
+            self.ib_connected = False  # Keep as False to use cached data
+            return
+
         if not self.ib_config.get('host') or not self.ib_config.get('port') or self.ib_config.get('clientId') is None:
             self.logger.error("IBKR connection parameters (host, port, clientId) missing in config.")
             return
 
         try:
+            from ib_insync import util
+            import asyncio
+            
+            # Patch asyncio to work in threading environment
+            util.patchAsyncio()
+            
             self.ib = IB()
             self.logger.info(f"Attempting to connect to IBKR at {self.ib_config['host']}:{self.ib_config['port']} with clientId {self.ib_config['clientId']}...")
-            # util.patchAsyncio() # Not always needed, depends on environment
+            
+            # Create new event loop for this thread if needed
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
             self.ib.connect(
                 host=self.ib_config['host'],
                 port=self.ib_config['port'],
@@ -76,11 +101,20 @@ class DataAgent(BaseAgent):
             self._ib_managed_locally = True # This instance established the connection
             self.logger.info("Successfully connected to IBKR.")
         except ConnectionRefusedError:
-            self.logger.error(f"IBKR connection refused. Ensure TWS/Gateway is running and API connections are enabled.")
+            self.logger.error(f"IBKR connection refused. Please check:")
+            self.logger.error(f"1. TWS/Gateway is running on {self.ib_config['host']}:{self.ib_config['port']}")
+            self.logger.error(f"2. API connections are enabled in TWS (File -> Global Configuration -> API -> Settings)")
+            self.logger.error(f"3. 'Enable ActiveX and Socket Clients' is checked")
+            self.logger.error(f"4. Client ID {self.ib_config['clientId']} is not already in use")
             self.ib_connected = False
         except Exception as e:
             self.logger.error(f"Failed to connect to IBKR: {e}", exc_info=True)
             self.ib_connected = False
+
+    def set_bar_update_callback(self, callback):
+        """Set the callback function to be called when new bars are received."""
+        self.bar_update_callback = callback
+        self.logger.info("Bar update callback set")
 
 
     def disconnect_ibkr(self):
@@ -449,101 +483,9 @@ class DataAgent(BaseAgent):
         except Exception as e:
             self.logger.error(f"Error warming feature cache for {symbol}: {e}")
 
-    def disconnect_ibkr(self):
-        """Disconnects from IBKR if connected by this agent instance."""
-        # TODO: Implement disconnection logic if IBKR connection was managed by this agent.
-        # if hasattr(self, 'ib') and self.ib and self.ib.isConnected() and not self.ib_client_passed_in:
-        #     self.logger.info("Disconnecting from IBKR.")
-        #     self.ib.disconnect()
-        #     self.ib_connected = False
-        pass
+    # Removed duplicate disconnect_ibkr method - using the one defined earlier
 
-
-if __name__ == '__main__':
-    import logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-    # Example Configuration (replace with actual config loading)
-    config = {
-        'data_dir_raw': 'data/raw_test',
-        'default_symbol': 'DUMMY',
-        # 'ibkr_conn': { # Optional: if DataAgent manages its own connection
-        #     'host': '127.0.0.1',
-        #     'port': 7497, # 7497 for TWS Paper, 7496 for TWS Live, 4002 for Gateway Paper, 4001 for Gateway Live
-        #     'clientId': 101 
-        # }
-    }
-
-    data_agent = DataAgent(config=config)
-
-    # Example: Fetch dummy data (since IBKR connection is not live in this skeleton)
-    # In a real scenario, you'd provide valid IBKR parameters.
-    # The current fetch_ibkr_bars will generate dummy data if IBKR part is commented out.
-    
-    # Parameters for fetching
-    symbol_to_fetch = config['default_symbol']
-    # For IBKR, endDateTime is usually YYYYMMDD HH:MM:SS [TimeZone] or "" for current time.
-    # For dummy data, we'll use a placeholder that helps form the filename.
-    # The actual date range of dummy data is fixed inside fetch_ibkr_bars for now.
-    end_date_for_fetch = datetime.now().strftime("%Y%m%d %H:%M:%S") # Example: current time
-    
-    # This duration is how far back from end_date_for_fetch.
-    # The actual start date of data would be (end_date_for_fetch - duration_for_fetch).
-    # This calculated start date should be used in cache naming for consistency.
-    # The _get_cache_filepath method needs to be updated to reflect this.
-    duration_for_fetch = "5 D" # Example: 5 days of data
-    bar_interval = "1 min"
-
-    print(f"\n--- Running DataAgent for {symbol_to_fetch} ---")
-    # The 'start_date' in run() is currently for conceptual grouping/logging.
-    # The actual data window is defined by 'end_date' and 'duration_str' for IBKR.
-    # The cache filename should ideally reflect the true start and end of the data.
-    # For this example, we'll use a placeholder start date for run() that matches the cache logic.
-    # A more robust solution would derive the cache's start_date from end_date and duration.
-    
-    # Let's simulate a start_date for the run method's conceptual purpose.
-    # The actual data fetching logic in fetch_ibkr_bars uses end_datetime_str and duration_str.
-    # The cache key in _get_cache_filepath is currently simplified and needs start_date.
-    # We'll pass a placeholder for now.
-    
-    df_bars = data_agent.run(
-        symbol=symbol_to_fetch,
-        start_date="20230101", # Placeholder, actual data depends on end_date & duration
-        end_date=end_date_for_fetch,
-        interval=bar_interval,
-        duration_str=duration_for_fetch, # This is used by fetch_ibkr_bars
-        force_fetch=False # Set to True to regenerate dummy data
-    )
-
-    if df_bars is not None:
-        print(f"\n--- Fetched Data for {symbol_to_fetch} ---")
-        print(df_bars.head())
-        print(f"Data shape: {df_bars.shape}")
-        
-        # Example of how the cache path might be constructed for verification
-        # This needs to align perfectly with _get_cache_filepath's internal logic
-        # Note: This is still using the simplified cache path logic
-        expected_cache_path = data_agent._get_cache_filepath(
-            symbol_to_fetch, 
-            "TEMP_START", # This placeholder matches the one in fetch_ibkr_bars
-            end_date_for_fetch.split(' ')[0], 
-            bar_interval.replace(' ', ''), 
-            "csv"
-        )
-        print(f"Data for {symbol_to_fetch} is expected to be cached at/loaded from: {expected_cache_path}")
-        if os.path.exists(expected_cache_path):
-            print("Cache file exists.")
-        else:
-            print("Cache file does NOT exist (may be an issue with path matching or save).")
-
-    else:
-        print(f"Could not retrieve data for {symbol_to_fetch}.")
-
-    # data_agent.disconnect_ibkr() # If connection was managed by agent
-    print("\nDataAgent example run complete.")
-
-
-    # --- Methods for Live Data Handling ---
+    # --- Live Data Methods ---
     def set_bar_update_callback(self, callback: Callable[[pd.DataFrame, str], None]):
         """
         Sets the callback function to be invoked when a new live bar is received.
@@ -551,6 +493,59 @@ if __name__ == '__main__':
         """
         self.logger.info(f"Setting bar update callback to {callback}")
         self.bar_update_callback = callback
+
+    def get_cached_data(self, symbol: str) -> pd.DataFrame:
+        """
+        Get cached data for simulation mode.
+        Returns the most recent cached data file for the symbol.
+        """
+        try:
+            # Look for recent cache files
+            cache_dir = "cache_ibkr"
+            if not os.path.exists(cache_dir):
+                self.logger.warning(f"Cache directory {cache_dir} does not exist")
+                return None
+            
+            # Find the most recent cache file for this symbol
+            cache_files = [f for f in os.listdir(cache_dir) if f.startswith(symbol) and f.endswith('.pkl')]
+            if not cache_files:
+                self.logger.warning(f"No cached data files found for {symbol}")
+                return None
+            
+            # Get the most recent file
+            cache_files.sort(reverse=True)  # Most recent first
+            cache_file = cache_files[0]
+            cache_filepath = os.path.join(cache_dir, cache_file)
+            
+            self.logger.info(f"Loading cached data for simulation from {cache_filepath}")
+            try:
+                bars_df = pd.read_pickle(cache_filepath)
+                
+                if bars_df.empty:
+                    self.logger.warning(f"Cached file {cache_filepath} is empty")
+                    return None
+                    
+                self.logger.info(f"Loaded {len(bars_df)} rows from cache for simulation")
+                return bars_df
+            except Exception as pickle_error:
+                self.logger.error(f"Error reading pickle file {cache_filepath}: {pickle_error}")
+                # Try other cache files if this one is corrupted
+                for other_file in cache_files[1:]:  # Skip the first one we just tried
+                    try:
+                        other_filepath = os.path.join(cache_dir, other_file)
+                        self.logger.info(f"Trying alternative cache file: {other_filepath}")
+                        bars_df = pd.read_pickle(other_filepath)
+                        if not bars_df.empty:
+                            self.logger.info(f"Successfully loaded {len(bars_df)} rows from alternative cache")
+                            return bars_df
+                    except Exception as e:
+                        self.logger.warning(f"Alternative cache file {other_file} also failed: {e}")
+                        continue
+                return None
+            
+        except Exception as e:
+            self.logger.error(f"Error loading cached data for simulation: {e}")
+            return None
 
     def _on_bar_update_wrapper(self, symbol: str, bars: 'RealTimeBarList', hasNewBar: bool):
         """
@@ -605,8 +600,13 @@ if __name__ == '__main__':
             bool: True if subscription was successful or already active, False otherwise.
         """
         if not self.ib_connected:
-            self.logger.error(f"IBKR not connected. Cannot subscribe to live bars for {symbol}.")
-            return False
+            # Check if we're in simulation mode
+            if self.ib_config and self.ib_config.get('simulation_mode', False):
+                self.logger.info(f"Simulation mode: Simulating live bar subscription for {symbol}.")
+                return True  # Pretend subscription succeeded
+            else:
+                self.logger.error(f"IBKR not connected. Cannot subscribe to live bars for {symbol}.")
+                return False
         if not self.bar_update_callback:
             self.logger.error(f"Bar update callback not set. Cannot subscribe to live bars for {symbol}.")
             return False
@@ -968,4 +968,21 @@ if __name__ == '__main__':
 
         return positions_list
 
+
+
     # --- End Portfolio and Position Tracking ---
+
+# --- End of DataAgent class ---
+
+if __name__ == '__main__':
+    import logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    # Example Configuration
+    config = {
+        'data_dir_raw': 'data/raw_test',
+        'default_symbol': 'DUMMY'
+    }
+
+    data_agent = DataAgent(config=config)
+    print("DataAgent example run complete.")

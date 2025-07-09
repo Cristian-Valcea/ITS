@@ -293,6 +293,10 @@ class TrainerAgent(BaseAgent):
     - Comprehensive logging and monitoring
     - Latency SLO validation
     """
+    
+    # Expose SB3 availability for orchestrator compatibility
+    SB3_AVAILABLE = SB3_AVAILABLE
+    SB3_MODEL_CLASSES = SB3_ALGORITHMS
 
     def __init__(self, config: Dict[str, Any], training_env: Optional[IntradayTradingEnv] = None):
         super().__init__(agent_name="TrainerAgent", config=config)
