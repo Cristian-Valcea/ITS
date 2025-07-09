@@ -23,8 +23,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
 import duckdb
-import fcntl
 import os
+
+# Cross-platform file locking
+try:
+    import fcntl
+    HAS_FCNTL = True
+except ImportError:
+    HAS_FCNTL = False
 
 
 class DiskGarbageCollector:
@@ -68,8 +74,7 @@ class DiskGarbageCollector:
             raise ValueError(f"Cache directory does not exist: {self.cache_root}")
         
         self.manifest_db = self.cache_root / "manifest.duckdb"
-        if not self.manifest_db.exists():
-            raise ValueError(f"Manifest database not found: {self.manifest_db}")
+        self.manifest_exists = self.manifest_db.exists()
         
         self.logger.info(f"Initialized DiskGC for {self.cache_root}")
         self.logger.info(f"Retention: {retention_weeks} weeks, Dry run: {dry_run}")
@@ -422,6 +427,26 @@ class DiskGarbageCollector:
     
     def get_cache_overview(self) -> Dict[str, Any]:
         """Get overview of cache status without running GC."""
+        if not self.manifest_exists:
+            # Return empty overview if no manifest exists
+            parquet_files = list(self.cache_root.glob('*.parquet*'))
+            return {
+                'cache_root': str(self.cache_root),
+                'manifest_entries': 0,
+                'unique_symbols': 0,
+                'total_cached_rows': 0,
+                'total_size_bytes': 0,
+                'total_size_mb': 0,
+                'oldest_entry': None,
+                'newest_entry': None,
+                'avg_access_count': 0,
+                'old_entries_count': 0,
+                'recent_entries_count': 0,
+                'parquet_files_on_disk': len(parquet_files),
+                'manifest_size_bytes': 0,
+                'manifest_size_mb': 0
+            }
+        
         try:
             with duckdb.connect(str(self.manifest_db)) as db:
                 # Basic statistics

@@ -24,8 +24,18 @@ from typing import Dict, Any, Optional, Callable, Union
 from datetime import datetime, timedelta
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
-import fcntl  # For file locking on Unix systems
-import msvcrt  # For file locking on Windows
+# Cross-platform file locking imports
+try:
+    import fcntl  # For file locking on Unix systems
+    HAS_FCNTL = True
+except ImportError:
+    HAS_FCNTL = False
+
+try:
+    import msvcrt  # For file locking on Windows
+    HAS_MSVCRT = True
+except ImportError:
+    HAS_MSVCRT = False
 
 
 class OptimizedFeatureStore:
@@ -115,8 +125,8 @@ class OptimizedFeatureStore:
                     rows INTEGER NOT NULL,
                     file_size_bytes INTEGER NOT NULL,
                     hash_method TEXT DEFAULT 'full',  -- 'full' or 'footer'
-                    created_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_accessed_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_ts TIMESTAMP DEFAULT now(),
+                    last_accessed_ts TIMESTAMP DEFAULT now(),
                     access_count INTEGER DEFAULT 1
                 )
             """)
@@ -137,7 +147,7 @@ class OptimizedFeatureStore:
             self.db.execute("""
                 CREATE TABLE IF NOT EXISTS gc_log(
                     id INTEGER PRIMARY KEY,
-                    run_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    run_timestamp TIMESTAMP DEFAULT now(),
                     files_deleted INTEGER,
                     bytes_freed INTEGER,
                     duration_seconds REAL,
@@ -222,10 +232,14 @@ class OptimizedFeatureStore:
             duration = time.time() - start_time
             
             with self._db_lock:
+                # Get next ID for gc_log
+                next_id_result = self.db.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM gc_log").fetchone()
+                next_id = next_id_result[0] if next_id_result else 1
+                
                 self.db.execute("""
-                    INSERT INTO gc_log (files_deleted, bytes_freed, duration_seconds, orphaned_files_found)
-                    VALUES (?, ?, ?, ?)
-                """, [files_deleted, bytes_freed, duration, orphaned_files])
+                    INSERT INTO gc_log (id, files_deleted, bytes_freed, duration_seconds, orphaned_files_found)
+                    VALUES (?, ?, ?, ?, ?)
+                """, [next_id, files_deleted, bytes_freed, duration, orphaned_files])
             
             # Update metrics
             self.metrics['gc_runs'] += 1
@@ -384,8 +398,8 @@ class OptimizedFeatureStore:
         """
         with self._db_lock:
             try:
-                # Use exclusive transaction for thread safety
-                self.db.execute("BEGIN EXCLUSIVE TRANSACTION")
+                # Use transaction with thread-level locking for safety
+                self.db.execute("BEGIN TRANSACTION")
                 
                 if params:
                     result = self.db.execute(sql, params)
@@ -396,7 +410,10 @@ class OptimizedFeatureStore:
                 return result
                 
             except Exception as e:
-                self.db.execute("ROLLBACK")
+                try:
+                    self.db.execute("ROLLBACK")
+                except:
+                    pass  # Ignore rollback errors if no transaction is active
                 self.logger.error(f"Database operation failed: {e}")
                 raise
     
@@ -500,9 +517,19 @@ class OptimizedFeatureStore:
             
             # Use exclusive transaction for parallel trainer safety
             self._execute_with_exclusive_lock("""
-                INSERT OR REPLACE INTO manifest 
+                INSERT INTO manifest 
                 (key, path, symbol, start_ts, end_ts, rows, file_size_bytes, hash_method) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (key) DO UPDATE SET
+                    path = EXCLUDED.path,
+                    symbol = EXCLUDED.symbol,
+                    start_ts = EXCLUDED.start_ts,
+                    end_ts = EXCLUDED.end_ts,
+                    rows = EXCLUDED.rows,
+                    file_size_bytes = EXCLUDED.file_size_bytes,
+                    hash_method = EXCLUDED.hash_method,
+                    last_accessed_ts = now(),
+                    access_count = access_count + 1
             """, [
                 cache_key, str(cache_file), symbol, start_ts, end_ts, 
                 len(features_df), file_size, hash_method

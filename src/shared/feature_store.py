@@ -264,13 +264,22 @@ class FeatureStore:
             
             file_size = cache_file.stat().st_size
             
-            # Use EXCLUSIVE transaction for parallel trainer safety
-            self.db.execute("BEGIN EXCLUSIVE TRANSACTION")
+            # Use transaction for parallel trainer safety
+            self.db.execute("BEGIN TRANSACTION")
             try:
                 self.db.execute("""
-                    INSERT OR REPLACE INTO manifest 
+                    INSERT INTO manifest 
                     (key, path, symbol, start_ts, end_ts, rows, file_size_bytes) 
                     VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (key) DO UPDATE SET
+                        path = EXCLUDED.path,
+                        symbol = EXCLUDED.symbol,
+                        start_ts = EXCLUDED.start_ts,
+                        end_ts = EXCLUDED.end_ts,
+                        rows = EXCLUDED.rows,
+                        file_size_bytes = EXCLUDED.file_size_bytes,
+                        last_accessed_ts = now(),
+                        access_count = access_count + 1
                 """, [
                     cache_key, str(cache_file), symbol, start_ts, end_ts, 
                     len(features_df), file_size
@@ -281,7 +290,10 @@ class FeatureStore:
                                f"({file_size:,} bytes compressed)")
                 
             except Exception as e:
-                self.db.execute("ROLLBACK")
+                try:
+                    self.db.execute("ROLLBACK")
+                except:
+                    pass  # Ignore rollback errors if no transaction is active
                 raise e
                 
         except Exception as e:
