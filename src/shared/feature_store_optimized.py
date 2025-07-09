@@ -394,10 +394,12 @@ class OptimizedFeatureStore:
         Execute SQL with exclusive database lock for parallel trainer safety.
         
         This prevents race conditions when multiple trainers are writing to
-        the same cache simultaneously.
+        the same cache simultaneously. Uses thread-level locking since DuckDB
+        doesn't support EXCLUSIVE transactions.
         """
         with self._db_lock:
             try:
+
                 # Use transaction with thread-level locking for safety
                 self.db.execute("BEGIN TRANSACTION")
                 
@@ -679,6 +681,14 @@ class OptimizedFeatureStore:
             self.cleanup_and_shutdown()
         except:
             pass  # Ignore errors during cleanup
+    
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.cleanup_and_shutdown()
 
 
 # Backward compatibility alias
