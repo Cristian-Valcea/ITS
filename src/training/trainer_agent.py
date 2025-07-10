@@ -307,38 +307,66 @@ class TrainerAgent(BaseAgent):
                 "Install with: pip install stable-baselines3[extra]"
             )
 
-        # Configuration
-        self.model_save_dir = Path(self.config.get("model_save_dir", "models/"))
-        self.log_dir = Path(self.config.get("log_dir", "logs/tensorboard/"))
-        self.monitor_log_dir = self.log_dir / "monitor_logs"
-
-        self.algorithm_name = self.config.get("algorithm", "DQN").upper()
-        self.algo_params = self.config.get("algo_params", {})
-        self.training_params = self.config.get("training_params", {})
-        self.risk_config = self.config.get("risk_config", {})
-
-        # Create directories
-        self.model_save_dir.mkdir(parents=True, exist_ok=True)
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.monitor_log_dir.mkdir(parents=True, exist_ok=True)
-
-        # Initialize components
-        self.model: Optional[DQN] = None
-        self.training_env_monitor: Optional[Monitor] = None
-        self.risk_advisor: Optional[RiskAdvisor] = None
-        self._risk_agent: Optional[RiskAgentV2] = None
-
-        # Set up risk advisor if configured
-        if self.risk_config.get("enabled", False):
-            self._setup_risk_advisor()
+        # Initialize core modules
+        self._init_core_modules()
 
         # Set environment if provided
         if training_env:
             self.set_env(training_env)
 
-        self.logger.info(f"TrainerAgent initialized for {self.algorithm_name}")
-        self.logger.info(f"Model save dir: {self.model_save_dir}")
-        self.logger.info(f"Log dir: {self.log_dir}")
+        self.logger.info(f"TrainerAgent initialized for {self.trainer_core.algorithm_name}")
+        self.logger.info(f"Model save dir: {self.trainer_core.model_save_dir}")
+        self.logger.info(f"Log dir: {self.trainer_core.log_dir}")
+    
+    def _init_core_modules(self) -> None:
+        """Initialize core training modules."""
+        from .core.trainer_core import TrainerCore
+        from .core.env_builder import make_env
+        from .core.policy_export import export_torchscript_bundle
+        from .core.hyperparam_search import run_hyperparameter_study, define_search_space
+        
+        # Initialize trainer core
+        self.trainer_core = TrainerCore(self.config, self.logger)
+        
+        # Store references for backward compatibility
+        self.model_save_dir = self.trainer_core.model_save_dir
+        self.log_dir = self.trainer_core.log_dir
+        self.monitor_log_dir = self.trainer_core.monitor_log_dir
+        self.algorithm_name = self.trainer_core.algorithm_name
+        self.algo_params = self.trainer_core.algo_params
+        self.training_params = self.trainer_core.training_params
+        self.risk_config = self.trainer_core.risk_config
+    
+    # Delegation properties for backward compatibility
+    @property
+    def model(self) -> Optional[DQN]:
+        """Access to the trained model."""
+        return self.trainer_core.model
+    
+    @model.setter
+    def model(self, value: Optional[DQN]) -> None:
+        """Set the trained model."""
+        self.trainer_core.model = value
+    
+    @property
+    def training_env_monitor(self) -> Optional[Monitor]:
+        """Access to the training environment monitor."""
+        return self.trainer_core.training_env_monitor
+    
+    @training_env_monitor.setter
+    def training_env_monitor(self, value: Optional[Monitor]) -> None:
+        """Set the training environment monitor."""
+        self.trainer_core.training_env_monitor = value
+    
+    @property
+    def risk_advisor(self) -> Optional[RiskAdvisor]:
+        """Access to the risk advisor."""
+        return self.trainer_core.risk_advisor
+    
+    @property
+    def _risk_agent(self) -> Optional[RiskAgentV2]:
+        """Access to the underlying risk agent."""
+        return self.trainer_core._risk_agent
 
     def _setup_risk_advisor(self) -> None:
         """Set up risk advisor for risk-aware training using RiskAgentV2.from_yaml()."""
@@ -382,52 +410,15 @@ class TrainerAgent(BaseAgent):
         return self._risk_agent
 
     def set_env(self, env: IntradayTradingEnv) -> None:
-        """Set and wrap training environment with monitoring."""
-        if not isinstance(env, (IntradayTradingEnv, Monitor)):
-            raise ValueError("Environment must be IntradayTradingEnv or Monitor-wrapped")
-
-        if isinstance(env, Monitor):
-            self.training_env_monitor = env
-            self.logger.info("Pre-monitored environment set")
-        else:
-            # Wrap with Monitor for episode logging
-            monitor_file = (
-                self.monitor_log_dir
-                / f"{self.algorithm_name}_{datetime.now().strftime(MODEL_VERSION_FORMAT)}"
-            )
-            self.training_env_monitor = Monitor(
-                env, filename=str(monitor_file), allow_early_resets=True
-            )
-            self.logger.info(f"Environment wrapped with Monitor: {monitor_file}.csv")
+        """Set and wrap training environment with monitoring - delegates to trainer core."""
+        self.trainer_core.set_environment(env)
 
     def create_model(self) -> Optional[DQN]:
-        """Create RL model with specified configuration."""
-        if self.training_env_monitor is None:
-            self.logger.error("Cannot create model: training environment not set")
-            return None
-
-        if self.algorithm_name not in SB3_ALGORITHMS:
-            self.logger.error(f"Unsupported algorithm: {self.algorithm_name}")
-            return None
-
-        try:
-            # Get algorithm class
-            AlgorithmClass = SB3_ALGORITHMS[self.algorithm_name]
-
-            # Prepare parameters
-            model_params = self.algo_params.copy()
-            model_params["env"] = self.training_env_monitor
-            model_params["tensorboard_log"] = str(self.log_dir)
-
-            # Create model
-            self.model = AlgorithmClass(**model_params)
-
-            self.logger.info(f"{self.algorithm_name} model created successfully")
-            return self.model
-
-        except Exception as e:
-            self.logger.error(f"Failed to create {self.algorithm_name} model: {e}")
-            return None
+        """Create RL model with specified configuration - delegates to trainer core."""
+        model = self.trainer_core.create_model()
+        if model:
+            self.trainer_core.model = model
+        return model
 
     def _log_hardware_info(self) -> None:
         """Log comprehensive hardware information for training."""
@@ -540,7 +531,7 @@ class TrainerAgent(BaseAgent):
 
     def train(self, existing_model_path: Optional[str] = None) -> Optional[str]:
         """
-        Train the RL model with risk-aware callbacks.
+        Train the RL model with risk-aware callbacks - delegates to trainer core.
 
         Args:
             existing_model_path: Path to existing model to continue training
@@ -548,9 +539,7 @@ class TrainerAgent(BaseAgent):
         Returns:
             Path to saved model bundle, or None if training failed
         """
-        if self.training_env_monitor is None:
-            self.logger.error("Cannot train: training environment not set")
-            return None
+        return self.trainer_core.train_model(existing_model_path)
 
         # Create run identifier
         run_timestamp = datetime.now().strftime(MODEL_VERSION_FORMAT)

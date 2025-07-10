@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NVDA Live Trading - IntradayJules</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { text-align: center; margin-bottom: 30px; }
+        .btn { background: #28a745; color: white; border: none; padding: 15px 30px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px; }
+        .btn:hover { background: #218838; }
+        .btn-danger { background: #dc3545; }
+        .btn-danger:hover { background: #c82333; }
+        .btn:disabled { background: #6c757d; cursor: not-allowed; }
+        .status { padding: 15px; margin: 20px 0; border-radius: 5px; }
+        .status.info { background: #d1ecf1; border: 1px solid #bee5eb; }
+        .status.success { background: #d4edda; border: 1px solid #c3e6cb; }
+        .status.error { background: #f8d7da; border: 1px solid #f5c6cb; }
+        .log { background: #2d3748; color: #e2e8f0; padding: 20px; border-radius: 5px; font-family: monospace; font-size: 14px; max-height: 300px; overflow-y: auto; margin-top: 20px; }
+        .model-info { background: #f8f9fa; padding: 20px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #28a745; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 NVDA Live Trading</h1>
+            <p>Real-time trading with trained DQN model</p>
+            <a href="/ui/dashboard">← Back to Dashboard</a>
+        </div>
+        
+        <div class="model-info">
+            <h3>📊 Model Information</h3>
+            <p><strong>Model:</strong> DQN_2025-07-09_15-41-14</p>
+            <p><strong>Symbol:</strong> NVDA</p>
+            <p><strong>Trade Size:</strong> 10 shares per signal</p>
+            <p><strong>Max Position:</strong> 100 shares</p>
+        </div>
+
+        <div class="status info" id="statusPanel">
+            <strong>Status:</strong> <span id="statusText">Ready</span><br>
+            <span id="statusMessage">System ready for live trading</span>
+        </div>
+
+        <div style="text-align: center;">
+            <button class="btn" id="startBtn" onclick="startLiveTrading()">🚀 Start Live Trading</button>
+            <button class="btn btn-danger" id="stopBtn" onclick="stopLiveTrading()" disabled>🛑 Stop Trading</button>
+            <button class="btn" onclick="refreshStatus()">🔄 Refresh Status</button>
+        </div>
+
+        <div class="log" id="logContainer">
+            <div>[System] Live trading interface loaded</div>
+            <div>[System] Model: DQN_2025-07-09_15-41-14</div>
+            <div>[System] Ready to start trading session</div>
+        </div>
+    </div>
+
+    <script>
+        let currentTaskId = null;
+        let isTrading = false;
+        let statusCheckInterval = null;
+
+        function addLog(message) {
+            const logContainer = document.getElementById('logContainer');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function updateStatus(status, message, type = 'info') {
+            const statusPanel = document.getElementById('statusPanel');
+            const statusText = document.getElementById('statusText');
+            const statusMessage = document.getElementById('statusMessage');
+            
+            statusText.textContent = status;
+            statusMessage.textContent = message;
+            statusPanel.className = `status ${type}`;
+        }
+
+        function updateControls(trading) {
+            document.getElementById('startBtn').disabled = trading;
+            document.getElementById('stopBtn').disabled = !trading;
+            isTrading = trading;
+        }
+
+        async function startLiveTrading() {
+            try {
+                addLog('Starting live trading session...');
+                updateStatus('Starting...', 'Initializing live trading session', 'info');
+                updateControls(true);
+
+                const response = await fetch('/orchestrator/live_trading', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol: 'NVDA' })
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    currentTaskId = result.task_id;
+                    addLog(`Live trading started. Task ID: ${currentTaskId}`);
+                    updateStatus('Active', 'Live trading session is running', 'success');
+                    startStatusMonitoring();
+                } else {
+                    throw new Error(result.error || 'Failed to start live trading');
+                }
+            } catch (error) {
+                addLog(`Error: ${error.message}`);
+                updateStatus('Error', error.message, 'error');
+                updateControls(false);
+            }
+        }
+
+        async function stopLiveTrading() {
+            addLog('Stopping live trading session...');
+            updateStatus('Stopped', 'Live trading session stopped', 'info');
+            updateControls(false);
+            if (statusCheckInterval) {
+                clearInterval(statusCheckInterval);
+                statusCheckInterval = null;
+            }
+        }
+
+        function startStatusMonitoring() {
+            if (statusCheckInterval) clearInterval(statusCheckInterval);
+            statusCheckInterval = setInterval(async () => {
+                if (currentTaskId && isTrading) {
+                    try {
+                        const response = await fetch(`/orchestrator/task_status/${currentTaskId}`);
+                        const result = await response.json();
+                        
+                        if (result.status === 'completed') {
+                            addLog('Live trading session completed');
+                            updateStatus('Completed', 'Trading session finished', 'success');
+                            updateControls(false);
+                            clearInterval(statusCheckInterval);
+                        } else if (result.status === 'failed') {
+                            addLog(`Live trading failed: ${result.error}`);
+                            updateStatus('Failed', result.error || 'Trading session failed', 'error');
+                            updateControls(false);
+                            clearInterval(statusCheckInterval);
+                        }
+                    } catch (error) {
+                        console.error('Error checking status:', error);
+                    }
+                }
+            }, 3000);
+        }
+
+        function refreshStatus() {
+            addLog('Refreshing status...');
+            if (currentTaskId) {
+                fetch(`/orchestrator/task_status/${currentTaskId}`)
+                    .then(response => response.json())
+                    .then(result => {
+                        addLog(`Status: ${result.status}`);
+                        if (result.error) addLog(`Error: ${result.error}`);
+                    })
+                    .catch(error => addLog(`Error checking status: ${error.message}`));
+            }
+        }
+    </script>
+</body>
+</html>

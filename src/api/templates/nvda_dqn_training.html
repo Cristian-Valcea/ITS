@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NVDA DQN Training Pipeline</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        .content {
+            padding: 40px;
+        }
+        .nav {
+            background: #f8f9fa;
+            padding: 15px 30px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .nav ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            gap: 30px;
+        }
+        .nav a {
+            text-decoration: none;
+            color: #495057;
+            font-weight: 500;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+        .nav a:hover {
+            background: #e9ecef;
+            color: #2a5298;
+        }
+        .form-section {
+            margin-bottom: 30px;
+            padding: 25px;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            background: #f8f9fa;
+        }
+        .form-section h2 {
+            margin: 0 0 20px 0;
+            color: #2a5298;
+            font-size: 1.4em;
+            font-weight: 600;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #495057;
+        }
+        input[type="text"], input[type="date"], input[type="number"], select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+            box-sizing: border-box;
+        }
+        input[type="text"]:focus, input[type="date"]:focus, input[type="number"]:focus, select:focus {
+            outline: none;
+            border-color: #2a5298;
+            box-shadow: 0 0 0 3px rgba(42, 82, 152, 0.1);
+        }
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 10px;
+            accent-color: #2a5298;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .checkbox-group label {
+            margin-bottom: 0;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+        small {
+            color: #6c757d;
+            font-size: 0.9em;
+            margin-top: 5px;
+            display: block;
+        }
+        .button-container {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 1px solid #e9ecef;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #2a5298 0%, #1e3c72 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(42, 82, 152, 0.3);
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(42, 82, 152, 0.4);
+        }
+        .message {
+            padding: 20px;
+            margin-bottom: 25px;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #cce7ff;
+            border: 1px solid #b3d9ff;
+            color: #004085;
+        }
+        .preset-info {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        .preset-info h3 {
+            margin: 0 0 10px 0;
+            font-size: 1.3em;
+        }
+        .preset-info p {
+            margin: 5px 0;
+            opacity: 0.95;
+        }
+        .advanced-section {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+        }
+        .advanced-section h2 {
+            color: #856404;
+        }
+        .status-link {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 10px 20px;
+            background: #17a2b8;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: background 0.3s ease;
+        }
+        .status-link:hover {
+            background: #138496;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            .nav ul {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav">
+            <ul>
+                <li><a href="/ui/dashboard">📊 Dashboard</a></li>
+                <li><a href="/ui/train">🚀 Training</a></li>
+                <li><a href="/ui/tasks">📋 Tasks</a></li>
+                <li><a href="/api/v1/status">🔧 API Status</a></li>
+            </ul>
+        </div>
+
+        <div class="header">
+            <h1>🎯 NVDA DQN Training</h1>
+            <p>Deep Q-Network Training Pipeline for NVIDIA Corporation</p>
+        </div>
+
+        <div class="content">
+            {% if message %}
+                <div class="message {{ 'success' if success else ('error' if success is false else 'info') }}">
+                    {{ message }}
+                    {% if task_id %}
+                        <br><strong>Task ID:</strong> {{ task_id }}
+                        <a href="/ui/tasks/{{ task_id }}" class="status-link">📈 Check Status</a>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            <div class="preset-info">
+                <h3>🎯 Pre-configured for NVDA DQN Training</h3>
+                <p><strong>Symbol:</strong> NVDA (NVIDIA Corporation)</p>
+                <p><strong>Algorithm:</strong> Deep Q-Network (DQN) with Experience Replay</p>
+                <p><strong>Training Period:</strong> November 1, 2024 - May 31, 2025 (7 months)</p>
+                <p><strong>Testing Period:</strong> June 1, 2025 - June 30, 2025 (1 month)</p>
+                <p><strong>Interval:</strong> 1-minute bars for high-frequency trading</p>
+            </div>
+
+            <form method="post" action="/ui/train">
+                <div class="form-section">
+                    <h2>📈 Trading Parameters</h2>
+                    <div class="grid">
+                        <div class="form-group">
+                            <label for="symbol">Stock Symbol:</label>
+                            <input type="text" id="symbol" name="symbol" value="NVDA" required readonly style="background: #f8f9fa;">
+                            <small>Pre-configured for NVIDIA Corporation</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="interval">Data Interval:</label>
+                            <select id="interval" name="interval">
+                                <option value="1min" selected>1 Minute (Recommended)</option>
+                                <option value="5mins">5 Minutes</option>
+                                <option value="15mins">15 Minutes</option>
+                                <option value="1hour">1 Hour</option>
+                                <option value="1day">1 Day</option>
+                            </select>
+                            <small>1-minute intervals provide the highest resolution for intraday trading</small>
+                        </div>
+                    </div>
+                    
+                    <div class="grid">
+                        <div class="form-group">
+                            <label for="start_date">Training Start Date:</label>
+                            <input type="date" id="start_date" name="start_date" value="2024-11-01" required>
+                            <small>Beginning of training period</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="end_date">Training End Date:</label>
+                            <input type="text" id="end_date" name="end_date" value="2025-05-31 23:59:59" required>
+                            <small>End of training period (7 months of data)</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h2>🔧 Training Options</h2>
+                    <div class="checkbox-group">
+                        <label>
+                            <input type="checkbox" id="use_cached_data" name="use_cached_data" value="true" checked>
+                            Use Cached Data (Faster if data already downloaded)
+                        </label>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="continue_from_model">Continue from Previous Model (Optional):</label>
+                        <input type="text" id="continue_from_model" name="continue_from_model" placeholder="e.g., models/NVDA_DQN_20250101_120000.zip">
+                        <small>Leave blank to start fresh training, or specify path to continue from checkpoint</small>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h2>📊 Post-Training Evaluation</h2>
+                    <div class="checkbox-group">
+                        <label>
+                            <input type="checkbox" id="run_evaluation_after_train" name="run_evaluation_after_train" value="true" checked>
+                            Run Evaluation After Training (Recommended)
+                        </label>
+                    </div>
+                    
+                    <div class="grid">
+                        <div class="form-group">
+                            <label for="eval_start_date">Evaluation Start Date (Optional):</label>
+                            <input type="date" id="eval_start_date" name="eval_start_date" value="2025-06-01">
+                            <small>Start evaluation right after training period</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="eval_end_date">Evaluation End Date (Optional):</label>
+                            <input type="text" id="eval_end_date" name="eval_end_date" value="2025-06-30 23:59:59">
+                            <small>One month evaluation period</small>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="eval_interval">Evaluation Interval:</label>
+                        <input type="text" id="eval_interval" name="eval_interval" value="1min" placeholder="e.g., 1min">
+                        <small>Same interval as training for consistency</small>
+                    </div>
+                </div>
+
+                <div class="form-section advanced-section">
+                    <h2>⚙️ Advanced DQN Configuration</h2>
+                    <p><strong>Current DQN Settings (from config/model_params.yaml):</strong></p>
+                    <ul>
+                        <li>Algorithm: Deep Q-Network (DQN)</li>
+                        <li>Policy: MlpPolicy (Multi-layer Perceptron)</li>
+                        <li>Learning Rate: 0.0001</li>
+                        <li>Buffer Size: 100,000 experiences</li>
+                        <li>Batch Size: 64</li>
+                        <li>Exploration: ε-greedy (1.0 → 0.05 over 10% of training)</li>
+                        <li>Target Network Update: Every 1,000 steps</li>
+                        <li>Features: RSI, EMA, VWAP, Time-based features</li>
+                    </ul>
+                    <small>To modify these settings, edit config/model_params.yaml before training</small>
+                </div>
+
+                <div class="button-container">
+                    <button type="submit" class="btn-primary">
+                        🚀 Start NVDA DQN Training
+                    </button>
+                </div>
+            </form>
+
+            <div style="margin-top: 40px; padding: 20px; background: #f8f9fa; border-radius: 10px;">
+                <h3>📋 What happens next?</h3>
+                <ol>
+                    <li><strong>Data Collection:</strong> Download NVDA 1-minute bars from Nov 2024 - May 2025</li>
+                    <li><strong>Feature Engineering:</strong> Calculate RSI, EMA, VWAP, and time features</li>
+                    <li><strong>Environment Setup:</strong> Create trading environment with risk controls</li>
+                    <li><strong>DQN Training:</strong> Train Deep Q-Network with experience replay (7 months data)</li>
+                    <li><strong>Model Export:</strong> Save trained model and TorchScript bundle</li>
+                    <li><strong>Evaluation:</strong> Backtest on June 2025 data (1 month out-of-sample)</li>
+                    <li><strong>Reports:</strong> Generate performance metrics and trade logs</li>
+                </ol>
+                <p><strong>Training Data:</strong> 7 months (Nov 1, 2024 - May 31, 2025)</p>
+                <p><strong>Test Data:</strong> 1 month (Jun 1, 2025 - Jun 30, 2025)</p>
+                <p><strong>Estimated Training Time:</strong> 45-90 minutes (depending on hardware)</p>
+                <p><strong>Output Location:</strong> models/orch_test/DQN_YYYYMMDD_HHMMSS/</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-update end date when start date changes
+        document.getElementById('start_date').addEventListener('change', function() {
+            const startDate = new Date(this.value);
+            const endDate = new Date(startDate);
+            endDate.setMonth(endDate.getMonth() + 7); // Add 7 months (Nov 2024 to May 2025)
+            
+            const endDateStr = endDate.toISOString().split('T')[0] + ' 23:59:59';
+            document.getElementById('end_date').value = endDateStr;
+            
+            // Update eval dates - start June 1, 2025
+            const evalStart = new Date(endDate);
+            evalStart.setDate(evalStart.getDate() + 1);
+            document.getElementById('eval_start_date').value = evalStart.toISOString().split('T')[0];
+            
+            // End June 30, 2025 (1 month evaluation)
+            const evalEnd = new Date(evalStart);
+            evalEnd.setMonth(evalEnd.getMonth() + 1);
+            evalEnd.setDate(evalEnd.getDate() - 1); // Last day of the month
+            document.getElementById('eval_end_date').value = evalEnd.toISOString().split('T')[0] + ' 23:59:59';
+        });
+
+        // Sync eval interval with training interval
+        document.getElementById('interval').addEventListener('change', function() {
+            document.getElementById('eval_interval').value = this.value;
+        });
+
+        // Form validation
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const startDate = new Date(document.getElementById('start_date').value);
+            const endDate = new Date(document.getElementById('end_date').value.split(' ')[0]);
+            
+            if (endDate <= startDate) {
+                alert('End date must be after start date');
+                e.preventDefault();
+                return false;
+            }
+            
+            const diffMonths = (endDate.getFullYear() - startDate.getFullYear()) * 12 + 
+                              (endDate.getMonth() - startDate.getMonth());
+            
+            if (diffMonths > 12) {
+                if (!confirm('Training period is longer than 12 months. This may take a very long time. Continue?')) {
+                    e.preventDefault();
+                    return false;
+                }
+            }
+            
+            // Show loading state
+            const button = document.querySelector('.btn-primary');
+            button.innerHTML = '⏳ Starting Training...';
+            button.disabled = true;
+        });
+    </script>
+</body>
+</html>

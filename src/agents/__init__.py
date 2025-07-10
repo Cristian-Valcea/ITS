@@ -6,6 +6,17 @@
 # from .feature_agent import FeatureAgent
 # ... and so on for all agents
 
+# Import legacy shims for backward compatibility
+from .trainer_agent import TrainerAgent, create_trainer_agent
+# Note: OrchestratorAgent import is lazy to avoid circular imports
+
+def __getattr__(name):
+    """Lazy import for OrchestratorAgent to avoid circular imports."""
+    if name == "OrchestratorAgent":
+        from .orchestrator_agent import OrchestratorAgent
+        return OrchestratorAgent
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
 # Or, more generally, allow selective imports using __all__
 __all__ = [
     "DataAgent",
@@ -13,9 +24,11 @@ __all__ = [
     "EnvAgent",
     "RiskAgent",
     "EvaluatorAgent",
+    # Legacy shims (DEPRECATED - use new locations)
+    "TrainerAgent",        # Use src.training.trainer_agent instead
+    "create_trainer_agent", # Use src.training.trainer_agent instead
+    "OrchestratorAgent",   # Use src.execution.orchestrator_agent instead
     # "BaseAgent" # if you create a BaseAgent
-    # Note: TrainerAgent moved to src.training.trainer_agent
-    # Note: OrchestratorAgent moved to src.execution.orchestrator_agent
 ]
 
 # It's also a good place for any package-level initializations
