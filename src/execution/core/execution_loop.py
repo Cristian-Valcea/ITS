@@ -14,11 +14,22 @@ This is an internal module - use src.execution.OrchestratorAgent for public API.
 import logging
 import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, TYPE_CHECKING
 import pandas as pd
 import numpy as np
+from enum import IntEnum
 
-# TODO: Import statements will be added during extraction phase
+# Import required types and modules
+if TYPE_CHECKING:
+    from src.agents.data_agent import DataAgent
+    from src.agents.feature_agent import FeatureAgent
+    from src.agents.risk_agent import RiskAgent
+
+# Action enumeration for type safety
+class TradingAction(IntEnum):
+    HOLD = 0
+    BUY = 1
+    SELL = 2
 
 
 class ExecutionLoop:
@@ -41,19 +52,34 @@ class ExecutionLoop:
         self.logger = logger or logging.getLogger(__name__)
         self.is_running = False
         self.trading_state: Dict[str, Any] = {}
+        self._state_lock = asyncio.Lock()  # Thread safety for trading state
         
         # Event hooks for extensibility
         self.hooks: Dict[str, Callable] = {}
+        
+        # Configuration parameters
+        self.bar_period = config.get('bar_period_seconds', 1)  # Configurable bar period
         
     def register_hook(self, event: str, callback: Callable) -> None:
         """Register a callback for a specific event."""
         self.hooks[event] = callback
         
     def _trigger_hook(self, event: str, *args, **kwargs) -> None:
-        """Trigger a registered hook if it exists."""
+        """Trigger a registered hook if it exists (supports both sync and async hooks)."""
         if event in self.hooks:
             try:
-                self.hooks[event](*args, **kwargs)
+                hook = self.hooks[event]
+                if asyncio.iscoroutinefunction(hook):
+                    # Create task for async hooks to avoid blocking
+                    try:
+                        loop = asyncio.get_event_loop()
+                        loop.create_task(hook(*args, **kwargs))
+                    except RuntimeError:
+                        # No event loop running - skip async hook
+                        self.logger.warning(f"Async hook {event} skipped - no event loop")
+                else:
+                    # Synchronous hook
+                    hook(*args, **kwargs)
             except Exception as e:
                 self.logger.error(f"Hook {event} failed: {e}")
     
@@ -99,8 +125,8 @@ class ExecutionLoop:
                                 latest_data, symbol, feature_agent, risk_agent, live_model
                             )
                     
-                    # Sleep for a short interval before next iteration
-                    await asyncio.sleep(1)  # 1 second interval
+                    # Sleep for configurable interval before next iteration
+                    await asyncio.sleep(self.bar_period)
                     
                 except Exception as e:
                     self.logger.error(f"Error in trading loop iteration: {e}")
@@ -131,8 +157,13 @@ class ExecutionLoop:
             live_model: Trained model for predictions
         """
         try:
-            # Check if this is a new bar
-            current_bar_time = new_bar_df.index[-1] if hasattr(new_bar_df.index[-1], 'timestamp') else pd.Timestamp.now()
+            # Check if this is a new bar - raise error if index is wrong type
+            try:
+                current_bar_time = new_bar_df.index[-1]
+                if not isinstance(current_bar_time, (pd.Timestamp, datetime)):
+                    raise ValueError(f"DataFrame index must be datetime-like, got {type(current_bar_time)}")
+            except (IndexError, AttributeError) as e:
+                raise ValueError(f"Invalid DataFrame index for bar processing: {e}")
             
             if (symbol in self.trading_state and 
                 self.trading_state[symbol]['last_bar_time'] == current_bar_time):
@@ -141,9 +172,12 @@ class ExecutionLoop:
             # Update last bar time
             self.trading_state[symbol]['last_bar_time'] = current_bar_time
             
-            # Engineer features
+            # Engineer features (run in thread pool to avoid blocking event loop)
             if feature_agent:
-                features_df = feature_agent.engineer_features(new_bar_df)
+                loop = asyncio.get_event_loop()
+                features_df = await loop.run_in_executor(
+                    None, feature_agent.engineer_features, new_bar_df
+                )
                 if features_df is None or features_df.empty:
                     self.logger.warning("Failed to engineer features")
                     return
@@ -153,40 +187,157 @@ class ExecutionLoop:
                 
                 # Generate action using model
                 if live_model:
-                    action = self._generate_action(latest_features, live_model)
+                    action = await self._generate_action_async(latest_features, live_model)
                     
                     # Trigger action generated hook
                     self._trigger_hook("action_generated", symbol, action, latest_features)
                     
-                    # Update trading state
-                    self.trading_state[symbol]['last_action'] = action
+                    # Execute complete trading pipeline if action is not HOLD
+                    if action != TradingAction.HOLD:
+                        await self._execute_trading_action(
+                            symbol, action, latest_features, risk_agent
+                        )
+                    
+                    # Update trading state with thread safety
+                    async with self._state_lock:
+                        self.trading_state[symbol]['last_action'] = action
                     
         except Exception as e:
             self.logger.error(f"Error processing new bar: {e}")
             
-    def _generate_action(self, features: pd.Series, model) -> int:
+    async def _generate_action_async(self, features: pd.Series, model) -> TradingAction:
         """
-        Generate trading action using the model.
+        Generate trading action using the model (async to avoid blocking event loop).
         
         Args:
             features: Feature vector
             model: Trained model
             
         Returns:
-            Action (0=hold, 1=buy, 2=sell)
+            Action (TradingAction enum)
         """
         try:
-            # Convert features to numpy array
-            feature_array = features.values.reshape(1, -1)
-            
-            # Get prediction from model
-            action, _ = model.predict(feature_array, deterministic=True)
-            
-            return int(action[0]) if hasattr(action, '__iter__') else int(action)
+            # Run model prediction in thread pool to avoid blocking event loop
+            loop = asyncio.get_event_loop()
+            action = await loop.run_in_executor(
+                None, self._predict_with_model, features, model
+            )
+            return TradingAction(action)
             
         except Exception as e:
             self.logger.error(f"Error generating action: {e}")
-            return 0  # Default to hold
+            return TradingAction.HOLD  # Default to hold
+    
+    def _predict_with_model(self, features: pd.Series, model) -> int:
+        """Synchronous model prediction (runs in thread pool)."""
+        # Convert features to numpy array
+        feature_array = features.values.reshape(1, -1)
+        
+        # Get prediction from model
+        action, _ = model.predict(feature_array, deterministic=True)
+        
+        return int(action[0]) if hasattr(action, '__iter__') else int(action)
+    
+    async def _execute_trading_action(
+        self, 
+        symbol: str, 
+        action: TradingAction, 
+        features: pd.Series, 
+        risk_agent=None
+    ) -> None:
+        """
+        Execute complete trading action pipeline.
+        
+        Args:
+            symbol: Trading symbol
+            action: Trading action to execute
+            features: Current feature vector
+            risk_agent: Risk management agent
+        """
+        try:
+            # Convert action to string for risk callbacks
+            action_str = "BUY" if action == TradingAction.BUY else "SELL"
+            
+            # Create trading event
+            trading_event = {
+                'symbol': symbol,
+                'action': action_str,
+                'shares': self._calculate_position_size(symbol, action, features),
+                'timestamp': pd.Timestamp.now(),
+                'features': features.to_dict()
+            }
+            
+            # 1. Pre-trade risk check
+            if risk_agent:
+                from src.execution.core.risk_callbacks import pre_trade_check
+                
+                # Get current positions (placeholder - should come from position tracker)
+                current_positions = await self._get_current_positions()
+                
+                is_allowed, reason = pre_trade_check(
+                    trading_event, 
+                    self.config.get('risk', {}), 
+                    current_positions,
+                    self.logger
+                )
+                
+                if not is_allowed:
+                    self.logger.warning(f"Trade blocked by risk check: {reason}")
+                    self._trigger_hook("trade_blocked", symbol, action, reason)
+                    return
+            
+            # 2. Create order
+            order = await self._create_order(trading_event)
+            
+            # 3. Send to order router (placeholder)
+            order_id = await self._send_to_order_router(order)
+            
+            # 4. Update P&L tracker (placeholder)
+            await self._update_pnl_tracker(symbol, order, order_id)
+            
+            # 5. Trigger trade executed hook
+            self._trigger_hook("trade_executed", symbol, action, order, order_id)
+            
+        except Exception as e:
+            self.logger.error(f"Error executing trading action: {e}")
+            self._trigger_hook("trade_error", symbol, action, str(e))
+    
+    def _calculate_position_size(self, symbol: str, action: TradingAction, features: pd.Series) -> int:
+        """Calculate position size for the trade."""
+        # Placeholder implementation - should use proper position sizing logic
+        base_size = self.config.get('position_sizing', {}).get('base_size', 100)
+        
+        # Could incorporate volatility, confidence, etc. from features
+        return base_size
+    
+    async def _get_current_positions(self) -> Dict[str, Any]:
+        """Get current portfolio positions."""
+        # Placeholder - should integrate with position tracker
+        return {}
+    
+    async def _create_order(self, trading_event: Dict[str, Any]) -> Dict[str, Any]:
+        """Create order dictionary from trading event."""
+        return {
+            'symbol': trading_event['symbol'],
+            'action': trading_event['action'],
+            'shares': trading_event['shares'],
+            'order_type': 'MARKET',  # Could be configurable
+            'timestamp': trading_event['timestamp'],
+            'source': 'execution_loop'
+        }
+    
+    async def _send_to_order_router(self, order: Dict[str, Any]) -> str:
+        """Send order to order router."""
+        # Placeholder - should integrate with actual order router
+        order_id = f"ORDER_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S_%f')}"
+        self.logger.info(f"Order sent to router: {order_id} - {order}")
+        return order_id
+    
+    async def _update_pnl_tracker(self, symbol: str, order: Dict[str, Any], order_id: str) -> None:
+        """Update P&L tracker with new order."""
+        # Placeholder - should integrate with P&L tracker
+        self.logger.info(f"P&L tracker updated for {symbol}: {order_id}")
+        pass
         
     def stop_live_trading_loop(self) -> None:
         """Stop the live trading loop."""

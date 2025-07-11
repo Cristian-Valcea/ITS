@@ -14,9 +14,21 @@ This is an internal module - use src.execution.OrchestratorAgent for public API.
 import logging
 from typing import Dict, Any, Optional, Callable, Tuple
 from datetime import datetime
+from enum import IntEnum
 import pandas as pd
+import asyncio
 
-# TODO: Import statements will be added during extraction phase
+# Risk event types and reason codes
+class KillSwitchReason(IntEnum):
+    """Enumeration of kill switch reason codes for high-performance audit."""
+    RISK_BREACH = 1
+    DAILY_LOSS_LIMIT = 2
+    POSITION_LIMIT = 3
+    CONCENTRATION_LIMIT = 4
+    MARKET_VOLATILITY = 5
+    SYSTEM_ERROR = 6
+    MANUAL_STOP = 7
+    CONNECTIVITY_LOSS = 8
 
 
 def pre_trade_check(
@@ -26,7 +38,7 @@ def pre_trade_check(
     logger: Optional[logging.Logger] = None
 ) -> Tuple[bool, Optional[str]]:
     """
-    Perform pre-trade risk checks before executing a trade.
+    Perform comprehensive pre-trade risk checks before executing a trade.
     
     Args:
         event: Trading event details
@@ -39,31 +51,62 @@ def pre_trade_check(
     """
     logger = logger or logging.getLogger(__name__)
     
-    # TODO: Extract actual pre-trade check logic from orchestrator_agent.py
-    
-    # Placeholder implementation
     symbol = event.get('symbol')
     action = event.get('action')
     shares = event.get('shares', 0)
     
-    # Basic checks
+    # 1. Basic parameter validation
     if not symbol or not action or shares <= 0:
         return False, "Invalid trade parameters"
-        
-    # Position size check
+    
+    if action not in ['BUY', 'SELL']:
+        return False, f"Unknown action: {action}"
+    
+    # 2. Position size limits
     max_position_size = risk_config.get('max_position_size', 1000)
     current_position = current_positions.get(symbol, {}).get('shares', 0)
     
     if action == 'BUY':
         new_position = current_position + shares
-    elif action == 'SELL':
+    else:  # SELL
         new_position = current_position - shares
-    else:
-        return False, f"Unknown action: {action}"
         
     if abs(new_position) > max_position_size:
         return False, f"Position size would exceed limit: {abs(new_position)} > {max_position_size}"
+    
+    # 3. Order size limits
+    max_order_size = risk_config.get('max_order_size', 500)
+    if shares > max_order_size:
+        return False, f"Order size exceeds limit: {shares} > {max_order_size}"
+    
+    # 4. Daily loss limit check (if current P&L available)
+    current_pnl = current_positions.get('_daily_pnl', 0)
+    max_daily_loss = risk_config.get('max_daily_loss', 1000)
+    if current_pnl < -max_daily_loss:
+        return False, f"Daily loss limit exceeded: {current_pnl} < -{max_daily_loss}"
+    
+    # 5. Position concentration check (if portfolio value available)
+    portfolio_value = current_positions.get('_total_value', 0)
+    if portfolio_value > 0:
+        # Estimate position value (simplified)
+        estimated_price = event.get('price', 100)  # Should come from market data
+        position_value = abs(new_position) * estimated_price
+        max_concentration = risk_config.get('max_position_concentration', 0.1)
+        concentration = position_value / portfolio_value
         
+        if concentration > max_concentration:
+            return False, f"Position concentration too high: {concentration:.2%} > {max_concentration:.2%}"
+    
+    # 6. Market hours check
+    if risk_config.get('check_market_hours', True):
+        # Simplified market hours check (should be more sophisticated)
+        current_hour = datetime.now().hour
+        market_open = risk_config.get('market_open_hour', 9)
+        market_close = risk_config.get('market_close_hour', 16)
+        
+        if not (market_open <= current_hour < market_close):
+            return False, f"Trading outside market hours: {current_hour}:00"
+    
     return True, None
 
 
@@ -79,7 +122,7 @@ def throttle_size(
     Args:
         order: Original order details
         risk_config: Risk configuration parameters
-        market_conditions: Current market conditions
+        market_conditions: Current market conditions (spread, volatility, volume)
         logger: Optional logger instance
         
     Returns:
@@ -87,15 +130,44 @@ def throttle_size(
     """
     logger = logger or logging.getLogger(__name__)
     
-    # TODO: Extract actual throttling logic from orchestrator_agent.py
-    
-    # Placeholder implementation
     original_shares = order.get('shares', 0)
+    throttled_shares = original_shares
+    
+    # 1. Apply market condition-based throttling first (most restrictive)
+    if market_conditions:
+        # Limit based on available volume (most restrictive)
+        avg_volume = market_conditions.get('avg_volume', float('inf'))
+        max_volume_pct = risk_config.get('max_volume_participation', 0.1)  # 10%
+        max_shares_by_volume = int(avg_volume * max_volume_pct)
+        if throttled_shares > max_shares_by_volume:
+            throttled_shares = max_shares_by_volume
+            logger.info(f"Order size limited by volume participation: {max_volume_pct:.1%}")
+        
+        # Reduce size based on spread
+        spread = market_conditions.get('spread', 0)
+        max_spread = risk_config.get('max_spread_bps', 50)  # 50 basis points
+        if spread > max_spread:
+            spread_factor = max_spread / spread
+            throttled_shares = int(throttled_shares * spread_factor)
+            logger.info(f"Order size reduced due to wide spread: {spread} bps")
+        
+        # Reduce size based on volatility
+        volatility = market_conditions.get('volatility', 0)
+        max_volatility = risk_config.get('max_volatility', 0.02)  # 2%
+        if volatility > max_volatility:
+            vol_factor = max_volatility / volatility
+            throttled_shares = int(throttled_shares * vol_factor)
+            logger.info(f"Order size reduced due to high volatility: {volatility:.2%}")
+    
+    # 2. Apply absolute size limits (secondary constraint)
     max_order_size = risk_config.get('max_order_size', 100)
+    throttled_shares = min(throttled_shares, max_order_size)
     
-    # Apply size limits
-    throttled_shares = min(original_shares, max_order_size)
+    # Ensure minimum viable size
+    min_order_size = risk_config.get('min_order_size', 1)
+    throttled_shares = max(throttled_shares, min_order_size)
     
+    # Log throttling if occurred
     if throttled_shares != original_shares:
         logger.info(f"Order size throttled from {original_shares} to {throttled_shares}")
         
@@ -104,8 +176,25 @@ def throttle_size(
     modified_order['shares'] = throttled_shares
     modified_order['original_shares'] = original_shares
     modified_order['throttled'] = throttled_shares != original_shares
+    modified_order['throttle_reason'] = _get_throttle_reason(original_shares, throttled_shares, market_conditions, risk_config)
     
     return modified_order
+
+
+def _get_throttle_reason(original: int, throttled: int, market_conditions: Dict, risk_config: Dict) -> str:
+    """Get human-readable reason for throttling."""
+    if original == throttled:
+        return "No throttling applied"
+    
+    reasons = []
+    if throttled <= risk_config.get('max_order_size', 100):
+        reasons.append("size limit")
+    if market_conditions.get('spread', 0) > risk_config.get('max_spread_bps', 50):
+        reasons.append("wide spread")
+    if market_conditions.get('volatility', 0) > risk_config.get('max_volatility', 0.02):
+        reasons.append("high volatility")
+    
+    return ", ".join(reasons) if reasons else "risk management"
 
 
 def check_daily_loss_limit(
@@ -174,7 +263,7 @@ def check_position_concentration(
 
 class RiskEventHandler:
     """
-    Handler for risk-related events during execution.
+    Thread-safe handler for risk-related events during execution.
     """
     
     def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None):
@@ -188,16 +277,24 @@ class RiskEventHandler:
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
         self.event_callbacks: Dict[str, Callable] = {}
+        self._callback_lock = asyncio.Lock()  # Thread safety for callbacks
         
-    def register_callback(self, event_type: str, callback: Callable) -> None:
+    async def register_callback(self, event_type: str, callback: Callable) -> None:
         """Register a callback for a specific risk event type."""
-        self.event_callbacks[event_type] = callback
+        async with self._callback_lock:
+            self.event_callbacks[event_type] = callback
         
-    def handle_risk_event(self, event_type: str, event_data: Dict[str, Any]) -> None:
+    async def handle_risk_event(self, event_type: str, event_data: Dict[str, Any]) -> None:
         """Handle a risk event by calling the appropriate callback."""
-        if event_type in self.event_callbacks:
+        async with self._callback_lock:
+            callback = self.event_callbacks.get(event_type)
+        
+        if callback:
             try:
-                self.event_callbacks[event_type](event_data)
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(event_data)
+                else:
+                    callback(event_data)
             except Exception as e:
                 self.logger.error(f"Risk event callback failed for {event_type}: {e}")
         else:
@@ -217,7 +314,13 @@ class RiskEventHandler:
         """
         # CRITICAL PATH: Log to high-performance audit system first
         try:
-            from .high_perf_audit import audit_kill_switch, KillSwitchReason
+            # Try to import high-performance audit module
+            try:
+                from .high_perf_audit import audit_kill_switch
+            except ImportError:
+                # Fallback to standard logging if high-perf audit not available
+                self.logger.warning("High-performance audit module not available, using standard logging")
+                audit_kill_switch = None
             
             # Map reason to code if not provided
             if reason_code == 0:
@@ -239,22 +342,28 @@ class RiskEventHandler:
                 else:
                     reason_code = KillSwitchReason.RISK_BREACH
             
-            # Ultra-fast audit logging (sub-microsecond)
-            audit_kill_switch(reason_code, symbol_id, position_size, pnl_cents)
+            # Ultra-fast audit logging (sub-microsecond) if available
+            if audit_kill_switch:
+                audit_kill_switch(reason_code, symbol_id, position_size, pnl_cents)
             
         except Exception as e:
-            # Don't let audit failure block emergency stop
-            pass
+            # Don't let audit failure block emergency stop, but log the issue
+            self.logger.warning(f"Audit logging failed during emergency stop: {e}")
         
         # Standard logging (can be slower)
         self.logger.critical(f"EMERGENCY STOP TRIGGERED: {reason}")
         
-        # Handle risk event (can be slower)
-        self.handle_risk_event("emergency_stop", {
-            "reason": reason, 
-            "reason_code": reason_code,
-            "symbol_id": symbol_id,
-            "position_size": position_size,
-            "pnl_cents": pnl_cents,
-            "timestamp": datetime.now()
-        })
+        # Handle risk event (can be slower) - create task to avoid blocking
+        try:
+            loop = asyncio.get_event_loop()
+            loop.create_task(self.handle_risk_event("emergency_stop", {
+                "reason": reason, 
+                "reason_code": reason_code,
+                "symbol_id": symbol_id,
+                "position_size": position_size,
+                "pnl_cents": pnl_cents,
+                "timestamp": datetime.now()
+            }))
+        except RuntimeError:
+            # No event loop running - skip async handling
+            pass
