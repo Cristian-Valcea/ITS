@@ -16,6 +16,7 @@ try:
     from .db_pool import pg_conn, is_available as pg_available
     from .db_locker import advisory_lock, symbol_to_lock_key
     from .manifest_schema import initialize_manifest_db, migrate_from_duckdb
+    import psycopg2.extras
     PG_MANIFEST_AVAILABLE = True
 except ImportError:
     PG_MANIFEST_AVAILABLE = False
@@ -24,6 +25,7 @@ except ImportError:
     symbol_to_lock_key = None
     initialize_manifest_db = None
     migrate_from_duckdb = None
+    psycopg2 = None
 
 # Prometheus metrics for FeatureStore hit ratio SLO monitoring and advisory lock performance
 try:
@@ -34,15 +36,21 @@ except ImportError:
     # Mock classes for when prometheus_client is not available
     class Counter:
         def __init__(self, *args, **kwargs): 
-            self._value = type('MockValue', (), {'get': lambda: 0})()
-        def inc(self, *args, **kwargs): pass
+            self._counter = 0
+        def inc(self, *args, **kwargs): 
+            self._counter += 1
         def labels(self, *args, **kwargs): return self
+        def collect(self):
+            return [type('MockSample', (), {'value': self._counter})()]
     
     class Gauge:
         def __init__(self, *args, **kwargs): 
-            self._value = type('MockValue', (), {'get': lambda: 0})()
-        def set(self, *args, **kwargs): pass
+            self._value = 0
+        def set(self, value, *args, **kwargs): 
+            self._value = value
         def labels(self, *args, **kwargs): return self
+        def collect(self):
+            return [type('MockSample', (), {'value': self._value})()]
     
     class Histogram:
         def __init__(self, *args, **kwargs): pass
@@ -117,14 +125,20 @@ def _create_metrics():
         if "Duplicated timeseries" in str(e):
             # Return mock objects that work but don't register
             class MockMetric:
-                def __init__(self, *args, **kwargs): pass
-                def inc(self, *args, **kwargs): pass
-                def set(self, *args, **kwargs): pass
+                def __init__(self, *args, **kwargs): 
+                    self._counter = 0
+                    self._value = 0
+                def inc(self, *args, **kwargs): 
+                    self._counter += 1
+                def set(self, value, *args, **kwargs): 
+                    self._value = value
                 def observe(self, *args, **kwargs): pass
                 def labels(self, *args, **kwargs): return self
                 def time(self): return self
                 def __enter__(self): return self
                 def __exit__(self, *args): pass
+                def collect(self):
+                    return [type('MockSample', (), {'value': max(self._counter, self._value)})()]
             
             return tuple(MockMetric() for _ in range(9))
         else:
@@ -141,14 +155,38 @@ def _update_hit_ratio():
         return
     
     try:
-        # Get current counter values
-        hits = sum(metric.get() for metric in FEATURE_HITS._metrics.values()) if hasattr(FEATURE_HITS, '_metrics') else 0
-        misses = sum(metric.get() for metric in FEATURE_MISS._metrics.values()) if hasattr(FEATURE_MISS, '_metrics') else 0
+        # Get current counter values using collect() method instead of private attributes
+        hits_samples = FEATURE_HITS.collect()
+        misses_samples = FEATURE_MISS.collect()
+        
+        hits = sum(sample.value for sample in hits_samples) if hits_samples else 0
+        misses = sum(sample.value for sample in misses_samples) if misses_samples else 0
         
         total = hits + misses
         if total > 0:
             hit_ratio = hits / total
             FEATURE_HIT_RT.set(hit_ratio)
+    except Exception:
+        # Silently ignore metrics errors to avoid disrupting core functionality
+        pass
+
+
+def _update_pool_metrics():
+    """Update PostgreSQL connection pool metrics."""
+    if not PROMETHEUS_AVAILABLE or not PG_MANIFEST_AVAILABLE:
+        return
+    
+    try:
+        # Update pool size metrics if available
+        try:
+            from .db_pool import get_pool_stats
+            stats = get_pool_stats()
+            if stats:
+                PG_POOL_SIZE.set(stats.get('total_connections', 0))
+                PG_POOL_ACTIVE.set(stats.get('active_connections', 0))
+        except ImportError:
+            # get_pool_stats not available - skip metrics update
+            pass
     except Exception:
         # Silently ignore metrics errors to avoid disrupting core functionality
         pass
@@ -253,46 +291,45 @@ class FeatureStore:
     
     def _compute_raw_data_hash(self, raw_df: pd.DataFrame) -> bytes:
         """
-        Compute hash of raw data content with optimization for large tick data.
-        For large datasets (>100MB), only hash the footer to avoid memory issues.
+        Compute hash of raw data content with memory-efficient approach for large datasets.
+        Uses memory usage estimation instead of full parquet conversion to avoid memory bloat.
         """
         try:
-            # Convert to parquet bytes for size estimation
-            parquet_bytes = raw_df.to_parquet(index=True)
-            data_size_mb = len(parquet_bytes) / 1024 / 1024
+            # Use memory usage estimation instead of full parquet conversion
+            memory_usage_mb = raw_df.memory_usage(deep=True).sum() / 1024 / 1024
             
-            # Use footer-only hashing for large tick data (>100MB)
-            if data_size_mb > 100:
-                self.logger.debug(f"Using footer hashing for large dataset ({data_size_mb:.1f} MB)")
+            # Use footer-only hashing for large tick data (>100MB memory usage)
+            if memory_usage_mb > 100:
+                self.logger.debug(f"Using footer hashing for large dataset ({memory_usage_mb:.1f} MB memory)")
                 
                 # Hash only the footer (last 1000 rows) + metadata for efficiency
                 footer_rows = min(1000, len(raw_df))
                 footer_df = raw_df.tail(footer_rows)
                 
                 # Include dataset metadata in hash for uniqueness
-                import json
                 metadata = {
                     'total_rows': len(raw_df),
                     'columns': raw_df.columns.tolist(),
                     'dtypes': {col: str(dtype) for col, dtype in raw_df.dtypes.items()},
                     'index_min': str(raw_df.index.min()),
                     'index_max': str(raw_df.index.max()),
-                    'footer_rows': footer_rows
+                    'footer_rows': footer_rows,
+                    'memory_usage_mb': memory_usage_mb
                 }
                 
-                # Combine footer data + metadata for hash
-                footer_parquet = footer_df.to_parquet(index=True)
+                # Use footer values bytes + metadata for hash (avoid parquet conversion)
+                footer_bytes = footer_df.values.tobytes()
                 metadata_json = json.dumps(metadata, sort_keys=True)
                 
-                hash_input = footer_parquet + metadata_json.encode()
+                hash_input = footer_bytes + metadata_json.encode()
                 return hashlib.sha256(hash_input).digest()
             
             else:
-                # Use full hashing for smaller datasets
-                return hashlib.sha256(parquet_bytes).digest()
+                # Use values bytes for smaller datasets (avoid parquet conversion)
+                return hashlib.sha256(raw_df.values.tobytes()).digest()
                 
         except Exception as e:
-            self.logger.warning(f"Failed to hash via parquet, using string representation: {e}")
+            self.logger.warning(f"Failed to hash via values bytes, using string representation: {e}")
             # Fallback to string representation hash
             data_str = f"{raw_df.index.min()}_{raw_df.index.max()}_{len(raw_df)}_{raw_df.columns.tolist()}"
             return hashlib.sha256(data_str.encode()).digest()
@@ -358,7 +395,7 @@ class FeatureStore:
         cache_key = self._generate_cache_key(symbol, start_ts, end_ts, config, raw_df)
         
         # Check if features are already cached
-        cached_path = self._get_cached_features(cache_key)
+        cached_path = self._get_cached_features(cache_key, symbol)
         if cached_path:
             # Cache HIT - record metrics
             self.logger.info(f"Cache HIT for {symbol} {cache_key[:16]}...")
@@ -378,21 +415,23 @@ class FeatureStore:
         
         return features_df
     
-    def _get_cached_features(self, cache_key: str) -> Optional[str]:
+    def _get_cached_features(self, cache_key: str, symbol: str) -> Optional[str]:
         """Check if features are cached and return file path."""
         if self.use_pg_manifest:
-            return self._get_cached_features_pg(cache_key)
+            return self._get_cached_features_pg(cache_key, symbol)
         else:
-            return self._get_cached_features_duckdb(cache_key)
+            return self._get_cached_features_duckdb(cache_key, symbol)
     
-    def _get_cached_features_pg(self, cache_key: str) -> Optional[str]:
+    def _get_cached_features_pg(self, cache_key: str, symbol: str) -> Optional[str]:
         """Check if features are cached using PostgreSQL manifest."""
-        symbol = cache_key.split('_')[0] if '_' in cache_key else 'unknown'
         
         try:
             with MANIFEST_READ_LATENCY.labels(backend='postgresql', symbol=symbol).time():
+                # Update pool metrics
+                _update_pool_metrics()
                 with pg_conn() as conn:
-                    with conn.cursor() as cur:
+                    # Use DictCursor to get dictionary results instead of tuples
+                    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                         cur.execute(
                             "SELECT path FROM manifest WHERE key = %s", 
                             (cache_key,)
@@ -402,18 +441,18 @@ class FeatureStore:
                         if result:
                             path = result['path']
                             if Path(path).exists():
-                                # Update last accessed timestamp
+                                # Update last accessed timestamp - let context manager handle transaction
                                 cur.execute(
                                     "UPDATE manifest SET last_accessed_ts = CURRENT_TIMESTAMP WHERE key = %s",
                                     (cache_key,)
                                 )
-                                conn.commit()
+                                # No manual commit - context manager handles it
                                 return path
                             else:
                                 # File missing - clean up manifest entry
                                 self.logger.warning(f"Cached file missing: {path}")
                                 cur.execute("DELETE FROM manifest WHERE key = %s", (cache_key,))
-                                conn.commit()
+                                # No manual commit - context manager handles it
                         
                         return None
                     
@@ -421,9 +460,8 @@ class FeatureStore:
             self.logger.error(f"Error checking PostgreSQL cache for key {cache_key[:16]}...: {e}")
             return None
     
-    def _get_cached_features_duckdb(self, cache_key: str) -> Optional[str]:
+    def _get_cached_features_duckdb(self, cache_key: str, symbol: str) -> Optional[str]:
         """Check if features are cached using DuckDB manifest."""
-        symbol = cache_key.split('_')[0] if '_' in cache_key else 'unknown'
         
         try:
             with MANIFEST_READ_LATENCY.labels(backend='duckdb', symbol=symbol).time():
@@ -473,8 +511,17 @@ class FeatureStore:
             
         except Exception as e:
             self.logger.error(f"Error loading cached features from {file_path}: {e}")
-            # Clean up bad cache entry
-            self.db.execute("DELETE FROM manifest WHERE key = ?", [cache_key])
+            # Clean up bad cache entry from both PostgreSQL and DuckDB
+            try:
+                if self.use_pg_manifest:
+                    with pg_conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute("DELETE FROM manifest WHERE key = %s", (cache_key,))
+                else:
+                    with duckdb.connect(str(self.db_path)) as conn:
+                        conn.execute("DELETE FROM manifest WHERE key = ?", [cache_key])
+            except Exception as cleanup_error:
+                self.logger.warning(f"Error cleaning up bad cache entry: {cleanup_error}")
             raise
     
     def _cache_features(self, cache_key: str, features_df: pd.DataFrame, 
@@ -503,44 +550,40 @@ class FeatureStore:
             file_size = cache_file.stat().st_size
             
             # Use PostgreSQL with advisory lock for high-concurrency INSERT
-            lock_key = symbol_to_lock_key(symbol)
+            # Include start_ts and end_ts in lock key for better granularity
+            lock_key = symbol_to_lock_key(f"{symbol}_{start_ts}_{end_ts}")
             
+            # Update pool metrics
+            _update_pool_metrics()
             with pg_conn() as conn:
+                # Let context manager handle transaction - remove manual BEGIN/COMMIT
                 with conn.cursor() as cur:
-                    cur.execute("BEGIN")
-                    try:
-                        # Measure advisory lock wait time
-                        with ADVISORY_LOCK_WAIT_TIME.labels(symbol=symbol).time():
-                            # Acquire advisory lock for this symbol to prevent row-lock contention
-                            with advisory_lock(conn, lock_key):
-                                # Measure manifest insert latency
-                                with MANIFEST_INSERT_LATENCY.labels(backend='postgresql', symbol=symbol).time():
-                                    cur.execute("""
-                                        INSERT INTO manifest 
-                                        (key, path, symbol, start_ts, end_ts, rows, file_size_bytes) 
-                                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                                        ON CONFLICT (key) DO UPDATE SET
-                                            path = EXCLUDED.path,
-                                            symbol = EXCLUDED.symbol,
-                                            start_ts = EXCLUDED.start_ts,
-                                            end_ts = EXCLUDED.end_ts,
-                                            rows = EXCLUDED.rows,
-                                            file_size_bytes = EXCLUDED.file_size_bytes,
-                                            last_accessed_ts = CURRENT_TIMESTAMP,
-                                            access_count = manifest.access_count + 1
-                                    """, (
-                                        cache_key, str(cache_file), symbol, start_ts, end_ts, 
-                                        len(features_df), file_size
-                                    ))
-                        
-                        cur.execute("COMMIT")
-                        
-                        self.logger.info(f"Cached {len(features_df)} features for {symbol} "
-                                       f"({file_size:,} bytes compressed) [PostgreSQL+AdvisoryLock]")
-                        
-                    except Exception as e:
-                        cur.execute("ROLLBACK")
-                        raise e
+                    # Measure advisory lock wait time
+                    with ADVISORY_LOCK_WAIT_TIME.labels(symbol=symbol).time():
+                        # Acquire advisory lock for this symbol+timerange to prevent row-lock contention
+                        with advisory_lock(conn, lock_key):
+                            # Measure manifest insert latency
+                            with MANIFEST_INSERT_LATENCY.labels(backend='postgresql', symbol=symbol).time():
+                                cur.execute("""
+                                    INSERT INTO manifest 
+                                    (key, path, symbol, start_ts, end_ts, rows, file_size_bytes) 
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                    ON CONFLICT (key) DO UPDATE SET
+                                        path = EXCLUDED.path,
+                                        symbol = EXCLUDED.symbol,
+                                        start_ts = EXCLUDED.start_ts,
+                                        end_ts = EXCLUDED.end_ts,
+                                        rows = EXCLUDED.rows,
+                                        file_size_bytes = EXCLUDED.file_size_bytes,
+                                        last_accessed_ts = CURRENT_TIMESTAMP,
+                                        access_count = EXCLUDED.access_count + 1
+                                """, (
+                                    cache_key, str(cache_file), symbol, start_ts, end_ts, 
+                                    len(features_df), file_size
+                                ))
+                    
+                    self.logger.info(f"Cached {len(features_df)} features for {symbol} "
+                                   f"({file_size:,} bytes compressed) [PostgreSQL+AdvisoryLock]")
                 
         except Exception as e:
             self.logger.error(f"Error caching features (PostgreSQL) for key {cache_key[:16]}...: {e}")
@@ -583,7 +626,7 @@ class FeatureStore:
                                 rows = EXCLUDED.rows,
                                 file_size_bytes = EXCLUDED.file_size_bytes,
                                 last_accessed_ts = now(),
-                                access_count = access_count + 1
+                                access_count = EXCLUDED.access_count + 1
                         """, [
                             cache_key, str(cache_file), symbol, start_ts, end_ts, 
                             len(features_df), file_size

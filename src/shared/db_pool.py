@@ -205,6 +205,27 @@ def is_available() -> bool:
         return False
 
 
+def get_pool_stats() -> Optional[dict]:
+    """Get connection pool statistics."""
+    global _pool
+    
+    if not _pool or not PSYCOPG2_AVAILABLE:
+        return None
+    
+    try:
+        total_connections = _pool.maxconn
+        active_connections = len(getattr(_pool, '_used', []))
+        
+        return {
+            'total_connections': total_connections,
+            'active_connections': active_connections,
+            'available_connections': total_connections - active_connections
+        }
+    except Exception as e:
+        logger.error(f"Error getting pool stats: {e}")
+        return None
+
+
 # Cleanup on module exit
 import atexit
 atexit.register(close_pool)
