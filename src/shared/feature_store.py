@@ -63,7 +63,15 @@ except ImportError:
 # Global FeatureStore metrics (shared across all instances)
 # Handle duplicate registration gracefully
 def _create_metrics():
-    """Create metrics with duplicate registration handling."""
+    """
+    Create metrics with duplicate registration handling.
+    
+    Note: In multi-process environments (e.g., SB3 workers), each process will
+    create its own metrics registry. For production deployment, consider:
+    1. Using multiprocessing.set_start_method("spawn") to avoid registry conflicts
+    2. Or disable prometheus_client.REGISTRY in child processes  
+    3. Or use a single metrics collection process with inter-process communication
+    """
     try:
         hits = Counter(
             "featurestore_hits_total",
@@ -145,7 +153,13 @@ def _create_metrics():
 
 
 def _get_metric_total(metric):
-    """Get total value from Prometheus metric, handling both real and mock implementations."""
+    """
+    Get total value from Prometheus metric, handling both real and mock implementations.
+    
+    Note: For metrics with multiple time-series (labels), this sums ALL samples across
+    all label combinations. This is exactly what we want for hit/miss totals where we
+    need the grand total across all symbols.
+    """
     try:
         collected = metric.collect()
         if not collected:
@@ -181,7 +195,18 @@ def _update_hit_ratio():
 
 
 def _update_pool_metrics():
-    """Update PostgreSQL connection pool metrics."""
+    """
+    Update PostgreSQL connection pool metrics.
+    
+    Requires db_pool.py to implement get_pool_stats() function that returns:
+    {
+        'total_connections': int,
+        'active_connections': int
+    }
+    
+    If get_pool_stats() is not available, pool metrics will be silently skipped
+    without affecting core FeatureStore functionality.
+    """
     if not PROMETHEUS_AVAILABLE or not PG_MANIFEST_AVAILABLE:
         return
     
@@ -195,6 +220,7 @@ def _update_pool_metrics():
                 PG_POOL_ACTIVE.set(stats.get('active_connections', 0))
         except ImportError:
             # get_pool_stats not available - skip metrics update
+            # This is expected if db_pool.py doesn't implement get_pool_stats()
             pass
     except Exception:
         # Silently ignore metrics errors to avoid disrupting core functionality
@@ -763,9 +789,15 @@ class FeatureStore:
                 """, (cutoff_date,))
                 old_entries = cur.fetchall()
                 
+                if not old_entries:
+                    self.logger.info("No old cache entries to clean up [PostgreSQL]")
+                    return
+                
                 deleted_count = 0
                 freed_bytes = 0
+                keys_to_delete = []
                 
+                # Delete physical files and collect keys for bulk delete
                 for entry in old_entries:
                     try:
                         file_path = Path(entry['path'])
@@ -773,11 +805,20 @@ class FeatureStore:
                             freed_bytes += file_path.stat().st_size
                             file_path.unlink()
                         
-                        cur.execute("DELETE FROM manifest WHERE key = %s", (entry['key'],))
+                        keys_to_delete.append(entry['key'])
                         deleted_count += 1
                         
                     except Exception as e:
                         self.logger.warning(f"Error deleting cache entry {entry['key']}: {e}")
+                
+                # Bulk delete from manifest for better performance
+                # Note: For very large lists (10k+ entries), consider batching to avoid
+                # PostgreSQL parameter limits, but this is acceptable for typical use cases
+                if keys_to_delete:
+                    cur.execute("""
+                        DELETE FROM manifest 
+                        WHERE key = ANY(%s)
+                    """, (keys_to_delete,))
                 
                 self.logger.info(f"Cleaned up {deleted_count} old cache entries, "
                                f"freed {freed_bytes / 1024 / 1024:.1f} MB [PostgreSQL]")
@@ -819,30 +860,62 @@ class FeatureStore:
             symbol: If provided, only clear entries for this symbol
         """
         try:
-            if symbol:
-                entries = self.db.execute(
-                    "SELECT path FROM manifest WHERE symbol = ?", [symbol]
-                ).fetchall()
-                self.db.execute("DELETE FROM manifest WHERE symbol = ?", [symbol])
-                self.logger.info(f"Cleared cache for symbol {symbol}")
+            if self.use_pg_manifest:
+                self._clear_cache_pg(symbol)
             else:
-                entries = self.db.execute("SELECT path FROM manifest").fetchall()
-                self.db.execute("DELETE FROM manifest")
-                self.logger.info("Cleared entire cache")
-            
-            # Delete physical files
-            deleted_count = 0
-            for (path,) in entries:
-                try:
-                    Path(path).unlink(missing_ok=True)
-                    deleted_count += 1
-                except Exception as e:
-                    self.logger.warning(f"Error deleting file {path}: {e}")
-            
-            self.logger.info(f"Deleted {deleted_count} cache files")
-            
+                self._clear_cache_duckdb(symbol)
         except Exception as e:
             self.logger.error(f"Error clearing cache: {e}")
+    
+    def _clear_cache_pg(self, symbol: Optional[str] = None):
+        """Clear cache entries from PostgreSQL manifest."""
+        with pg_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                if symbol:
+                    cur.execute("SELECT path FROM manifest WHERE symbol = %s", (symbol,))
+                    entries = cur.fetchall()
+                    cur.execute("DELETE FROM manifest WHERE symbol = %s", (symbol,))
+                    self.logger.info(f"Cleared cache for symbol {symbol} [PostgreSQL]")
+                else:
+                    cur.execute("SELECT path FROM manifest")
+                    entries = cur.fetchall()
+                    cur.execute("DELETE FROM manifest")
+                    self.logger.info("Cleared entire cache [PostgreSQL]")
+                
+                # Delete physical files
+                deleted_count = 0
+                for entry in entries:
+                    try:
+                        Path(entry['path']).unlink(missing_ok=True)
+                        deleted_count += 1
+                    except Exception as e:
+                        self.logger.warning(f"Error deleting file {entry['path']}: {e}")
+                
+                self.logger.info(f"Deleted {deleted_count} cache files [PostgreSQL]")
+    
+    def _clear_cache_duckdb(self, symbol: Optional[str] = None):
+        """Clear cache entries from DuckDB manifest."""
+        if symbol:
+            entries = self.db.execute(
+                "SELECT path FROM manifest WHERE symbol = ?", [symbol]
+            ).fetchall()
+            self.db.execute("DELETE FROM manifest WHERE symbol = ?", [symbol])
+            self.logger.info(f"Cleared cache for symbol {symbol} [DuckDB]")
+        else:
+            entries = self.db.execute("SELECT path FROM manifest").fetchall()
+            self.db.execute("DELETE FROM manifest")
+            self.logger.info("Cleared entire cache [DuckDB]")
+        
+        # Delete physical files
+        deleted_count = 0
+        for (path,) in entries:
+            try:
+                Path(path).unlink(missing_ok=True)
+                deleted_count += 1
+            except Exception as e:
+                self.logger.warning(f"Error deleting file {path}: {e}")
+        
+        self.logger.info(f"Deleted {deleted_count} cache files [DuckDB]")
     
     def close(self):
         """Close database connection."""
