@@ -14,9 +14,44 @@ This is an internal module - use src.execution.OrchestratorAgent for public API.
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+from pathlib import Path
 import pandas as pd
 
-# TODO: Import statements will be added during extraction phase
+# Fee engine imports
+try:
+    from ...shared.fee_schedule import get_cme_fee_schedule, FeeSchedule
+    FEE_ENGINE_AVAILABLE = True
+except ImportError:
+    FEE_ENGINE_AVAILABLE = False
+
+# Prometheus metrics for fee tracking
+try:
+    from prometheus_client import Counter, Histogram
+    PROMETHEUS_AVAILABLE = True
+    
+    FEES_TOTAL = Counter(
+        'trading_fees_total_usd',
+        'Total trading fees paid in USD',
+        ['symbol', 'venue']
+    )
+    
+    FEE_PER_CONTRACT = Histogram(
+        'trading_fee_per_contract_usd',
+        'Fee per contract in USD',
+        ['symbol', 'venue'],
+        buckets=[0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0]
+    )
+    
+except ImportError:
+    PROMETHEUS_AVAILABLE = False
+    
+    class MockMetric:
+        def inc(self, *args, **kwargs): pass
+        def observe(self, *args, **kwargs): pass
+        def labels(self, *args, **kwargs): return self
+    
+    FEES_TOTAL = MockMetric()
+    FEE_PER_CONTRACT = MockMetric()
 
 
 class PnLTracker:
@@ -40,6 +75,22 @@ class PnLTracker:
         self.portfolio_state: Dict[str, Any] = {}
         self.pnl_history: List[Dict[str, Any]] = []
         self.positions: Dict[str, Dict[str, Any]] = {}
+        
+        # Fee tracking
+        self.fee_accumulator: float = 0.0
+        self.fees_by_symbol: Dict[str, float] = {}
+        self.volume_ytd: Dict[str, int] = {}  # Year-to-date volume for tiered fees
+        
+        # Initialize fee schedule
+        self.fee_schedule: Optional[FeeSchedule] = None
+        if FEE_ENGINE_AVAILABLE:
+            try:
+                self.fee_schedule = get_cme_fee_schedule()
+                self.logger.info(f"Fee engine initialized for venue: {self.fee_schedule.venue}")
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize fee engine: {e}")
+        else:
+            self.logger.warning("Fee engine not available - fees will not be calculated")
         
         # Check simulation mode
         ibkr_config = self.config.get('ibkr_conn', {}) or self.config.get('ibkr_connection', {})
@@ -73,6 +124,220 @@ class PnLTracker:
         except Exception as e:
             self.logger.error(f"Error initializing portfolio state: {e}")
             return False
+    
+    def _apply_fees(self, trade: Dict[str, Any]) -> float:
+        """
+        Apply trading fees to a trade and update cash position.
+        
+        Args:
+            trade: Trade dictionary with keys: symbol, qty, side, price
+                  - symbol: Trading symbol (e.g., 'MES', 'MNQ')
+                  - qty: Number of contracts (positive for buy, negative for sell)
+                  - side: +1 for buy, -1 for sell
+                  - price: Execution price
+        
+        Returns:
+            Total fee applied in USD
+        """
+        if not self.fee_schedule:
+            return 0.0
+        
+        try:
+            symbol = trade['symbol']
+            quantity = abs(trade['qty'])  # Always positive for fee calculation
+            
+            # Get current YTD volume for tiered pricing
+            current_volume = self.volume_ytd.get(symbol, 0)
+            
+            # Calculate fee
+            total_fee = self.fee_schedule.calculate_total_fee(
+                symbol=symbol,
+                quantity=quantity,
+                volume_ytd=current_volume
+            )
+            
+            # Update cash position (reduce by fee amount)
+            if 'total_cash_value' in self.portfolio_state:
+                self.portfolio_state['total_cash_value'] -= total_fee
+            
+            # Update fee tracking
+            self.fee_accumulator += total_fee
+            self.fees_by_symbol[symbol] = self.fees_by_symbol.get(symbol, 0) + total_fee
+            self.volume_ytd[symbol] = current_volume + quantity
+            
+            # Update Prometheus metrics
+            if PROMETHEUS_AVAILABLE:
+                FEES_TOTAL.labels(symbol=symbol, venue=self.fee_schedule.venue).inc(total_fee)
+                fee_per_contract = total_fee / quantity if quantity > 0 else 0
+                FEE_PER_CONTRACT.labels(symbol=symbol, venue=self.fee_schedule.venue).observe(fee_per_contract)
+            
+            # Log fee application
+            fee_per_contract = total_fee / quantity if quantity > 0 else 0
+            self.logger.debug(
+                f"Applied fees: {symbol} {quantity} contracts × ${fee_per_contract:.2f} = ${total_fee:.2f}"
+            )
+            
+            # Record fee event in P&L history
+            self.record_pnl_event(
+                symbol=symbol,
+                event_type='fee',
+                amount=-total_fee,  # Negative because it reduces P&L
+                details={
+                    'quantity': quantity,
+                    'fee_per_contract': fee_per_contract,
+                    'volume_ytd': self.volume_ytd[symbol],
+                    'venue': self.fee_schedule.venue
+                }
+            )
+            
+            return total_fee
+            
+        except Exception as e:
+            self.logger.error(f"Error applying fees for trade {trade}: {e}")
+            return 0.0
+    
+    def on_fill(self, trade: Dict[str, Any]) -> None:
+        """
+        Process a trade fill - apply fees and update positions.
+        
+        Args:
+            trade: Trade dictionary with execution details
+        """
+        try:
+            # Apply fees first (reduces cash)
+            fee_applied = self._apply_fees(trade)
+            
+            # Update position
+            self._update_position(trade)
+            
+            # Update P&L
+            self._update_pnl(trade)
+            
+            # Log the fill
+            symbol = trade.get('symbol', 'UNKNOWN')
+            qty = trade.get('qty', 0)
+            price = trade.get('price', 0)
+            
+            self.logger.info(
+                f"Fill processed: {symbol} {qty} @ ${price:.2f} "
+                f"(Fee: ${fee_applied:.2f})"
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error processing fill: {e}")
+    
+    def _update_position(self, trade: Dict[str, Any]) -> None:
+        """Update position based on trade execution."""
+        try:
+            symbol = trade['symbol']
+            qty = trade['qty']
+            price = trade['price']
+            
+            # Update portfolio state positions
+            if 'positions' not in self.portfolio_state:
+                self.portfolio_state['positions'] = {}
+            
+            current_position = self.portfolio_state['positions'].get(symbol, 0)
+            new_position = current_position + qty
+            self.portfolio_state['positions'][symbol] = new_position
+            
+            # Update detailed position tracking
+            if symbol not in self.positions:
+                self.positions[symbol] = {
+                    'shares': 0,
+                    'avg_cost': 0,
+                    'market_price': price,
+                    'market_value': 0,
+                    'unrealized_pnl': 0,
+                    'updated_at': datetime.now()
+                }
+            
+            pos = self.positions[symbol]
+            old_shares = pos['shares']
+            old_avg_cost = pos['avg_cost']
+            
+            # Calculate new average cost
+            if new_position == 0:
+                # Position closed
+                pos['avg_cost'] = 0
+            elif old_shares == 0:
+                # New position
+                pos['avg_cost'] = price
+            elif (old_shares > 0 and qty > 0) or (old_shares < 0 and qty < 0):
+                # Adding to position
+                total_cost = (old_shares * old_avg_cost) + (qty * price)
+                pos['avg_cost'] = total_cost / new_position
+            # For reducing position, keep old average cost
+            
+            pos['shares'] = new_position
+            pos['market_price'] = price
+            pos['market_value'] = new_position * price
+            pos['unrealized_pnl'] = new_position * (price - pos['avg_cost'])
+            pos['updated_at'] = datetime.now()
+            
+        except Exception as e:
+            self.logger.error(f"Error updating position: {e}")
+    
+    def _update_pnl(self, trade: Dict[str, Any]) -> None:
+        """Update P&L calculations based on trade."""
+        try:
+            # This would typically calculate realized P&L for position changes
+            # For now, we'll update the portfolio state timestamp
+            self.portfolio_state['last_update'] = datetime.now()
+            
+        except Exception as e:
+            self.logger.error(f"Error updating P&L: {e}")
+    
+    def get_fee_summary(self) -> Dict[str, Any]:
+        """
+        Get comprehensive fee summary.
+        
+        Returns:
+            Dictionary with fee statistics and breakdown
+        """
+        return {
+            'total_fees': self.fee_accumulator,
+            'fees_by_symbol': self.fees_by_symbol.copy(),
+            'volume_ytd': self.volume_ytd.copy(),
+            'fee_engine_available': self.fee_schedule is not None,
+            'venue': self.fee_schedule.venue if self.fee_schedule else None,
+            'average_fee_per_contract': (
+                self.fee_accumulator / sum(self.volume_ytd.values())
+                if sum(self.volume_ytd.values()) > 0 else 0
+            )
+        }
+    
+    def get_fee_impact_analysis(self) -> Dict[str, Any]:
+        """
+        Analyze the impact of fees on performance.
+        
+        Returns:
+            Dictionary with fee impact metrics
+        """
+        try:
+            total_pnl = self.calculate_pnl().get('total_pnl', 0)
+            gross_pnl = total_pnl + self.fee_accumulator  # P&L before fees
+            
+            fee_impact = {
+                'gross_pnl': gross_pnl,
+                'net_pnl': total_pnl,
+                'total_fees': self.fee_accumulator,
+                'fee_impact_pct': (
+                    (self.fee_accumulator / abs(gross_pnl)) * 100
+                    if abs(gross_pnl) > 0 else 0
+                ),
+                'fee_drag_bps': (
+                    (self.fee_accumulator / self.portfolio_state.get('initial_capital', 100000)) * 10000
+                ),
+                'total_volume': sum(self.volume_ytd.values()),
+                'symbols_traded': len(self.volume_ytd)
+            }
+            
+            return fee_impact
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating fee impact: {e}")
+            return {}
         
     def synchronize_portfolio_state_with_broker(
         self, 
@@ -202,18 +467,21 @@ class PnLTracker:
     
     def calculate_pnl(self, symbol: Optional[str] = None, current_prices: Optional[Dict[str, float]] = None) -> Dict[str, float]:
         """
-        Calculate current P&L.
+        Calculate current P&L including fee impact.
         
         Args:
             symbol: Optional specific symbol to calculate P&L for
             current_prices: Optional dictionary of current prices for positions
             
         Returns:
-            Dictionary containing P&L metrics
+            Dictionary containing P&L metrics including fee breakdown
         """
         try:
             if not self.portfolio_state:
-                return {'total_pnl': 0.0, 'unrealized_pnl': 0.0, 'realized_pnl': 0.0}
+                return {
+                    'total_pnl': 0.0, 'unrealized_pnl': 0.0, 'realized_pnl': 0.0,
+                    'gross_pnl': 0.0, 'total_fees': 0.0
+                }
             
             total_cash = self.portfolio_state.get('total_cash_value', 0)
             positions_value = 0.0
@@ -229,21 +497,39 @@ class PnLTracker:
             initial_capital = self.portfolio_state.get('initial_capital', 100000)
             total_pnl = net_liquidation - initial_capital
             
+            # Calculate fee-adjusted metrics
+            symbol_fees = (
+                self.fees_by_symbol.get(symbol, 0) if symbol 
+                else self.fee_accumulator
+            )
+            gross_pnl = total_pnl + symbol_fees  # P&L before fees
+            
             pnl_metrics = {
-                'total_pnl': total_pnl,
+                'total_pnl': total_pnl,  # Net P&L (after fees)
+                'gross_pnl': gross_pnl,  # P&L before fees
+                'total_fees': symbol_fees,
+                'fee_impact_pct': (
+                    (symbol_fees / abs(gross_pnl)) * 100 
+                    if abs(gross_pnl) > 0 else 0
+                ),
                 'total_pnl_pct': (total_pnl / initial_capital) * 100 if initial_capital > 0 else 0.0,
+                'gross_pnl_pct': (gross_pnl / initial_capital) * 100 if initial_capital > 0 else 0.0,
                 'net_liquidation': net_liquidation,
                 'cash_value': total_cash,
                 'positions_value': positions_value,
                 'unrealized_pnl': positions_value,  # Simplified - would need cost basis for accurate calculation
-                'realized_pnl': total_cash - initial_capital  # Simplified
+                'realized_pnl': total_cash - initial_capital,  # Simplified
+                'fee_drag_bps': (symbol_fees / initial_capital) * 10000 if initial_capital > 0 else 0
             }
             
             return pnl_metrics
             
         except Exception as e:
             self.logger.error(f"Error calculating P&L: {e}")
-            return {'total_pnl': 0.0, 'unrealized_pnl': 0.0, 'realized_pnl': 0.0}
+            return {
+                'total_pnl': 0.0, 'unrealized_pnl': 0.0, 'realized_pnl': 0.0,
+                'gross_pnl': 0.0, 'total_fees': 0.0
+            }
         
     def get_pnl_history(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get P&L history, optionally filtered by symbol."""

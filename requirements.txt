@@ -33,6 +33,7 @@ ta>=0.10.2
 duckdb>=0.9.0
 zstandard>=0.21.0
 pyarrow>=10.0.0
+psycopg2-binary>=2.9.0  # PostgreSQL adapter for high-concurrency manifest operations
 
 # Survivorship Bias Analysis
 sqlite3  # Built into Python

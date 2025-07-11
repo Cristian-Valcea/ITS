@@ -1,0 +1,35 @@
+# Flash-Crash Lite Stress Scenario
+# 60-second synthetic liquidity shock for hourly stress testing
+
+scenario_name: "flash_crash_lite"
+description: "60-second down-spike with recovery and spread widening"
+
+# Scenario parameters
+symbol_set: "active_book"           # Use currently active positions
+price_shock_pct: -0.03              # 3% down-spike
+spread_mult: 3.0                    # Bid-ask spread multiplier
+duration_sec: 60                    # 60-second scenario duration
+recovery_type: "linear"             # Linear recovery to original price
+
+# Risk thresholds for breach detection
+max_drawdown_pct: 0.05              # 5% max drawdown threshold
+max_var_multiplier: 2.0             # 2x normal VaR threshold
+max_position_delta: 0.10            # 10% position delta change
+
+# Timing configuration
+run_frequency: "hourly"             # Run every hour
+run_offset_seconds: 5               # Run at :00:05 of each hour
+market_hours_only: true             # Only run during market hours
+
+# Alert configuration
+alert_on_breach: true               # Send PagerDuty alert on breach
+halt_on_breach: true                # Trigger KILL_SWITCH on breach
+alert_severity: "critical"          # PagerDuty severity level
+
+# Performance constraints
+max_runtime_ms: 50                  # Must complete within 50ms
+max_symbols: 100                    # Limit to 100 symbols max
+
+# Monitoring
+enable_metrics: true                # Enable Prometheus metrics
+log_results: true                   # Log stress test results

@@ -9,13 +9,41 @@ if str(project_root) not in sys.path:
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException, APIRouter, Request, Form
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 import uuid
 from datetime import datetime, timedelta
 
 from src.execution.orchestrator_agent import OrchestratorAgent
+
+# Prometheus metrics endpoint support
+try:
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry, REGISTRY
+    PROMETHEUS_AVAILABLE = True
+except ImportError:
+    PROMETHEUS_AVAILABLE = False
+
+# FeatureStore monitoring endpoints
+try:
+    from .monitoring_endpoints import monitoring_router
+    MONITORING_AVAILABLE = True
+except ImportError:
+    MONITORING_AVAILABLE = False
+
+# Fee schedule endpoints
+try:
+    from .fee_endpoints import router as fee_router
+    FEE_ENDPOINTS_AVAILABLE = True
+except ImportError:
+    FEE_ENDPOINTS_AVAILABLE = False
+
+# Stress testing endpoints
+try:
+    from .stress_endpoints import router as stress_router
+    STRESS_ENDPOINTS_AVAILABLE = True
+except ImportError:
+    STRESS_ENDPOINTS_AVAILABLE = False
 
 # --- In-memory task store ---
 task_store: Dict[str, Dict[str, Any]] = {}
@@ -199,6 +227,22 @@ def list_tasks():
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+@app.get("/metrics")
+def metrics_endpoint():
+    """Prometheus metrics endpoint for monitoring."""
+    if not PROMETHEUS_AVAILABLE:
+        return Response(
+            content="# Prometheus client not available\n",
+            media_type="text/plain"
+        )
+    
+    # Generate metrics in Prometheus format
+    metrics_data = generate_latest(REGISTRY)
+    return Response(
+        content=metrics_data,
+        media_type=CONTENT_TYPE_LATEST
+    )
 
 @app.post("/api/v1/reload")
 def reload_orchestrator():
@@ -492,8 +536,29 @@ async def ui_tasks_list(request: Request):
     html_content = template.render(**context)
     return HTMLResponse(content=html_content)
 
-# Mount router
+# Mount routers
 app.include_router(router, prefix="/orchestrator")
+
+# Include FeatureStore monitoring endpoints if available
+if MONITORING_AVAILABLE:
+    app.include_router(monitoring_router, prefix="/api/v1")
+    print("✅ FeatureStore monitoring endpoints enabled at /api/v1/monitoring/*")
+else:
+    print("⚠️  FeatureStore monitoring endpoints not available")
+
+# Include fee schedule endpoints if available
+if FEE_ENDPOINTS_AVAILABLE:
+    app.include_router(fee_router)
+    print("✅ Fee schedule endpoints enabled at /api/v1/fees/*")
+else:
+    print("⚠️  Fee schedule endpoints not available")
+
+# Include stress testing endpoints if available
+if STRESS_ENDPOINTS_AVAILABLE:
+    app.include_router(stress_router)
+    print("✅ Stress testing endpoints enabled at /api/v1/stress/*")
+else:
+    print("⚠️  Stress testing endpoints not available")
 # --- Example FastAPI run (for local testing) ---
 if __name__ == "__main__":
     import uvicorn

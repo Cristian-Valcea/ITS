@@ -1,0 +1,67 @@
+# CME Futures Fee Schedule
+# All fees in USD per contract per side
+# Includes exchange fees + clearing + regulatory (NFA, etc.)
+
+# CME Micro E-mini Futures
+MES:  # Micro E-mini S&P 500
+  trade_fee: 0.35
+  currency: USD
+  description: "Micro E-mini S&P 500 Futures"
+  
+MNQ:  # Micro E-mini NASDAQ-100
+  trade_fee: 0.47
+  currency: USD
+  description: "Micro E-mini NASDAQ-100 Futures"
+  
+M2K:  # Micro E-mini Russell 2000
+  trade_fee: 0.25
+  currency: USD
+  description: "Micro E-mini Russell 2000 Futures"
+  
+MCL:  # Micro WTI Crude Oil
+  trade_fee: 0.74
+  currency: USD
+  description: "Micro WTI Crude Oil Futures"
+
+# Standard E-mini Futures (for reference)
+ES:   # E-mini S&P 500
+  trade_fee: 1.28
+  currency: USD
+  description: "E-mini S&P 500 Futures"
+  
+NQ:   # E-mini NASDAQ-100
+  trade_fee: 1.28
+  currency: USD
+  description: "E-mini NASDAQ-100 Futures"
+
+# Tiered fee example (volume discounts)
+# Uncomment and modify if using tiered pricing
+# MNQ:
+#   description: "Micro E-mini NASDAQ-100 Futures (Tiered)"
+#   currency: USD
+#   tiers:
+#     - vol: 0        # 0-99,999 contracts YTD
+#       fee: 0.47
+#     - vol: 100000   # 100,000+ contracts YTD  
+#       fee: 0.40
+#     - vol: 500000   # 500,000+ contracts YTD
+#       fee: 0.35
+
+# Default fallback for any unlisted CME contract
+DEFAULT:
+  trade_fee: 1.50
+  currency: USD
+  description: "Default CME futures fee"
+
+# Metadata
+metadata:
+  venue: CME
+  last_updated: "2024-01-15"
+  source: "CME Group fee schedule"
+  notes: |
+    Fees include:
+    - CME exchange fees
+    - Clearing fees  
+    - NFA regulatory fees
+    - Assumes self-clearing member rates
+    - FCM pass-through rates may be higher

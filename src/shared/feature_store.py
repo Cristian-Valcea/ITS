@@ -11,6 +11,148 @@ from typing import Dict, Any, Optional, Callable
 from datetime import datetime, timedelta
 from io import BytesIO
 
+# PostgreSQL imports for manifest operations with advisory locks
+try:
+    from .db_pool import pg_conn, is_available as pg_available
+    from .db_locker import advisory_lock, symbol_to_lock_key
+    from .manifest_schema import initialize_manifest_db, migrate_from_duckdb
+    PG_MANIFEST_AVAILABLE = True
+except ImportError:
+    PG_MANIFEST_AVAILABLE = False
+    pg_conn = None
+    advisory_lock = None
+    symbol_to_lock_key = None
+    initialize_manifest_db = None
+    migrate_from_duckdb = None
+
+# Prometheus metrics for FeatureStore hit ratio SLO monitoring and advisory lock performance
+try:
+    from prometheus_client import Counter, Gauge, Histogram
+    PROMETHEUS_AVAILABLE = True
+except ImportError:
+    PROMETHEUS_AVAILABLE = False
+    # Mock classes for when prometheus_client is not available
+    class Counter:
+        def __init__(self, *args, **kwargs): 
+            self._value = type('MockValue', (), {'get': lambda: 0})()
+        def inc(self, *args, **kwargs): pass
+        def labels(self, *args, **kwargs): return self
+    
+    class Gauge:
+        def __init__(self, *args, **kwargs): 
+            self._value = type('MockValue', (), {'get': lambda: 0})()
+        def set(self, *args, **kwargs): pass
+        def labels(self, *args, **kwargs): return self
+    
+    class Histogram:
+        def __init__(self, *args, **kwargs): pass
+        def observe(self, *args, **kwargs): pass
+        def labels(self, *args, **kwargs): return self
+        def time(self): return self
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+
+# Global FeatureStore metrics (shared across all instances)
+# Handle duplicate registration gracefully
+def _create_metrics():
+    """Create metrics with duplicate registration handling."""
+    try:
+        hits = Counter(
+            "featurestore_hits_total",
+            "Features served from cache",
+            ["symbol"]
+        )
+        misses = Counter(
+            "featurestore_misses_total", 
+            "Features recomputed",
+            ["symbol"]
+        )
+        hit_ratio = Gauge(
+            "featurestore_hit_ratio",
+            "Rolling hit ratio (cache / total)"
+        )
+        
+        # New advisory lock performance metrics
+        manifest_insert_latency = Histogram(
+            "manifest_insert_latency_ms",
+            "Manifest insert operation latency in milliseconds",
+            ["backend", "symbol"],
+            buckets=[0.5, 1.0, 2.5, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0]
+        )
+        
+        manifest_read_latency = Histogram(
+            "manifest_read_latency_ms", 
+            "Manifest read operation latency in milliseconds",
+            ["backend", "symbol"],
+            buckets=[0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 25.0, 50.0, 100.0]
+        )
+        
+        advisory_lock_wait_time = Histogram(
+            "advisory_lock_wait_time_ms",
+            "Time spent waiting for advisory locks in milliseconds", 
+            ["symbol"],
+            buckets=[0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0]
+        )
+        
+        concurrent_workers = Gauge(
+            "featurestore_concurrent_workers",
+            "Number of concurrent workers accessing FeatureStore"
+        )
+        
+        pg_connection_pool_size = Gauge(
+            "pg_manifest_pool_connections_total",
+            "Total connections in PostgreSQL pool"
+        )
+        
+        pg_connection_pool_active = Gauge(
+            "pg_manifest_pool_connections_active", 
+            "Active connections in PostgreSQL pool"
+        )
+        
+        return (hits, misses, hit_ratio, manifest_insert_latency, manifest_read_latency, 
+                advisory_lock_wait_time, concurrent_workers, pg_connection_pool_size, 
+                pg_connection_pool_active)
+                
+    except ValueError as e:
+        if "Duplicated timeseries" in str(e):
+            # Return mock objects that work but don't register
+            class MockMetric:
+                def __init__(self, *args, **kwargs): pass
+                def inc(self, *args, **kwargs): pass
+                def set(self, *args, **kwargs): pass
+                def observe(self, *args, **kwargs): pass
+                def labels(self, *args, **kwargs): return self
+                def time(self): return self
+                def __enter__(self): return self
+                def __exit__(self, *args): pass
+            
+            return tuple(MockMetric() for _ in range(9))
+        else:
+            raise
+
+(FEATURE_HITS, FEATURE_MISS, FEATURE_HIT_RT, MANIFEST_INSERT_LATENCY, 
+ MANIFEST_READ_LATENCY, ADVISORY_LOCK_WAIT_TIME, CONCURRENT_WORKERS,
+ PG_POOL_SIZE, PG_POOL_ACTIVE) = _create_metrics()
+
+
+def _update_hit_ratio():
+    """Update the global hit ratio gauge based on current counters."""
+    if not PROMETHEUS_AVAILABLE:
+        return
+    
+    try:
+        # Get current counter values
+        hits = sum(metric.get() for metric in FEATURE_HITS._metrics.values()) if hasattr(FEATURE_HITS, '_metrics') else 0
+        misses = sum(metric.get() for metric in FEATURE_MISS._metrics.values()) if hasattr(FEATURE_MISS, '_metrics') else 0
+        
+        total = hits + misses
+        if total > 0:
+            hit_ratio = hits / total
+            FEATURE_HIT_RT.set(hit_ratio)
+    except Exception:
+        # Silently ignore metrics errors to avoid disrupting core functionality
+        pass
+
 
 class FeatureStore:
     """
@@ -40,13 +182,38 @@ class FeatureStore:
         self.base = Path(root or os.getenv("FEATURE_STORE_PATH", "~/.feature_cache")).expanduser()
         self.base.mkdir(parents=True, exist_ok=True)
         
-        # Initialize DuckDB manifest database
-        self.db_path = self.base / "manifest.duckdb"
-        self.db = duckdb.connect(str(self.db_path))
-        self._initialize_manifest_table()
+        # Determine manifest backend (PostgreSQL preferred for concurrency)
+        self.use_pg_manifest = PG_MANIFEST_AVAILABLE and pg_available()
+        
+        if self.use_pg_manifest:
+            # Initialize PostgreSQL manifest for high-concurrency operations
+            try:
+                initialize_manifest_db()
+                self.logger.info("Using PostgreSQL manifest with advisory locks for high concurrency")
+                
+                # Migrate existing DuckDB data if present
+                duckdb_path = self.base / "manifest.duckdb"
+                if duckdb_path.exists():
+                    migrated = migrate_from_duckdb(duckdb_path)
+                    if migrated > 0:
+                        self.logger.info(f"Migrated {migrated} entries from DuckDB to PostgreSQL")
+                        # Keep DuckDB as backup
+                        duckdb_path.rename(self.base / "manifest.duckdb.backup")
+                
+            except Exception as e:
+                self.logger.warning(f"PostgreSQL manifest initialization failed: {e}")
+                self.logger.info("Falling back to DuckDB manifest")
+                self.use_pg_manifest = False
+        
+        if not self.use_pg_manifest:
+            # Fallback to DuckDB manifest database
+            self.db_path = self.base / "manifest.duckdb"
+            self.db = duckdb.connect(str(self.db_path))
+            self._initialize_manifest_table()
+            self.logger.info(f"Using DuckDB manifest database: {self.db_path}")
         
         self.logger.info(f"FeatureStore initialized at {self.base}")
-        self.logger.info(f"Manifest database: {self.db_path}")
+        self.logger.info(f"Manifest backend: {'PostgreSQL' if self.use_pg_manifest else 'DuckDB'}")
     
     def _initialize_manifest_table(self):
         """Initialize the manifest table for tracking cached features."""
@@ -193,11 +360,17 @@ class FeatureStore:
         # Check if features are already cached
         cached_path = self._get_cached_features(cache_key)
         if cached_path:
+            # Cache HIT - record metrics
             self.logger.info(f"Cache HIT for {symbol} {cache_key[:16]}...")
+            FEATURE_HITS.labels(symbol=symbol).inc()
+            _update_hit_ratio()
             return self._load_cached_features(cached_path, cache_key)
         
-        # Cache miss - compute features
+        # Cache MISS - record metrics and compute features
         self.logger.info(f"Cache MISS for {symbol} {cache_key[:16]}... - computing features")
+        FEATURE_MISS.labels(symbol=symbol).inc()
+        _update_hit_ratio()
+        
         features_df = compute_func(raw_df, config)
         
         if features_df is not None and not features_df.empty:
@@ -207,30 +380,78 @@ class FeatureStore:
     
     def _get_cached_features(self, cache_key: str) -> Optional[str]:
         """Check if features are cached and return file path."""
+        if self.use_pg_manifest:
+            return self._get_cached_features_pg(cache_key)
+        else:
+            return self._get_cached_features_duckdb(cache_key)
+    
+    def _get_cached_features_pg(self, cache_key: str) -> Optional[str]:
+        """Check if features are cached using PostgreSQL manifest."""
+        symbol = cache_key.split('_')[0] if '_' in cache_key else 'unknown'
+        
         try:
-            result = self.db.execute(
-                "SELECT path FROM manifest WHERE key = ?", 
-                [cache_key]
-            ).fetchone()
-            
-            if result:
-                path = result[0]
-                if Path(path).exists():
-                    # Update last accessed timestamp
-                    self.db.execute(
-                        "UPDATE manifest SET last_accessed_ts = CURRENT_TIMESTAMP WHERE key = ?",
-                        [cache_key]
-                    )
-                    return path
-                else:
-                    # File missing - clean up manifest entry
-                    self.logger.warning(f"Cached file missing: {path}")
-                    self.db.execute("DELETE FROM manifest WHERE key = ?", [cache_key])
-            
+            with MANIFEST_READ_LATENCY.labels(backend='postgresql', symbol=symbol).time():
+                with pg_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT path FROM manifest WHERE key = %s", 
+                            (cache_key,)
+                        )
+                        result = cur.fetchone()
+                        
+                        if result:
+                            path = result['path']
+                            if Path(path).exists():
+                                # Update last accessed timestamp
+                                cur.execute(
+                                    "UPDATE manifest SET last_accessed_ts = CURRENT_TIMESTAMP WHERE key = %s",
+                                    (cache_key,)
+                                )
+                                conn.commit()
+                                return path
+                            else:
+                                # File missing - clean up manifest entry
+                                self.logger.warning(f"Cached file missing: {path}")
+                                cur.execute("DELETE FROM manifest WHERE key = %s", (cache_key,))
+                                conn.commit()
+                        
+                        return None
+                    
+        except Exception as e:
+            self.logger.error(f"Error checking PostgreSQL cache for key {cache_key[:16]}...: {e}")
             return None
+    
+    def _get_cached_features_duckdb(self, cache_key: str) -> Optional[str]:
+        """Check if features are cached using DuckDB manifest."""
+        symbol = cache_key.split('_')[0] if '_' in cache_key else 'unknown'
+        
+        try:
+            with MANIFEST_READ_LATENCY.labels(backend='duckdb', symbol=symbol).time():
+                # Use a separate connection for thread safety
+                with duckdb.connect(str(self.db_path)) as conn:
+                    result = conn.execute(
+                        "SELECT path FROM manifest WHERE key = ?", 
+                        [cache_key]
+                    ).fetchone()
+                    
+                    if result:
+                        path = result[0]
+                        if Path(path).exists():
+                            # Update last accessed timestamp
+                            conn.execute(
+                                "UPDATE manifest SET last_accessed_ts = CURRENT_TIMESTAMP WHERE key = ?",
+                                [cache_key]
+                            )
+                            return path
+                        else:
+                            # File missing - clean up manifest entry
+                            self.logger.warning(f"Cached file missing: {path}")
+                            conn.execute("DELETE FROM manifest WHERE key = ?", [cache_key])
+                    
+                    return None
             
         except Exception as e:
-            self.logger.error(f"Error checking cache for key {cache_key[:16]}...: {e}")
+            self.logger.error(f"Error checking DuckDB cache for key {cache_key[:16]}...: {e}")
             return None
     
     def _load_cached_features(self, file_path: str, cache_key: str) -> pd.DataFrame:
@@ -259,6 +480,15 @@ class FeatureStore:
     def _cache_features(self, cache_key: str, features_df: pd.DataFrame, 
                        symbol: str, start_ts: int, end_ts: int):
         """Cache computed features to compressed parquet file with exclusive locking."""
+        if self.use_pg_manifest:
+            self._cache_features_pg(cache_key, features_df, symbol, start_ts, end_ts)
+        else:
+            self._cache_features_duckdb(cache_key, features_df, symbol, start_ts, end_ts)
+    
+    def _cache_features_pg(self, cache_key: str, features_df: pd.DataFrame, 
+                          symbol: str, start_ts: int, end_ts: int):
+        """Cache features using PostgreSQL manifest with advisory locks."""
+        cache_file = None
         try:
             # Generate file path
             cache_file = self.base / f"{cache_key}.parquet.zst"
@@ -272,42 +502,108 @@ class FeatureStore:
             
             file_size = cache_file.stat().st_size
             
-            # Use transaction for parallel trainer safety
-            self.db.execute("BEGIN TRANSACTION")
-            try:
-                self.db.execute("""
-                    INSERT INTO manifest 
-                    (key, path, symbol, start_ts, end_ts, rows, file_size_bytes) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (key) DO UPDATE SET
-                        path = EXCLUDED.path,
-                        symbol = EXCLUDED.symbol,
-                        start_ts = EXCLUDED.start_ts,
-                        end_ts = EXCLUDED.end_ts,
-                        rows = EXCLUDED.rows,
-                        file_size_bytes = EXCLUDED.file_size_bytes,
-                        last_accessed_ts = now(),
-                        access_count = access_count + 1
-                """, [
-                    cache_key, str(cache_file), symbol, start_ts, end_ts, 
-                    len(features_df), file_size
-                ])
-                self.db.execute("COMMIT")
-                
-                self.logger.info(f"Cached {len(features_df)} features for {symbol} "
-                               f"({file_size:,} bytes compressed)")
-                
-            except Exception as e:
-                try:
-                    self.db.execute("ROLLBACK")
-                except:
-                    pass  # Ignore rollback errors if no transaction is active
-                raise e
+            # Use PostgreSQL with advisory lock for high-concurrency INSERT
+            lock_key = symbol_to_lock_key(symbol)
+            
+            with pg_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("BEGIN")
+                    try:
+                        # Measure advisory lock wait time
+                        with ADVISORY_LOCK_WAIT_TIME.labels(symbol=symbol).time():
+                            # Acquire advisory lock for this symbol to prevent row-lock contention
+                            with advisory_lock(conn, lock_key):
+                                # Measure manifest insert latency
+                                with MANIFEST_INSERT_LATENCY.labels(backend='postgresql', symbol=symbol).time():
+                                    cur.execute("""
+                                        INSERT INTO manifest 
+                                        (key, path, symbol, start_ts, end_ts, rows, file_size_bytes) 
+                                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                        ON CONFLICT (key) DO UPDATE SET
+                                            path = EXCLUDED.path,
+                                            symbol = EXCLUDED.symbol,
+                                            start_ts = EXCLUDED.start_ts,
+                                            end_ts = EXCLUDED.end_ts,
+                                            rows = EXCLUDED.rows,
+                                            file_size_bytes = EXCLUDED.file_size_bytes,
+                                            last_accessed_ts = CURRENT_TIMESTAMP,
+                                            access_count = manifest.access_count + 1
+                                    """, (
+                                        cache_key, str(cache_file), symbol, start_ts, end_ts, 
+                                        len(features_df), file_size
+                                    ))
+                        
+                        cur.execute("COMMIT")
+                        
+                        self.logger.info(f"Cached {len(features_df)} features for {symbol} "
+                                       f"({file_size:,} bytes compressed) [PostgreSQL+AdvisoryLock]")
+                        
+                    except Exception as e:
+                        cur.execute("ROLLBACK")
+                        raise e
                 
         except Exception as e:
-            self.logger.error(f"Error caching features for key {cache_key[:16]}...: {e}")
+            self.logger.error(f"Error caching features (PostgreSQL) for key {cache_key[:16]}...: {e}")
             # Clean up partial file
-            if cache_file.exists():
+            if cache_file and cache_file.exists():
+                cache_file.unlink()
+            raise
+    
+    def _cache_features_duckdb(self, cache_key: str, features_df: pd.DataFrame, 
+                              symbol: str, start_ts: int, end_ts: int):
+        """Cache features using DuckDB manifest (fallback)."""
+        cache_file = None
+        try:
+            # Generate file path
+            cache_file = self.base / f"{cache_key}.parquet.zst"
+            
+            # Save with zstandard compression (level 3 for good speed/compression balance)
+            compressor = zstd.ZstdCompressor(level=3)
+            with open(cache_file, 'wb') as raw_fh:
+                with compressor.stream_writer(raw_fh) as fh:
+                    parquet_bytes = features_df.to_parquet(index=True)
+                    fh.write(parquet_bytes)
+            
+            file_size = cache_file.stat().st_size
+            
+            # Use separate connection for thread safety
+            with MANIFEST_INSERT_LATENCY.labels(backend='duckdb', symbol=symbol).time():
+                with duckdb.connect(str(self.db_path)) as conn:
+                    conn.execute("BEGIN TRANSACTION")
+                    try:
+                        conn.execute("""
+                            INSERT INTO manifest 
+                            (key, path, symbol, start_ts, end_ts, rows, file_size_bytes) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT (key) DO UPDATE SET
+                                path = EXCLUDED.path,
+                                symbol = EXCLUDED.symbol,
+                                start_ts = EXCLUDED.start_ts,
+                                end_ts = EXCLUDED.end_ts,
+                                rows = EXCLUDED.rows,
+                                file_size_bytes = EXCLUDED.file_size_bytes,
+                                last_accessed_ts = now(),
+                                access_count = access_count + 1
+                        """, [
+                            cache_key, str(cache_file), symbol, start_ts, end_ts, 
+                            len(features_df), file_size
+                        ])
+                        conn.execute("COMMIT")
+                        
+                        self.logger.info(f"Cached {len(features_df)} features for {symbol} "
+                                       f"({file_size:,} bytes compressed) [DuckDB]")
+                        
+                    except Exception as e:
+                        try:
+                            conn.execute("ROLLBACK")
+                        except:
+                            pass  # Ignore rollback errors if no transaction is active
+                        raise e
+                
+        except Exception as e:
+            self.logger.error(f"Error caching features (DuckDB) for key {cache_key[:16]}...: {e}")
+            # Clean up partial file
+            if cache_file and cache_file.exists():
                 cache_file.unlink()
             raise
     

@@ -1,0 +1,127 @@
+# config/prometheus/featurestore_rules.yml
+# FeatureStore SLO Monitoring Rules
+# Target: >= 95% hit ratio for optimal performance
+
+groups:
+- name: featurestore.slo
+  rules:
+  # Rolling 5-minute hit ratio calculation
+  - record: featurestore:hit_ratio_5m
+    expr: |
+      rate(featurestore_hits_total[5m]) /
+      (rate(featurestore_hits_total[5m]) + rate(featurestore_misses_total[5m]))
+    labels:
+      slo_target: "0.95"
+      component: "featurestore"
+  
+  # Per-symbol hit ratio for detailed monitoring
+  - record: featurestore:hit_ratio_5m_by_symbol
+    expr: |
+      rate(featurestore_hits_total[5m]) /
+      (rate(featurestore_hits_total[5m]) + rate(featurestore_misses_total[5m]))
+    labels:
+      slo_target: "0.95"
+      component: "featurestore"
+  
+  # Total request rate for context
+  - record: featurestore:request_rate_5m
+    expr: |
+      rate(featurestore_hits_total[5m]) + rate(featurestore_misses_total[5m])
+    labels:
+      component: "featurestore"
+
+- name: featurestore.alerts
+  rules:
+  # Main SLO alert - hit ratio below 95% for 10 minutes
+  - alert: FeatureStoreHitRatioLow
+    expr: featurestore:hit_ratio_5m < 0.95
+    for: 10m
+    labels:
+      severity: warning
+      component: featurestore
+      slo: hit_ratio
+      runbook: "docs/runbooks/featurestore_slo.md"
+    annotations:
+      summary: "FeatureStore cache hit ratio below 95%"
+      description: |
+        Hit ratio is currently {{ $value | printf "%.2f" }} ({{ ($value * 100) | printf "%.1f" }}%).
+        This indicates potential cache performance issues or high data churn.
+        
+        Current metrics:
+        - Hit ratio: {{ $value | printf "%.3f" }}
+        - SLO target: >= 95%
+        - Duration: {{ $for }}
+        
+        Investigate FeatureStore performance, disk usage, or data churn patterns.
+      
+  # Critical alert - hit ratio below 80% indicates severe issues
+  - alert: FeatureStoreHitRatioCritical
+    expr: featurestore:hit_ratio_5m < 0.80
+    for: 5m
+    labels:
+      severity: critical
+      component: featurestore
+      slo: hit_ratio
+      runbook: "docs/runbooks/featurestore_slo.md"
+    annotations:
+      summary: "FeatureStore cache hit ratio critically low"
+      description: |
+        Hit ratio is critically low at {{ $value | printf "%.2f" }} ({{ ($value * 100) | printf "%.1f" }}%).
+        This severely impacts system performance and requires immediate attention.
+        
+        Immediate actions:
+        1. Check /mnt/feature_cache disk usage
+        2. Verify DuckDB manifest database health
+        3. Check for data corruption or lock contention
+        4. Consider emergency cache warming
+  
+  # Per-symbol hit ratio monitoring
+  - alert: FeatureStoreSymbolHitRatioLow
+    expr: featurestore:hit_ratio_5m_by_symbol < 0.90
+    for: 15m
+    labels:
+      severity: info
+      component: featurestore
+      slo: hit_ratio_per_symbol
+    annotations:
+      summary: "Low hit ratio for symbol {{ $labels.symbol }}"
+      description: |
+        Symbol {{ $labels.symbol }} has hit ratio of {{ $value | printf "%.2f" }} ({{ ($value * 100) | printf "%.1f" }}%).
+        This may indicate symbol-specific data issues or cache invalidation.
+  
+  # High request rate without proportional hits (potential cache thrashing)
+  - alert: FeatureStoreCacheThrashing
+    expr: |
+      featurestore:request_rate_5m > 10 and
+      featurestore:hit_ratio_5m < 0.50
+    for: 5m
+    labels:
+      severity: warning
+      component: featurestore
+    annotations:
+      summary: "Potential FeatureStore cache thrashing detected"
+      description: |
+        High request rate ({{ $value | printf "%.1f" }} req/s) with low hit ratio.
+        This suggests cache thrashing or invalidation issues.
+        
+        Check for:
+        - Rapid data updates causing cache invalidation
+        - Memory pressure forcing cache eviction
+        - Configuration changes affecting cache keys
+
+# Performance monitoring rules
+- name: featurestore.performance
+  rules:
+  # Cache efficiency score (combines hit ratio and request volume)
+  - record: featurestore:efficiency_score
+    expr: |
+      featurestore:hit_ratio_5m * 
+      (1 + log(featurestore:request_rate_5m + 1))
+    labels:
+      component: featurestore
+  
+  # Miss rate for alerting thresholds
+  - record: featurestore:miss_rate_5m
+    expr: 1 - featurestore:hit_ratio_5m
+    labels:
+      component: featurestore

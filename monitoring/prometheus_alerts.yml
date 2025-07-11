@@ -1,0 +1,245 @@
+groups:
+  - name: featurestore_slo_alerts
+    interval: 30s
+    rules:
+      # Critical SLO Violation: Manifest Insert Latency
+      - alert: FeatureStoreManifestInsertLatencyHigh
+        expr: histogram_quantile(0.95, rate(manifest_insert_latency_ms_bucket[5m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+          component: featurestore
+          slo: manifest_insert_latency
+        annotations:
+          summary: "FeatureStore manifest insert p95 latency exceeds SLO"
+          description: |
+            Manifest insert p95 latency is {{ $value | printf "%.2f" }}ms, above the 5ms SLO threshold.
+            This indicates potential row-lock contention or database performance issues.
+            
+            Impact: Training workers may experience delays when caching features.
+            Action: Check advisory lock effectiveness and database performance.
+
+      - alert: FeatureStoreManifestInsertLatencyCritical
+        expr: histogram_quantile(0.95, rate(manifest_insert_latency_ms_bucket[5m])) > 25
+        for: 5m
+        labels:
+          severity: critical
+          component: featurestore
+          slo: manifest_insert_latency
+        annotations:
+          summary: "FeatureStore manifest insert p95 latency is critically high"
+          description: |
+            Manifest insert p95 latency is {{ $value | printf "%.2f" }}ms, significantly above SLO.
+            This suggests severe performance degradation or advisory lock failures.
+            
+            Impact: Training pipeline performance severely impacted.
+            Action: Immediate investigation required - check PostgreSQL health and lock contention.
+
+      # Hit Ratio SLO Violation
+      - alert: FeatureStoreHitRatioLow
+        expr: featurestore_hit_ratio < 0.95
+        for: 15m
+        labels:
+          severity: warning
+          component: featurestore
+          slo: hit_ratio
+        annotations:
+          summary: "FeatureStore hit ratio below SLO"
+          description: |
+            Hit ratio is {{ $value | humanizePercentage }}, below the 95% SLO threshold.
+            This indicates inefficient cache utilization or cache invalidation issues.
+            
+            Impact: Increased computation overhead and training time.
+            Action: Investigate cache configuration and feature computation patterns.
+
+      # Advisory Lock Performance
+      - alert: FeatureStoreAdvisoryLockWaitHigh
+        expr: histogram_quantile(0.95, rate(advisory_lock_wait_time_ms_bucket[5m])) > 10
+        for: 10m
+        labels:
+          severity: warning
+          component: featurestore
+          slo: advisory_lock_wait
+        annotations:
+          summary: "Advisory lock wait time exceeds threshold"
+          description: |
+            Advisory lock wait p95 is {{ $value | printf "%.2f" }}ms, above 10ms threshold.
+            This suggests high contention for symbol-level locks.
+            
+            Impact: Concurrent workers experiencing delays.
+            Action: Monitor concurrent worker patterns and consider lock optimization.
+
+      # Manifest Read Performance
+      - alert: FeatureStoreManifestReadLatencyHigh
+        expr: histogram_quantile(0.95, rate(manifest_read_latency_ms_bucket[5m])) > 2
+        for: 10m
+        labels:
+          severity: warning
+          component: featurestore
+          slo: manifest_read_latency
+        annotations:
+          summary: "Manifest read latency exceeds SLO"
+          description: |
+            Manifest read p95 latency is {{ $value | printf "%.2f" }}ms, above 2ms SLO.
+            This may indicate database query performance issues.
+            
+            Impact: Cache lookup delays affecting overall performance.
+            Action: Check database indexes and query performance.
+
+  - name: featurestore_health_alerts
+    interval: 30s
+    rules:
+      # Backend Health Alerts
+      - alert: FeatureStorePostgreSQLDown
+        expr: featurestore_health_check_status{component="postgresql"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: featurestore
+          backend: postgresql
+        annotations:
+          summary: "FeatureStore PostgreSQL backend is down"
+          description: |
+            PostgreSQL manifest backend is unavailable. System has fallen back to DuckDB.
+            
+            Impact: No advisory lock benefits, potential performance degradation with high concurrency.
+            Action: Investigate PostgreSQL connectivity and service status.
+
+      - alert: FeatureStoreDuckDBDown
+        expr: featurestore_health_check_status{component="duckdb"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: featurestore
+          backend: duckdb
+        annotations:
+          summary: "FeatureStore DuckDB fallback is down"
+          description: |
+            DuckDB fallback is unavailable. FeatureStore may be completely non-functional.
+            
+            Impact: Feature caching completely broken, training pipeline will fail.
+            Action: Immediate investigation required - check file system and DuckDB installation.
+
+      # Connection Pool Alerts
+      - alert: PostgreSQLPoolUtilizationHigh
+        expr: (pg_manifest_pool_connections_active / pg_manifest_pool_connections_total) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: featurestore
+          resource: connection_pool
+        annotations:
+          summary: "PostgreSQL connection pool utilization is high"
+          description: |
+            Pool utilization is {{ $value | humanizePercentage }} ({{ $labels.active }}/{{ $labels.total }} connections).
+            High utilization may lead to connection exhaustion.
+            
+            Impact: New requests may be blocked waiting for connections.
+            Action: Consider increasing pool size or investigating connection leaks.
+
+      - alert: PostgreSQLPoolExhausted
+        expr: pg_manifest_pool_connections_active >= pg_manifest_pool_connections_total
+        for: 1m
+        labels:
+          severity: critical
+          component: featurestore
+          resource: connection_pool
+        annotations:
+          summary: "PostgreSQL connection pool is exhausted"
+          description: |
+            All {{ $value }} connections in the pool are in use.
+            New requests will be blocked until connections are released.
+            
+            Impact: FeatureStore operations will hang, training pipeline blocked.
+            Action: Immediate action required - check for connection leaks or increase pool size.
+
+  - name: featurestore_performance_alerts
+    interval: 30s
+    rules:
+      # High Concurrency Alerts
+      - alert: FeatureStoreConcurrentWorkersHigh
+        expr: featurestore_concurrent_workers > 50
+        for: 5m
+        labels:
+          severity: warning
+          component: featurestore
+          resource: concurrency
+        annotations:
+          summary: "High number of concurrent FeatureStore workers"
+          description: |
+            {{ $value }} concurrent workers detected, above normal operating levels.
+            This may strain system resources and affect performance.
+            
+            Impact: Potential performance degradation and resource contention.
+            Action: Monitor system resources and consider scaling limits.
+
+      # Cache Miss Rate Alert
+      - alert: FeatureStoreCacheMissRateHigh
+        expr: rate(featurestore_misses_total[10m]) / (rate(featurestore_hits_total[10m]) + rate(featurestore_misses_total[10m])) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+          component: featurestore
+          metric: cache_miss_rate
+        annotations:
+          summary: "FeatureStore cache miss rate is high"
+          description: |
+            Cache miss rate is {{ $value | humanizePercentage }} over the last 10 minutes.
+            High miss rates indicate inefficient cache usage or frequent cache invalidation.
+            
+            Impact: Increased computation overhead and training delays.
+            Action: Investigate feature computation patterns and cache configuration.
+
+      # Throughput Degradation
+      - alert: FeatureStoreThroughputLow
+        expr: rate(featurestore_hits_total[5m]) + rate(featurestore_misses_total[5m]) < 10
+        for: 15m
+        labels:
+          severity: warning
+          component: featurestore
+          metric: throughput
+        annotations:
+          summary: "FeatureStore throughput is unusually low"
+          description: |
+            Total operations rate is {{ $value | printf "%.2f" }} ops/sec, below expected levels.
+            This may indicate system issues or reduced training activity.
+            
+            Impact: Potential training pipeline slowdown.
+            Action: Investigate system health and training job status.
+
+  - name: featurestore_business_impact_alerts
+    interval: 60s
+    rules:
+      # Training Pipeline Impact
+      - alert: FeatureStoreTrainingImpact
+        expr: |
+          (
+            histogram_quantile(0.95, rate(manifest_insert_latency_ms_bucket[10m])) > 25
+            or featurestore_hit_ratio < 0.90
+            or featurestore_health_check_status{component="postgresql"} == 0
+          )
+        for: 5m
+        labels:
+          severity: critical
+          component: featurestore
+          impact: training_pipeline
+        annotations:
+          summary: "FeatureStore issues impacting training pipeline"
+          description: |
+            Multiple FeatureStore performance indicators suggest significant impact on training pipeline:
+            - Manifest insert p95: {{ with query "histogram_quantile(0.95, rate(manifest_insert_latency_ms_bucket[10m]))" }}{{ . | first | value | printf "%.2f" }}ms{{ end }}
+            - Hit ratio: {{ with query "featurestore_hit_ratio" }}{{ . | first | value | humanizePercentage }}{{ end }}
+            - PostgreSQL status: {{ with query "featurestore_health_check_status{component=\"postgresql\"}" }}{{ if eq (. | first | value) 1.0 }}UP{{ else }}DOWN{{ end }}{{ end }}
+            
+            Impact: Training jobs may be significantly delayed or failing.
+            Action: Immediate escalation required - investigate all FeatureStore components.
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+rule_files:
+  - "prometheus_alerts.yml"
