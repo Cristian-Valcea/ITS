@@ -9,6 +9,10 @@ This module handles:
 - Event-driven trading logic
 
 This is an internal module - use src.execution.OrchestratorAgent for public API.
+
+IMPORTANT: This module requires the project root to be in PYTHONPATH.
+For development: pip install -e . (editable install)
+For production: Ensure PYTHONPATH includes the project root directory.
 """
 
 import logging
@@ -53,6 +57,8 @@ class ExecutionLoop:
         self.is_running = False
         self.trading_state: Dict[str, Any] = {}
         self._state_lock = asyncio.Lock()  # Thread safety for trading state
+        # NOTE: Single lock guards all symbols - fine for ≤10 symbols
+        # For >10 symbols, consider per-symbol locks to reduce serialization
         
         # Event hooks for extensibility
         self.hooks: Dict[str, Callable] = {}
@@ -72,7 +78,7 @@ class ExecutionLoop:
                 if asyncio.iscoroutinefunction(hook):
                     # Create task for async hooks to avoid blocking
                     try:
-                        loop = asyncio.get_event_loop()
+                        loop = asyncio.get_running_loop()  # Python 3.7+ preferred method
                         loop.create_task(hook(*args, **kwargs))
                     except RuntimeError:
                         # No event loop running - skip async hook
@@ -174,7 +180,15 @@ class ExecutionLoop:
             
             # Engineer features (run in thread pool to avoid blocking event loop)
             if feature_agent:
-                loop = asyncio.get_event_loop()
+                try:
+                    loop = asyncio.get_running_loop()  # Python 3.7+ preferred method
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()  # Fallback if no loop running
+                    asyncio.set_event_loop(loop)
+                
+                # Monitor executor queue size for latency issues
+                # NOTE: If bars are 1s and features heavy, executor queue can back up
+                # Consider monitoring executor._work_queue.qsize() in production
                 features_df = await loop.run_in_executor(
                     None, feature_agent.engineer_features, new_bar_df
                 )
@@ -218,7 +232,12 @@ class ExecutionLoop:
         """
         try:
             # Run model prediction in thread pool to avoid blocking event loop
-            loop = asyncio.get_event_loop()
+            try:
+                loop = asyncio.get_running_loop()  # Python 3.7+ preferred method
+            except RuntimeError:
+                loop = asyncio.new_event_loop()  # Fallback if no loop running
+                asyncio.set_event_loop(loop)
+            
             action = await loop.run_in_executor(
                 None, self._predict_with_model, features, model
             )
@@ -289,6 +308,11 @@ class ExecutionLoop:
             # 2. Create order
             order = await self._create_order(trading_event)
             
+            # 2.5. Apply risk-based order throttling
+            from src.execution.core.risk_callbacks import throttle_size
+            market_conditions = await self._get_market_conditions(symbol)
+            order = throttle_size(order, self.config.get('risk', {}), market_conditions, self.logger)
+            
             # 3. Send to order router (placeholder)
             order_id = await self._send_to_order_router(order)
             
@@ -311,9 +335,37 @@ class ExecutionLoop:
         return base_size
     
     async def _get_current_positions(self) -> Dict[str, Any]:
-        """Get current portfolio positions."""
-        # Placeholder - should integrate with position tracker
+        """
+        Get current portfolio positions.
+        
+        IMPORTANT: This is a placeholder implementation that returns empty positions.
+        Before live trading, this MUST be connected to a real position tracker that provides:
+        - Current position sizes per symbol
+        - Daily P&L
+        - Total portfolio value
+        
+        Returns empty dict which will cause risk checks to be less effective.
+        """
+        # TODO: Wire to real position tracker before live trading
         return {}
+    
+    async def _get_market_conditions(self, symbol: str) -> Dict[str, Any]:
+        """
+        Get current market conditions for throttling decisions.
+        
+        Args:
+            symbol: Trading symbol
+            
+        Returns:
+            Market conditions dict with spread, volatility, volume data
+        """
+        # Placeholder - should integrate with market data provider
+        # TODO: Wire to real market data for spread, volatility, volume
+        return {
+            'spread': 10,  # basis points - placeholder
+            'volatility': 0.01,  # 1% - placeholder  
+            'avg_volume': 1000000  # shares - placeholder
+        }
     
     async def _create_order(self, trading_event: Dict[str, Any]) -> Dict[str, Any]:
         """Create order dictionary from trading event."""
@@ -334,8 +386,24 @@ class ExecutionLoop:
         return order_id
     
     async def _update_pnl_tracker(self, symbol: str, order: Dict[str, Any], order_id: str) -> None:
-        """Update P&L tracker with new order."""
-        # Placeholder - should integrate with P&L tracker
+        """
+        Update P&L tracker with new order.
+        
+        IMPORTANT: This is a placeholder implementation.
+        Before live trading, this MUST be connected to a real P&L tracker that:
+        - Records all trades with timestamps
+        - Calculates realized/unrealized P&L
+        - Tracks daily/cumulative performance
+        - Provides position-level P&L data
+        
+        TODO: Wire to real P&L tracker before live trading
+        
+        Args:
+            symbol: Trading symbol
+            order: Order details
+            order_id: Unique order identifier
+        """
+        # TODO: Wire to real P&L tracker before live trading
         self.logger.info(f"P&L tracker updated for {symbol}: {order_id}")
         pass
         

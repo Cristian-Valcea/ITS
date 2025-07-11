@@ -88,8 +88,13 @@ def pre_trade_check(
     # 5. Position concentration check (if portfolio value available)
     portfolio_value = current_positions.get('_total_value', 0)
     if portfolio_value > 0:
-        # Estimate position value (simplified)
-        estimated_price = event.get('price', 100)  # Should come from market data
+        # Estimate position value - price should come from market data or risk_agent
+        # IMPORTANT: Default price of 100 is a fallback assumption
+        # In production, inject last trade price from market data feed
+        estimated_price = event.get('price', 100)  # TODO: Use real market price
+        if estimated_price == 100:
+            logger.warning(f"Using default price fallback (100) for concentration check on {symbol}")
+        
         position_value = abs(new_position) * estimated_price
         max_concentration = risk_config.get('max_position_concentration', 0.1)
         concentration = position_value / portfolio_value
@@ -355,7 +360,13 @@ class RiskEventHandler:
         
         # Handle risk event (can be slower) - create task to avoid blocking
         try:
-            loop = asyncio.get_event_loop()
+            try:
+                loop = asyncio.get_running_loop()  # Python 3.7+ preferred method
+            except RuntimeError:
+                # No event loop running - skip async handling
+                self.logger.warning("Emergency stop event handling skipped - no event loop")
+                return
+            
             loop.create_task(self.handle_risk_event("emergency_stop", {
                 "reason": reason, 
                 "reason_code": reason_code,
@@ -364,6 +375,6 @@ class RiskEventHandler:
                 "pnl_cents": pnl_cents,
                 "timestamp": datetime.now()
             }))
-        except RuntimeError:
-            # No event loop running - skip async handling
-            pass
+        except Exception as e:
+            # Don't let event handling failure block emergency stop
+            self.logger.warning(f"Emergency stop event handling failed: {e}")
