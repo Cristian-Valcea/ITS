@@ -36,12 +36,6 @@ try:
     # Execution context (this module)
     from .execution_agent_stub import create_execution_agent_stub
     
-    # Core execution modules
-    from .core.execution_loop import ExecutionLoop
-    from .core.order_router import OrderRouter
-    from .core.pnl_tracker import PnLTracker
-    from .core.live_data_loader import LiveDataLoader
-    
     # Risk system
     from ..risk.risk_agent_adapter import RiskAgentAdapter
     from ..risk.risk_agent_v2 import RiskAgentV2
@@ -140,16 +134,13 @@ class OrchestratorAgent:
         self._init_agents()
         self.hooks = hooks or {}
 
-        # Initialize core execution modules
-        self._init_core_modules()
-
-        # Attributes for live trading state (maintained for backward compatibility)
+        # Attributes for live trading state
         self.live_trading_active = False
-        self.portfolio_state: Dict[str, Any] = {} # Delegated to PnLTracker
+        self.portfolio_state: Dict[str, Any] = {} # See _run_live_trading_loop_conceptual for structure
         self.live_model: Optional[Any] = None # Stores the loaded SB3 model for live trading
         self.open_trades: Dict[int, IBTrade] = {} # orderId: ib_insync.Trade object
 
-        self.logger.info("All specialized agents and core modules initialized by Orchestrator.")
+        self.logger.info("All specialized agents initialized by Orchestrator.")
 
     def _init_agents(self):
         """Initialize all specialized agents with configs."""
@@ -206,130 +197,6 @@ class OrchestratorAgent:
             'eval_metrics': self.main_config.get('evaluation', {}).get('metrics', ['sharpe', 'max_drawdown'])
         })
         self.risk_agent = RiskAgentAdapter(config=risk_cfg)
-
-    def _init_core_modules(self):
-        """Initialize core execution modules."""
-        try:
-            # Initialize High-Performance Audit System FIRST (critical for latency)
-            self._init_high_perf_audit()
-            
-            # Initialize ExecutionLoop
-            self.execution_loop = ExecutionLoop(
-                config=self.main_config,
-                logger=self.logger.getChild("ExecutionLoop")
-            )
-            
-            # Initialize OrderRouter
-            self.order_router = OrderRouter(
-                config=self.main_config,
-                logger=self.logger.getChild("OrderRouter")
-            )
-            
-            # Initialize PnLTracker
-            self.pnl_tracker = PnLTracker(
-                config=self.main_config,
-                logger=self.logger.getChild("PnLTracker")
-            )
-            
-            # Initialize LiveDataLoader
-            self.live_data_loader = LiveDataLoader(
-                config=self.main_config,
-                logger=self.logger.getChild("LiveDataLoader")
-            )
-            
-            # Register hooks between modules
-            self.execution_loop.register_hook("action_generated", self._handle_action_generated)
-            
-            self.logger.info("Core execution modules initialized successfully")
-            
-        except Exception as e:
-            self.logger.error(f"Error initializing core modules: {e}")
-            raise
-    
-    def _init_high_perf_audit(self):
-        """Initialize high-performance audit system for critical trading paths."""
-        try:
-            from .core.high_perf_audit import initialize_global_audit_logger
-            from .core.latency_monitor import initialize_global_latency_monitor
-            
-            # Configuration for high-performance audit (INCREASED BUFFER SIZES)
-            audit_config = {
-                'buffer_size': 131072,  # 128K records = 8MB ring buffer (DOUBLED to prevent backpressure)
-                'emergency_buffer_size': 16384,  # 16K records for kill switches (DOUBLED)
-                'log_directory': self.main_config.get('paths', {}).get('audit_log_dir', 'logs/audit_hiperf'),
-                'flush_interval_ms': 2,  # 2ms flush interval (REDUCED from 5ms for faster I/O)
-            }
-            
-            # Configuration for latency monitoring
-            latency_config = {
-                'enabled': True,
-                'kill_switch_threshold_us': 10.0,  # Alert if KILL_SWITCH > 10µs
-                'trade_execution_threshold_us': 50.0,
-                'risk_check_threshold_us': 20.0,
-                'audit_logging_threshold_us': 5.0,
-                'max_samples_per_category': 50000,  # Keep more samples for analysis
-            }
-            
-            # Initialize systems
-            self.high_perf_audit = initialize_global_audit_logger(audit_config)
-            self.latency_monitor = initialize_global_latency_monitor(latency_config)
-            
-            # Add alert callback for latency issues
-            self.latency_monitor.add_alert_callback(self._handle_latency_alert)
-            
-            self.logger.info("High-performance audit system initialized - KILL_SWITCH latency optimized")
-            self.logger.info("Latency monitoring active - targeting <10µs for KILL_SWITCH operations")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to initialize high-performance audit system: {e}")
-            # Don't fail initialization - audit is important but not critical for basic operation
-            self.high_perf_audit = None
-            self.latency_monitor = None
-    
-    def _handle_latency_alert(self, alert_data: Dict):
-        """Handle latency alerts from the monitoring system."""
-        category = alert_data['category']
-        latency_us = alert_data['latency_us']
-        threshold_us = alert_data['threshold_us']
-        operation = alert_data['operation']
-        
-        # Log critical latency issues
-        if category == 'kill_switch' and latency_us > 35.0:
-            self.logger.critical(
-                f"CRITICAL LATENCY SPIKE DETECTED: KILL_SWITCH operation '{operation}' "
-                f"took {latency_us:.2f}µs (similar to original 38µs issue)"
-            )
-            
-            # Could trigger additional actions here:
-            # - Increase audit buffer sizes dynamically
-            # - Switch to emergency audit mode
-            # - Alert operations team
-        
-        elif latency_us > threshold_us * 2:  # Double threshold breach
-            self.logger.error(
-                f"SEVERE LATENCY BREACH: {category} operation '{operation}' "
-                f"took {latency_us:.2f}µs (threshold: {threshold_us:.2f}µs)"
-            )
-
-    def _handle_action_generated(self, symbol: str, action: int, current_bar: pd.Series):
-        """Handle action generated by ExecutionLoop."""
-        try:
-            # Delegate to OrderRouter
-            success = self.order_router.calculate_and_execute_action(
-                symbol=symbol,
-                action=action,
-                current_bar=current_bar,
-                portfolio_state=self.pnl_tracker.get_portfolio_state(),
-                risk_agent=self.risk_agent
-            )
-            
-            if success:
-                # Update PnL tracker
-                self.pnl_tracker.synchronize_portfolio_state_with_broker()
-                self.pnl_tracker.update_net_liquidation_and_risk_agent(self.risk_agent)
-                
-        except Exception as e:
-            self.logger.error(f"Error handling action: {e}")
 
     def _validate_configs(self):
         """Basic config validation. Extend as needed."""
@@ -1408,15 +1275,7 @@ class OrchestratorAgent:
         print(f"🚀 STARTING LIVE TRADING FOR {symbol}")
         self.logger.info(f"=== STARTING LIVE TRADING FOR {symbol} ===")
         try:
-            # Delegate to ExecutionLoop with setup
-            self._setup_live_trading(symbol)
-            self.execution_loop.start_live_trading_loop(
-                symbol=symbol,
-                data_agent=self.data_agent,
-                feature_agent=self.feature_agent,
-                risk_agent=self.risk_agent,
-                live_model=self.live_model
-            )
+            self._run_live_trading_loop_conceptual(symbol)
         except Exception as e:
             print(f"❌ CRITICAL ERROR in live trading for {symbol}: {e}")
             self.logger.error(f"Critical error in live trading for {symbol}: {e}", exc_info=True)
@@ -1425,170 +1284,8 @@ class OrchestratorAgent:
             self.logger.info(f"=== LIVE TRADING FOR {symbol} ENDED ===")
 
 
-    def _setup_live_trading(self, symbol: str) -> None:
-        """
-        Setup live trading by loading model and initializing portfolio state.
-        
-        Args:
-            symbol: Trading symbol
-        """
-        # Get live trading configuration
-        live_trading_config = self.main_config.get('live_trading', {})
-        
-        if not live_trading_config.get('enabled', False):
-            raise ValueError(f"Live trading is not enabled for '{symbol}' in config")
 
-        # Load production model
-        model_path = live_trading_config.get('production_model_path')
-        if not model_path or not os.path.exists(model_path):
-            raise FileNotFoundError(f"Production model not found: '{model_path}'")
-            
-        try:
-            # Load model using trainer agent
-            algo_name = self.model_params_config.get('algorithm_name', 'DQN')
-            self.live_model = self.trainer_agent.load_model(model_path, algo_name)
-            self.logger.info(f"Production model loaded successfully: {model_path}")
-        except Exception as e:
-            raise RuntimeError(f"Error loading production model: {e}")
 
-        # Initialize portfolio state
-        initial_capital = self.main_config.get('environment', {}).get('initial_capital', 100000)
-        if not self.pnl_tracker.initialize_portfolio_state(initial_capital):
-            raise RuntimeError("Failed to initialize portfolio state")
-
-        # Sync portfolio state reference for backward compatibility
-        self.portfolio_state = self.pnl_tracker.get_portfolio_state()
-
-        # Perform warmup
-        warmup_data = self.live_data_loader.load_warmup_data(symbol, self.data_agent)
-        if warmup_data is None or warmup_data.empty:
-            raise RuntimeError("Failed to load warmup data")
-            
-        # Process warmup data through feature agent
-        warmup_features = self.feature_agent.engineer_features(warmup_data)
-        if warmup_features is None or warmup_features.empty:
-            raise RuntimeError("Failed to engineer features for warmup data")
-            
-        self.logger.info(f"Live trading setup completed for {symbol}")
-
-    # Public API delegation methods for backward compatibility
-    def get_portfolio_state(self) -> Dict[str, Any]:
-        """Get current portfolio state (delegates to PnLTracker)."""
-        return self.pnl_tracker.get_portfolio_state()
-    
-    def get_open_orders(self) -> Dict[int, Any]:
-        """Get open orders (delegates to OrderRouter)."""
-        return self.order_router.get_open_orders()
-    
-    def stop_live_trading(self, reason: str = "Manual stop", emergency: bool = False):
-        """
-        Stop live trading with ultra-low latency audit logging.
-        
-        Args:
-            reason: Reason for stopping trading
-            emergency: Whether this is an emergency stop (affects audit priority)
-        """
-        # CRITICAL PATH: Ultra-fast audit logging for emergency stops
-        if emergency and self.high_perf_audit:
-            try:
-                from .core.high_perf_audit import audit_kill_switch, KillSwitchReason
-                
-                # Get current portfolio state for audit
-                portfolio_state = self.pnl_tracker.get_portfolio_state()
-                total_pnl_cents = int(portfolio_state.get('total_pnl', 0) * 100)  # Convert to cents
-                
-                # Determine reason code
-                reason_lower = reason.lower()
-                if 'loss' in reason_lower or 'drawdown' in reason_lower:
-                    reason_code = KillSwitchReason.DAILY_LOSS_LIMIT
-                elif 'position' in reason_lower:
-                    reason_code = KillSwitchReason.POSITION_LIMIT
-                elif 'risk' in reason_lower:
-                    reason_code = KillSwitchReason.RISK_BREACH
-                elif 'volatility' in reason_lower:
-                    reason_code = KillSwitchReason.MARKET_VOLATILITY
-                elif 'connectivity' in reason_lower or 'connection' in reason_lower:
-                    reason_code = KillSwitchReason.CONNECTIVITY_LOSS
-                elif 'error' in reason_lower:
-                    reason_code = KillSwitchReason.SYSTEM_ERROR
-                else:
-                    reason_code = KillSwitchReason.MANUAL_STOP
-                
-                # Ultra-fast audit logging (sub-microsecond target)
-                audit_kill_switch(
-                    reason_code=reason_code,
-                    symbol_id=0,  # Could be enhanced to include current symbol
-                    position_size=0,  # Could be enhanced to include total position
-                    pnl_cents=total_pnl_cents
-                )
-                
-            except Exception as e:
-                # Don't let audit failure block emergency stop
-                self.logger.warning(f"High-perf audit failed during emergency stop: {e}")
-        
-        # Standard logging
-        if emergency:
-            self.logger.critical(f"EMERGENCY STOP: {reason}")
-        else:
-            self.logger.info(f"Stopping live trading: {reason}")
-        
-        # Delegate to ExecutionLoop
-        self.execution_loop.stop_live_trading_loop()
-        self.live_trading_active = False
-    
-    def emergency_stop(self, reason: str, symbol_id: int = 0, position_size: int = 0):
-        """
-        CRITICAL PATH: Emergency stop with ultra-low latency audit and monitoring.
-        
-        This method is optimized for minimum latency in critical situations.
-        Target: <10µs total latency (solving the original 38µs spike issue)
-        
-        Args:
-            reason: Emergency reason
-            symbol_id: Symbol identifier (numeric for performance)
-            position_size: Current position size
-        """
-        # ULTRA-CRITICAL PATH: Measure latency of the entire kill switch operation
-        from .core.latency_monitor import measure_kill_switch_latency
-        
-        with measure_kill_switch_latency(f"emergency_stop_{reason[:20]}"):
-            # STEP 1: Ultra-fast audit logging (target: <1µs)
-            if self.high_perf_audit:
-                try:
-                    from .core.high_perf_audit import audit_kill_switch, KillSwitchReason
-                    
-                    # Get PnL quickly (pre-computed when possible)
-                    portfolio_state = self.pnl_tracker.get_portfolio_state()
-                    pnl_cents = int(portfolio_state.get('total_pnl', 0) * 100)
-                    
-                    # Fast reason code mapping (optimized lookup)
-                    reason_lower = reason.lower()
-                    if 'loss' in reason_lower:
-                        reason_code = KillSwitchReason.DAILY_LOSS_LIMIT
-                    elif 'position' in reason_lower:
-                        reason_code = KillSwitchReason.POSITION_LIMIT
-                    elif 'volatility' in reason_lower:
-                        reason_code = KillSwitchReason.MARKET_VOLATILITY
-                    elif 'error' in reason_lower:
-                        reason_code = KillSwitchReason.SYSTEM_ERROR
-                    elif 'connectivity' in reason_lower:
-                        reason_code = KillSwitchReason.CONNECTIVITY_LOSS
-                    else:
-                        reason_code = KillSwitchReason.RISK_BREACH
-                    
-                    # CRITICAL: Sub-microsecond audit logging to shared memory ring buffer
-                    audit_kill_switch(reason_code, symbol_id, position_size, pnl_cents)
-                    
-                except:
-                    # Absolutely no exceptions allowed to escape this path
-                    pass
-            
-            # STEP 2: Stop trading immediately (target: <5µs)
-            self.stop_live_trading(reason=reason, emergency=True)
-    
-    def is_live_trading_active(self) -> bool:
-        """Check if live trading is active (delegates to ExecutionLoop)."""
-        return self.execution_loop.is_running
 
     def _preprocess_features(self, features: np.ndarray, config: dict) -> np.ndarray:
         if config.get('impute_missing', True) and np.isnan(features).any():

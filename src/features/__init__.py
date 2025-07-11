@@ -8,6 +8,7 @@ from .rsi_calculator import RSICalculator
 from .ema_calculator import EMACalculator
 from .vwap_calculator import VWAPCalculator
 from .time_calculator import TimeFeatureCalculator
+from .market_impact_calculator import MarketImpactCalculator
 from .feature_manager import FeatureManager
 from .data_processor import DataProcessor
 from .feature_registry import FeatureRegistry, get_global_registry, register_calculator
@@ -20,6 +21,7 @@ __all__ = [
     'EMACalculator', 
     'VWAPCalculator',
     'TimeFeatureCalculator',
+    'MarketImpactCalculator',
     'FeatureManager',
     'DataProcessor',
     'FeatureRegistry',

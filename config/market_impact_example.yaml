@@ -1,0 +1,162 @@
+# Market Impact Features Configuration Example
+# This configuration demonstrates how to enable market impact features
+# in the IntradayJules trading system
+
+# Feature Engineering Configuration
+feature_engineering:
+  # List of features to calculate
+  features:
+    - RSI
+    - EMA
+    - VWAP
+    - Time
+    - MarketImpact  # Enable market impact features
+  
+  # Market Impact specific configuration
+  marketimpact:
+    notional_amount: 10000        # USD notional for impact calculation
+    enable_kyle_lambda: true      # Calculate Kyle's lambda (requires historical data)
+    min_spread_bps: 0.1          # Minimum spread threshold in basis points
+  
+  # Other feature configurations
+  rsi:
+    window: 14
+  
+  ema:
+    windows: [10, 20, 50]
+  
+  vwap:
+    window: 20
+
+# Environment Configuration (for training)
+environment:
+  # Include market impact features in observations
+  include_market_impact_features: true
+  
+  # Observation feature columns (will be automatically extended with market impact features)
+  observation_feature_cols:
+    - rsi_14
+    - ema_10
+    - ema_20
+    - vwap_20
+    - hour_sin
+    - hour_cos
+    # Market impact features will be added automatically:
+    # - spread_bps
+    # - queue_imbalance  
+    # - impact_10k
+    # - kyle_lambda
+  
+  # Observation bounds (optional - system will set reasonable defaults for market impact features)
+  observation_bounds:
+    low: [-5.0, -5.0, -5.0, -5.0, -1.0, -1.0, 0.0, -1.0, 0.0, -1e-3]
+    high: [5.0, 5.0, 5.0, 5.0, 1.0, 1.0, 1000.0, 1.0, 0.01, 1e-3]
+  
+  initial_balance: 100000
+  transaction_cost: 0.001
+  lookback_window: 3
+  max_steps: 1000
+  reward_type: pnl
+  action_type: discrete
+
+# Risk Management Configuration
+risk:
+  calculators:
+    # Enable market impact risk monitoring
+    market_impact:
+      enabled: true
+      max_spread_bps: 50.0          # Maximum allowed spread (0.5%)
+      max_impact_threshold: 0.001   # Maximum allowed market impact (0.1%)
+      min_queue_balance: -0.8       # Minimum queue imbalance (-80%)
+      max_queue_balance: 0.8        # Maximum queue imbalance (+80%)
+      kyle_lambda_threshold: 1e-6   # Maximum Kyle's lambda
+  
+  # Risk rules
+  rules:
+    - name: "market_impact_throttle"
+      calculator: "market_impact"
+      condition: "risk_level == 'HIGH'"
+      action: "THROTTLE"
+      severity: "MEDIUM"
+      message: "Market impact risk detected - throttling trades"
+
+# Data Agent Configuration
+data:
+  # Enable order book simulation for historical data
+  enhance_with_order_book: true
+  
+  # Order book simulation parameters
+  order_book_simulation:
+    spread_volatility_factor: 1.0    # Multiplier for spread based on volatility
+    size_volume_factor: 0.3          # Fraction of volume for level-1 sizes
+    imbalance_range: [-0.3, 0.3]     # Random imbalance range
+    num_levels: 5                    # Number of order book levels to simulate
+
+# Live Trading Configuration
+execution:
+  # Market impact processing settings
+  market_impact:
+    # Fast features computed in critical path (<5 μs)
+    fast_features: ["spread_bps", "queue_imbalance"]
+    
+    # Heavy features computed in monitoring path
+    heavy_features: ["impact_10k", "kyle_lambda"]
+    
+    # Enable heavy features for monitoring/logging
+    enable_monitoring_features: true
+    
+    # Performance thresholds
+    max_fast_calculation_time_us: 5.0
+    max_heavy_calculation_time_us: 50.0
+
+# Training Configuration
+training:
+  # Model configuration
+  model:
+    # The observation space will automatically include market impact features
+    # when include_market_impact_features is true in environment config
+    policy_type: "MlpPolicy"
+    
+  # Training parameters
+  total_timesteps: 100000
+  
+  # Callbacks
+  callbacks:
+    # Risk callback will monitor market impact features during training
+    - type: "RiskCallback"
+      config:
+        monitor_market_impact: true
+
+# Logging Configuration
+logging:
+  level: INFO
+  
+  # Enable market impact feature logging
+  loggers:
+    market_impact:
+      level: DEBUG
+      handlers: ["file", "console"]
+    
+    risk.market_impact:
+      level: INFO
+      handlers: ["file"]
+
+# Performance Monitoring
+monitoring:
+  # Track market impact calculation performance
+  metrics:
+    - name: "market_impact_calc_time"
+      type: "histogram"
+      description: "Market impact calculation time in microseconds"
+    
+    - name: "market_impact_risk_score"
+      type: "gauge"
+      description: "Current market impact risk score"
+    
+    - name: "spread_bps"
+      type: "gauge"
+      description: "Current bid-ask spread in basis points"
+    
+    - name: "queue_imbalance"
+      type: "gauge"
+      description: "Current order book queue imbalance"

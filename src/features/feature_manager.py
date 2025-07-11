@@ -8,6 +8,7 @@ from .rsi_calculator import RSICalculator
 from .ema_calculator import EMACalculator
 from .vwap_calculator import VWAPCalculator
 from .time_calculator import TimeFeatureCalculator
+from .market_impact_calculator import MarketImpactCalculator
 from .feature_registry import FeatureRegistry, get_global_registry
 from .performance_tracker import PerformanceTracker, TimingContext
 
@@ -58,6 +59,7 @@ class FeatureManager:
             'EMA': (EMACalculator, {'description': 'Exponential Moving Average', 'category': 'trend'}),
             'VWAP': (VWAPCalculator, {'description': 'Volume Weighted Average Price', 'category': 'volume'}),
             'Time': (TimeFeatureCalculator, {'description': 'Time-based features', 'category': 'temporal'}),
+            'MarketImpact': (MarketImpactCalculator, {'description': 'Market microstructure features', 'category': 'microstructure'}),
         }
         
         for name, (calc_class, metadata) in default_calculators.items():

@@ -1,0 +1,29 @@
+batch_processing:
+  default_timeout_minutes: 30
+  enabled: true
+  max_concurrent_jobs: 3
+  retry_attempts: 3
+  retry_delay_minutes: 5
+  schedule_time: '17:00'
+  timezone: UTC
+data_retention:
+  archive_after_days: 30
+  delete_after_days: 2555
+  enabled: true
+mifid_ii_reporting:
+  email_distribution: true
+  enabled: true
+  firm_lei: INTRADAYJULES001
+  firm_name: IntradayJules Trading System
+  output_directory: reports/mifid_ii
+  retention_days: 2555
+notifications:
+  email_enabled: false
+  enabled: true
+  recipients:
+  - compliance@intradayjules.com
+  - risk@intradayjules.com
+  - operations@intradayjules.com
+  smtp_port: 587
+  smtp_server: smtp.company.com
+  smtp_username: reports@intradayjules.com

@@ -203,7 +203,58 @@ class RiskEventHandler:
         else:
             self.logger.warning(f"No callback registered for risk event: {event_type}")
             
-    def emergency_stop(self, reason: str) -> None:
-        """Trigger an emergency stop of trading."""
+    def emergency_stop(self, reason: str, reason_code: int = 0, 
+                      symbol_id: int = 0, position_size: int = 0, pnl_cents: int = 0) -> None:
+        """
+        Trigger an emergency stop of trading with ultra-low latency audit.
+        
+        Args:
+            reason: Human-readable reason (for logging)
+            reason_code: Numeric reason code for high-perf audit
+            symbol_id: Symbol identifier
+            position_size: Current position size
+            pnl_cents: Current P&L in cents
+        """
+        # CRITICAL PATH: Log to high-performance audit system first
+        try:
+            from .high_perf_audit import audit_kill_switch, KillSwitchReason
+            
+            # Map reason to code if not provided
+            if reason_code == 0:
+                reason_lower = reason.lower()
+                if 'loss' in reason_lower:
+                    reason_code = KillSwitchReason.DAILY_LOSS_LIMIT
+                elif 'position' in reason_lower:
+                    reason_code = KillSwitchReason.POSITION_LIMIT
+                elif 'concentration' in reason_lower:
+                    reason_code = KillSwitchReason.CONCENTRATION_LIMIT
+                elif 'volatility' in reason_lower:
+                    reason_code = KillSwitchReason.MARKET_VOLATILITY
+                elif 'error' in reason_lower:
+                    reason_code = KillSwitchReason.SYSTEM_ERROR
+                elif 'manual' in reason_lower:
+                    reason_code = KillSwitchReason.MANUAL_STOP
+                elif 'connectivity' in reason_lower:
+                    reason_code = KillSwitchReason.CONNECTIVITY_LOSS
+                else:
+                    reason_code = KillSwitchReason.RISK_BREACH
+            
+            # Ultra-fast audit logging (sub-microsecond)
+            audit_kill_switch(reason_code, symbol_id, position_size, pnl_cents)
+            
+        except Exception as e:
+            # Don't let audit failure block emergency stop
+            pass
+        
+        # Standard logging (can be slower)
         self.logger.critical(f"EMERGENCY STOP TRIGGERED: {reason}")
-        self.handle_risk_event("emergency_stop", {"reason": reason, "timestamp": datetime.now()})
+        
+        # Handle risk event (can be slower)
+        self.handle_risk_event("emergency_stop", {
+            "reason": reason, 
+            "reason_code": reason_code,
+            "symbol_id": symbol_id,
+            "position_size": position_size,
+            "pnl_cents": pnl_cents,
+            "timestamp": datetime.now()
+        })

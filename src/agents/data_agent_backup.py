@@ -1,9 +1,8 @@
 # src/agents/data_agent.py
 import os
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, Callable, List
+from typing import Optional, Dict, Any
 from ib_insync import IB, util, Contract, Stock # Assuming ib_insync is installed
 
 from .base_agent import BaseAgent
@@ -11,7 +10,6 @@ from .base_agent import BaseAgent
 from src.tools.ibkr_tools import fetch_5min_bars
 from src.column_names import COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME
 from src.shared import get_feature_store
-from src.shared.market_impact import calc_market_impact_features
 
 class DataAgent(BaseAgent):
     """
@@ -485,153 +483,93 @@ class DataAgent(BaseAgent):
         except Exception as e:
             self.logger.error(f"Error warming feature cache for {symbol}: {e}")
 
-    def enhance_data_with_order_book(self, df: pd.DataFrame, symbol: str = "default") -> pd.DataFrame:
-        """
-        Enhance OHLCV data with simulated order book features for training.
-        
-        This method simulates order book data based on OHLC prices and adds
-        market impact features that can be used for training observations.
-        
-        Args:
-            df: DataFrame with OHLCV data
-            symbol: Symbol name for logging
-            
-        Returns:
-            DataFrame with added order book columns and market impact features
-        """
-        if df.empty:
-            return df
-            
-        try:
-            self.logger.debug(f"Enhancing {len(df)} rows with order book data for {symbol}")
-            
-            # Create a copy to avoid modifying original data
-            enhanced_df = df.copy()
-            
-            # Simulate order book levels based on OHLC data
-            enhanced_df = self._simulate_order_book_levels(enhanced_df)
-            
-            # Calculate market impact features
-            enhanced_df = self._add_market_impact_features(enhanced_df)
-            
-            self.logger.debug(f"Successfully enhanced data with order book features for {symbol}")
-            return enhanced_df
-            
-        except Exception as e:
-            self.logger.error(f"Error enhancing data with order book features: {e}")
-            return df  # Return original data if enhancement fails
-    
-    def _simulate_order_book_levels(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Simulate order book levels based on OHLC data.
-        
-        This creates realistic bid/ask spreads and sizes based on:
-        - High/Low range for spread estimation
-        - Volume for size estimation
-        - Random variations for realism
-        """
-        try:
-            # Calculate mid price from OHLC
-            df['mid'] = (df[COL_HIGH] + df[COL_LOW]) / 2
-            
-            # Estimate spread based on high-low range (as proxy for volatility)
-            hl_range = df[COL_HIGH] - df[COL_LOW]
-            base_spread_pct = np.clip(hl_range / df['mid'], 0.0001, 0.01)  # 0.01% to 1%
-            
-            # Add some randomness to spread
-            np.random.seed(42)  # For reproducible results
-            spread_multiplier = np.random.uniform(0.5, 2.0, len(df))
-            spread_pct = base_spread_pct * spread_multiplier
-            
-            # Calculate bid/ask prices (Level 1)
-            half_spread = df['mid'] * spread_pct / 2
-            df['bid_px1'] = df['mid'] - half_spread
-            df['ask_px1'] = df['mid'] + half_spread
-            
-            # Simulate sizes based on volume
-            # Assume level 1 has 10-50% of total volume
-            volume_fraction = np.random.uniform(0.1, 0.5, len(df))
-            base_size = df[COL_VOLUME] * volume_fraction
-            
-            # Add imbalance (bid vs ask sizes)
-            imbalance = np.random.uniform(-0.3, 0.3, len(df))  # -30% to +30% imbalance
-            df['bid_sz1'] = base_size * (1 + imbalance)
-            df['ask_sz1'] = base_size * (1 - imbalance)
-            
-            # Ensure positive sizes
-            df['bid_sz1'] = np.maximum(df['bid_sz1'], 100)
-            df['ask_sz1'] = np.maximum(df['ask_sz1'], 100)
-            
-            # Add deeper levels (2-5) with decreasing sizes and wider spreads
-            for level in range(2, 6):
-                level_spread_mult = 1 + (level - 1) * 0.5  # Increasing spread
-                level_size_mult = 0.7 ** (level - 1)  # Decreasing size
-                
-                df[f'bid_px{level}'] = df['bid_px1'] - half_spread * (level_spread_mult - 1)
-                df[f'ask_px{level}'] = df['ask_px1'] + half_spread * (level_spread_mult - 1)
-                df[f'bid_sz{level}'] = df['bid_sz1'] * level_size_mult
-                df[f'ask_sz{level}'] = df['ask_sz1'] * level_size_mult
-            
-            return df
-            
-        except Exception as e:
-            self.logger.error(f"Error simulating order book levels: {e}")
-            return df
-    
-    def _add_market_impact_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Add market impact features to the DataFrame.
-        
-        Uses the market impact calculator to add microstructure features.
-        """
-        try:
-            # Initialize feature columns
-            impact_features = ['spread_bps', 'queue_imbalance', 'impact_10k', 'kyle_lambda']
-            for feature in impact_features:
-                df[feature] = np.nan
-            
-            # Calculate features for each row
-            for i in range(len(df)):
-                try:
-                    row = df.iloc[i]
-                    mid = row['mid']
-                    
-                    # Get previous mid for Kyle's lambda
-                    last_mid = df.iloc[i-1]['mid'] if i > 0 else None
-                    
-                    # Calculate market impact features
-                    features = calc_market_impact_features(
-                        book=row,
-                        mid=mid,
-                        last_mid=last_mid,
-                        signed_vol=None,  # Would need trade data for this
-                        notional=10_000
-                    )
-                    
-                    # Assign features to DataFrame
-                    for feature_name, value in features.items():
-                        if feature_name in impact_features:
-                            df.loc[df.index[i], feature_name] = value
-                            
-                except Exception as e:
-                    self.logger.warning(f"Error calculating impact features for row {i}: {e}")
-                    continue
-            
-            # Fill NaN values with defaults
-            df['spread_bps'] = df['spread_bps'].fillna(0.0)
-            df['queue_imbalance'] = df['queue_imbalance'].fillna(0.0)
-            df['impact_10k'] = df['impact_10k'].fillna(0.0)
-            # kyle_lambda can remain NaN
-            
-            return df
-            
-        except Exception as e:
-            self.logger.error(f"Error adding market impact features: {e}")
-            return df
-
     # Removed duplicate disconnect_ibkr method - using the one defined earlier
 
     # --- Live Data Methods ---
+    import logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    # Example Configuration (replace with actual config loading)
+    config = {
+        'data_dir_raw': 'data/raw_test',
+        'default_symbol': 'DUMMY',
+        # 'ibkr_conn': { # Optional: if DataAgent manages its own connection
+        #     'host': '127.0.0.1',
+        #     'port': 7497, # 7497 for TWS Paper, 7496 for TWS Live, 4002 for Gateway Paper, 4001 for Gateway Live
+        #     'clientId': 101 
+        # }
+    }
+
+    data_agent = DataAgent(config=config)
+
+    # Example: Fetch dummy data (since IBKR connection is not live in this skeleton)
+    # In a real scenario, you'd provide valid IBKR parameters.
+    # The current fetch_ibkr_bars will generate dummy data if IBKR part is commented out.
+    
+    # Parameters for fetching
+    symbol_to_fetch = config['default_symbol']
+    # For IBKR, endDateTime is usually YYYYMMDD HH:MM:SS [TimeZone] or "" for current time.
+    # For dummy data, we'll use a placeholder that helps form the filename.
+    # The actual date range of dummy data is fixed inside fetch_ibkr_bars for now.
+    end_date_for_fetch = datetime.now().strftime("%Y%m%d %H:%M:%S") # Example: current time
+    
+    # This duration is how far back from end_date_for_fetch.
+    # The actual start date of data would be (end_date_for_fetch - duration_for_fetch).
+    # This calculated start date should be used in cache naming for consistency.
+    # The _get_cache_filepath method needs to be updated to reflect this.
+    duration_for_fetch = "5 D" # Example: 5 days of data
+    bar_interval = "1 min"
+
+    print(f"\n--- Running DataAgent for {symbol_to_fetch} ---")
+    # The 'start_date' in run() is currently for conceptual grouping/logging.
+    # The actual data window is defined by 'end_date' and 'duration_str' for IBKR.
+    # The cache filename should ideally reflect the true start and end of the data.
+    # For this example, we'll use a placeholder start date for run() that matches the cache logic.
+    # A more robust solution would derive the cache's start_date from end_date and duration.
+    
+    # Let's simulate a start_date for the run method's conceptual purpose.
+    # The actual data fetching logic in fetch_ibkr_bars uses end_datetime_str and duration_str.
+    # The cache key in _get_cache_filepath is currently simplified and needs start_date.
+    # We'll pass a placeholder for now.
+    
+    df_bars = data_agent.run(
+        symbol=symbol_to_fetch,
+        start_date="20230101", # Placeholder, actual data depends on end_date & duration
+        end_date=end_date_for_fetch,
+        interval=bar_interval,
+        duration_str=duration_for_fetch, # This is used by fetch_ibkr_bars
+        force_fetch=False # Set to True to regenerate dummy data
+    )
+
+    if df_bars is not None:
+        print(f"\n--- Fetched Data for {symbol_to_fetch} ---")
+        print(df_bars.head())
+        print(f"Data shape: {df_bars.shape}")
+        
+        # Example of how the cache path might be constructed for verification
+        # This needs to align perfectly with _get_cache_filepath's internal logic
+        # Note: This is still using the simplified cache path logic
+        expected_cache_path = data_agent._get_cache_filepath(
+            symbol_to_fetch, 
+            "TEMP_START", # This placeholder matches the one in fetch_ibkr_bars
+            end_date_for_fetch.split(' ')[0], 
+            bar_interval.replace(' ', ''), 
+            "csv"
+        )
+        print(f"Data for {symbol_to_fetch} is expected to be cached at/loaded from: {expected_cache_path}")
+        if os.path.exists(expected_cache_path):
+            print("Cache file exists.")
+        else:
+            print("Cache file does NOT exist (may be an issue with path matching or save).")
+
+    else:
+        print(f"Could not retrieve data for {symbol_to_fetch}.")
+
+    # data_agent.disconnect_ibkr() # If connection was managed by agent
+    print("\nDataAgent example run complete.")
+
+
+    # --- Methods for Live Data Handling ---
     def set_bar_update_callback(self, callback: Callable[[pd.DataFrame, str], None]):
         """
         Sets the callback function to be invoked when a new live bar is received.
@@ -639,59 +577,6 @@ class DataAgent(BaseAgent):
         """
         self.logger.info(f"Setting bar update callback to {callback}")
         self.bar_update_callback = callback
-
-    def get_cached_data(self, symbol: str) -> pd.DataFrame:
-        """
-        Get cached data for simulation mode.
-        Returns the most recent cached data file for the symbol.
-        """
-        try:
-            # Look for recent cache files
-            cache_dir = "cache_ibkr"
-            if not os.path.exists(cache_dir):
-                self.logger.warning(f"Cache directory {cache_dir} does not exist")
-                return None
-            
-            # Find the most recent cache file for this symbol
-            cache_files = [f for f in os.listdir(cache_dir) if f.startswith(symbol) and f.endswith('.pkl')]
-            if not cache_files:
-                self.logger.warning(f"No cached data files found for {symbol}")
-                return None
-            
-            # Get the most recent file
-            cache_files.sort(reverse=True)  # Most recent first
-            cache_file = cache_files[0]
-            cache_filepath = os.path.join(cache_dir, cache_file)
-            
-            self.logger.info(f"Loading cached data for simulation from {cache_filepath}")
-            try:
-                bars_df = pd.read_pickle(cache_filepath)
-                
-                if bars_df.empty:
-                    self.logger.warning(f"Cached file {cache_filepath} is empty")
-                    return None
-                    
-                self.logger.info(f"Loaded {len(bars_df)} rows from cache for simulation")
-                return bars_df
-            except Exception as pickle_error:
-                self.logger.error(f"Error reading pickle file {cache_filepath}: {pickle_error}")
-                # Try other cache files if this one is corrupted
-                for other_file in cache_files[1:]:  # Skip the first one we just tried
-                    try:
-                        other_filepath = os.path.join(cache_dir, other_file)
-                        self.logger.info(f"Trying alternative cache file: {other_filepath}")
-                        bars_df = pd.read_pickle(other_filepath)
-                        if not bars_df.empty:
-                            self.logger.info(f"Successfully loaded {len(bars_df)} rows from alternative cache")
-                            return bars_df
-                    except Exception as e:
-                        self.logger.warning(f"Alternative cache file {other_file} also failed: {e}")
-                        continue
-                return None
-            
-        except Exception as e:
-            self.logger.error(f"Error loading cached data for simulation: {e}")
-            return None
 
     def _on_bar_update_wrapper(self, symbol: str, bars: 'RealTimeBarList', hasNewBar: bool):
         """
@@ -1117,18 +1002,3 @@ class DataAgent(BaseAgent):
 
 
     # --- End Portfolio and Position Tracking ---
-
-# --- End of DataAgent class ---
-
-if __name__ == '__main__':
-    import logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-    # Example Configuration
-    config = {
-        'data_dir_raw': 'data/raw_test',
-        'default_symbol': 'DUMMY'
-    }
-
-    data_agent = DataAgent(config=config)
-    print("DataAgent example run complete.")

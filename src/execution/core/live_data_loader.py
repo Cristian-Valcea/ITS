@@ -16,8 +16,10 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from pathlib import Path
 import pandas as pd
+import numpy as np
 
-# TODO: Import statements will be added during extraction phase
+# Import market impact calculation for live trading
+from ...shared.market_impact import calc_market_impact_features_fast, calc_market_impact_features
 
 
 class LiveDataLoader:
@@ -196,6 +198,110 @@ class LiveDataLoader:
         
     def clear_cache(self, symbol: Optional[str] = None) -> None:
         """Clear data cache, optionally for a specific symbol."""
+        if symbol:
+            keys_to_remove = [key for key in self.data_cache.keys() if symbol in key]
+            for key in keys_to_remove:
+                del self.data_cache[key]
+            self.logger.info(f"Cleared cache for {symbol}")
+        else:
+            self.data_cache.clear()
+            self.logger.info("Cleared all cached data")
+    
+    def process_live_market_data(
+        self,
+        book_snapshot: Dict[str, Any],
+        symbol: str,
+        include_heavy_features: bool = False
+    ) -> Dict[str, float]:
+        """
+        Process live market data with fast market impact features.
+        
+        This method is optimized for low-latency live trading and only
+        computes the critical features (spread_bps, queue_imbalance) by default.
+        
+        Args:
+            book_snapshot: Order book snapshot with bid/ask data
+            symbol: Trading symbol
+            include_heavy_features: Whether to include computationally heavy features
+            
+        Returns:
+            Dictionary with market impact features
+        """
+        try:
+            # Extract level-1 data
+            bid_px1 = float(book_snapshot.get('bid_px1', 0))
+            bid_sz1 = float(book_snapshot.get('bid_sz1', 0))
+            ask_px1 = float(book_snapshot.get('ask_px1', 0))
+            ask_sz1 = float(book_snapshot.get('ask_sz1', 0))
+            
+            # Validate data
+            if bid_px1 <= 0 or ask_px1 <= 0 or bid_sz1 <= 0 or ask_sz1 <= 0:
+                self.logger.warning(f"Invalid order book data for {symbol}")
+                return self._get_default_impact_features()
+            
+            # Calculate mid price
+            mid = (bid_px1 + ask_px1) / 2
+            
+            # Fast calculation of critical features (<5 μs)
+            spread_bps, queue_imbalance = calc_market_impact_features_fast(
+                bid_px1, bid_sz1, ask_px1, ask_sz1, mid
+            )
+            
+            # Base features for live trading
+            features = {
+                'spread_bps': spread_bps,
+                'queue_imbalance': queue_imbalance,
+                'mid': mid
+            }
+            
+            # Add heavy features if requested (for monitoring/logging)
+            if include_heavy_features:
+                try:
+                    # Convert to pandas Series for full calculation
+                    book_series = pd.Series(book_snapshot)
+                    
+                    # Get previous mid for Kyle's lambda (if available)
+                    last_mid = getattr(self, '_last_mid', None)
+                    
+                    # Full feature calculation
+                    full_features = calc_market_impact_features(
+                        book=book_series,
+                        mid=mid,
+                        last_mid=last_mid,
+                        signed_vol=None,  # Would need trade data
+                        notional=10_000
+                    )
+                    
+                    features.update({
+                        'impact_10k': full_features['impact_10k'],
+                        'kyle_lambda': full_features['kyle_lambda']
+                    })
+                    
+                    # Store mid for next iteration
+                    self._last_mid = mid
+                    
+                except Exception as e:
+                    self.logger.warning(f"Error calculating heavy features: {e}")
+                    features.update({
+                        'impact_10k': 0.0,
+                        'kyle_lambda': np.nan
+                    })
+            
+            return features
+            
+        except Exception as e:
+            self.logger.error(f"Error processing live market data for {symbol}: {e}")
+            return self._get_default_impact_features()
+    
+    def _get_default_impact_features(self) -> Dict[str, float]:
+        """Return default market impact features."""
+        return {
+            'spread_bps': 0.0,
+            'queue_imbalance': 0.0,
+            'impact_10k': 0.0,
+            'kyle_lambda': np.nan,
+            'mid': 0.0
+        }
         if symbol is None:
             self.data_cache.clear()
         else:

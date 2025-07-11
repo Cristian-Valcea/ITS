@@ -1,0 +1,106 @@
+# High-Performance Audit Configuration
+# Optimized for ultra-low latency trading systems
+
+audit_system:
+  # Ring buffer configuration
+  buffer_size: 131072  # 128K records = 8MB (increased from 64K to prevent backpressure)
+  emergency_buffer_size: 16384  # 16K records for kill switches (doubled for safety)
+  
+  # I/O configuration
+  flush_interval_ms: 2  # 2ms flush interval (reduced from 10ms for faster persistence)
+  log_directory: "logs/audit_hiperf"
+  
+  # File management
+  max_file_size_mb: 500  # 500MB per file (larger files for better I/O efficiency)
+  max_files: 100  # Keep more files for better audit trail
+  compress_old_files: true
+  
+  # Performance tuning
+  use_memory_mapped_files: true
+  preallocate_files: true
+  sync_mode: "async"  # async, sync, or batch
+  
+  # Critical path optimization
+  kill_switch_priority: true  # Separate high-priority path for kill switches
+  zero_copy_logging: true  # Use zero-copy techniques where possible
+  cpu_affinity: null  # Set to specific CPU core if needed (e.g., [2, 3])
+  
+  # Monitoring
+  enable_stats: true
+  stats_interval_seconds: 30
+  alert_on_buffer_full: true
+  alert_threshold_percent: 80  # Alert when buffer is 80% full
+
+# Legacy audit system (fallback)
+legacy_audit:
+  enabled: false  # Disable legacy system when high-perf is available
+  buffer_size: 1000  # Original small buffer
+  async_logging: true
+
+# Risk system integration
+risk_integration:
+  # Map risk events to audit priorities
+  event_priorities:
+    daily_loss_limit: "CRITICAL"
+    position_limit: "CRITICAL" 
+    concentration_limit: "HIGH"
+    market_volatility: "HIGH"
+    system_error: "CRITICAL"
+    manual_stop: "MEDIUM"
+    connectivity_loss: "CRITICAL"
+    risk_breach: "CRITICAL"
+  
+  # Emergency stop configuration
+  emergency_stop:
+    max_latency_microseconds: 10  # Target max latency for emergency stops
+    bypass_normal_logging: true  # Skip normal logging in emergency
+    immediate_file_sync: true  # Force immediate disk sync for emergencies
+
+# Performance monitoring
+performance:
+  # Latency targets (in microseconds)
+  target_latencies:
+    kill_switch_audit: 1.0  # Sub-microsecond target
+    trade_audit: 5.0  # 5 microsecond target
+    risk_check_audit: 2.0  # 2 microsecond target
+  
+  # Monitoring configuration
+  latency_monitoring:
+    enabled: true
+    sample_rate: 0.01  # Sample 1% of operations
+    histogram_buckets: [0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0]  # microseconds
+  
+  # Alerting
+  alerts:
+    latency_breach_threshold: 20.0  # Alert if latency exceeds 20 microseconds
+    buffer_full_threshold: 0.9  # Alert if buffer is 90% full
+    drop_rate_threshold: 0.001  # Alert if drop rate exceeds 0.1%
+
+# System optimization
+system:
+  # Memory settings
+  lock_memory: true  # Lock audit buffers in memory (prevent swapping)
+  huge_pages: false  # Use huge pages if available (Linux only)
+  
+  # Thread settings
+  io_thread_priority: "high"  # high, normal, low
+  io_thread_affinity: null  # Bind I/O thread to specific CPU
+  
+  # Disk I/O optimization
+  use_direct_io: false  # Bypass OS page cache (advanced)
+  io_scheduler: "deadline"  # Preferred I/O scheduler (Linux)
+  
+# Development and testing
+development:
+  # Testing configuration
+  enable_latency_tests: true
+  synthetic_load_testing: false
+  
+  # Debug settings
+  debug_mode: false
+  verbose_logging: false
+  trace_buffer_operations: false
+  
+  # Validation
+  validate_record_integrity: true
+  checksum_records: false  # Adds overhead but ensures data integrity

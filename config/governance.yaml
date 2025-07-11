@@ -12,6 +12,29 @@ immutable_audit:
     prefix: "audit-records/"
     region: "us-east-1"
     retention_years: 7
+    
+    # Cross-Region Replication Configuration
+    cross_region_replication:
+      enabled: true
+      replication_frequency_seconds: 60  # 1-minute replication
+      replica_regions:
+        - "us-west-2"    # West Coast DR
+        - "eu-west-1"    # European DR
+      
+      # Disaster Recovery Settings
+      disaster_recovery:
+        rto_minutes: 1     # Recovery Time Objective: 1 minute
+        rpo_seconds: 60    # Recovery Point Objective: 60 seconds
+        enable_monitoring: true
+        enable_alerting: true
+        
+      # Compliance Settings
+      compliance:
+        enable_worm: true
+        enable_versioning: true
+        enable_encryption: true
+        mfa_delete_required: true
+        audit_trail_required: true
   
   # Kafka Streaming Configuration
   kafka_enabled: true
@@ -126,6 +149,14 @@ compliance_reporting:
       enabled: true
       schedule: "0 9 1 * *"  # 9 AM first day of month
       recipients: ["chief.risk.officer", "compliance.officer1"]
+      
+    # MiFID II Daily Compliance Report
+    mifid_ii_daily_report:
+      enabled: true
+      schedule: "0 17 * * *"  # 17:00 UTC daily - REQUIREMENT MET
+      recipients: ["compliance.officer1", "risk.manager1", "audit.manager"]
+      format: "PDF"
+      retention_years: 7
   
   # Regulatory Requirements
   regulatory_compliance:

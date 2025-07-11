@@ -409,9 +409,186 @@ class TrainerAgent(BaseAgent):
         """
         return self._risk_agent
 
-    def set_env(self, env: IntradayTradingEnv) -> None:
-        """Set and wrap training environment with monitoring - delegates to trainer core."""
+    def set_env(self, env) -> None:
+        """
+        Set and wrap training environment with monitoring - delegates to trainer core.
+        
+        Args:
+            env: Either a single IntradayTradingEnv or a VecEnv
+        """
         self.trainer_core.set_environment(env)
+    
+    def create_vectorized_env(
+        self,
+        symbols: List[str],
+        data_dir: Path,
+        n_envs: Optional[int] = None,
+        use_shared_memory: bool = True
+    ) -> Any:
+        """
+        Create a vectorized training environment for improved throughput.
+        
+        This method creates multiple parallel environments using ShmemVecEnv
+        for 3-4x faster experience collection compared to single-threaded rollouts.
+        
+        Args:
+            symbols: List of trading symbols to create environments for
+            data_dir: Directory containing data files  
+            n_envs: Number of environments (auto-detected if None)
+            use_shared_memory: Whether to use shared memory (requires SB3 1.8+)
+            
+        Returns:
+            VecMonitor-wrapped vectorized environment
+            
+        Example:
+            ```python
+            trainer = TrainerAgent(config)
+            
+            # Create vectorized environment
+            vec_env = trainer.create_vectorized_env(
+                symbols=['EURUSD', 'GBPUSD', 'USDJPY'],
+                data_dir=Path('data/forex'),
+                n_envs=4,
+                use_shared_memory=True
+            )
+            
+            # Set as training environment
+            trainer.set_env(vec_env)
+            
+            # Train with improved throughput
+            model_path = trainer.train()
+            ```
+        """
+        try:
+            # Extract environment configuration from trainer config
+            env_config = self.config.get('environment', {})
+            
+            # Create vectorized environment
+            vec_env = self.trainer_core.create_vectorized_environment(
+                symbols=symbols,
+                data_dir=data_dir,
+                env_config=env_config,
+                n_envs=n_envs,
+                use_shared_memory=use_shared_memory
+            )
+            
+            # Log performance information
+            perf_info = self.trainer_core.get_training_performance_info()
+            self.logger.info(f"Vectorized environment created:")
+            self.logger.info(f"  - Type: {perf_info['environment_type']}")
+            self.logger.info(f"  - Workers: {perf_info['num_workers']}")
+            self.logger.info(f"  - Expected speedup: {perf_info['expected_speedup']}")
+            self.logger.info(f"  - Shared memory: {perf_info['shared_memory']}")
+            
+            return vec_env
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create vectorized environment: {e}")
+            raise
+    
+    def get_recommended_n_envs(self, symbols: List[str]) -> int:
+        """
+        Get recommended number of environments based on available resources.
+        
+        Args:
+            symbols: List of available symbols
+            
+        Returns:
+            Recommended number of environments
+        """
+        try:
+            from .core.env_builder import get_optimal_n_envs
+            return get_optimal_n_envs(symbols, max_envs=16)
+        except ImportError:
+            # Fallback calculation
+            import multiprocessing as mp
+            return min(len(symbols), mp.cpu_count(), 8)  # Conservative limit
+    
+    def create_vectorized_env(
+        self,
+        symbols: List[str],
+        data_dir: Path,
+        n_envs: Optional[int] = None,
+        use_shared_memory: bool = True
+    ) -> Any:
+        """
+        Create a vectorized training environment for improved throughput.
+        
+        This method creates multiple parallel environments using ShmemVecEnv
+        for 3-4x faster experience collection compared to single-threaded rollouts.
+        
+        Args:
+            symbols: List of trading symbols to create environments for
+            data_dir: Directory containing data files  
+            n_envs: Number of environments (auto-detected if None)
+            use_shared_memory: Whether to use shared memory (requires SB3 1.8+)
+            
+        Returns:
+            VecMonitor-wrapped vectorized environment
+            
+        Example:
+            ```python
+            trainer = TrainerAgent(config)
+            
+            # Create vectorized environment
+            vec_env = trainer.create_vectorized_env(
+                symbols=['EURUSD', 'GBPUSD', 'USDJPY'],
+                data_dir=Path('data/forex'),
+                n_envs=4,
+                use_shared_memory=True
+            )
+            
+            # Set as training environment
+            trainer.set_env(vec_env)
+            
+            # Train with improved throughput
+            model_path = trainer.train()
+            ```
+        """
+        try:
+            # Extract environment configuration from trainer config
+            env_config = self.config.get('environment', {})
+            
+            # Create vectorized environment
+            vec_env = self.trainer_core.create_vectorized_environment(
+                symbols=symbols,
+                data_dir=data_dir,
+                env_config=env_config,
+                n_envs=n_envs,
+                use_shared_memory=use_shared_memory
+            )
+            
+            # Log performance information
+            perf_info = self.trainer_core.get_training_performance_info()
+            self.logger.info(f"Vectorized environment created:")
+            self.logger.info(f"  - Type: {perf_info['environment_type']}")
+            self.logger.info(f"  - Workers: {perf_info['num_workers']}")
+            self.logger.info(f"  - Expected speedup: {perf_info['expected_speedup']}")
+            self.logger.info(f"  - Shared memory: {perf_info['shared_memory']}")
+            
+            return vec_env
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create vectorized environment: {e}")
+            raise
+    
+    def get_recommended_n_envs(self, symbols: List[str]) -> int:
+        """
+        Get recommended number of environments based on available resources.
+        
+        Args:
+            symbols: List of available symbols
+            
+        Returns:
+            Recommended number of environments
+        """
+        try:
+            from .core.env_builder import get_optimal_n_envs
+            return get_optimal_n_envs(symbols, max_envs=16)
+        except ImportError:
+            # Fallback calculation
+            import multiprocessing as mp
+            return min(len(symbols), mp.cpu_count(), 8)  # Conservative limit
 
     def create_model(self) -> Optional[DQN]:
         """Create RL model with specified configuration - delegates to trainer core."""
