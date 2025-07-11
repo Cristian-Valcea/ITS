@@ -102,11 +102,6 @@ def _create_metrics():
             buckets=[0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0]
         )
         
-        concurrent_workers = Gauge(
-            "featurestore_concurrent_workers",
-            "Number of concurrent workers accessing FeatureStore"
-        )
-        
         pg_connection_pool_size = Gauge(
             "pg_manifest_pool_connections_total",
             "Total connections in PostgreSQL pool"
@@ -118,7 +113,7 @@ def _create_metrics():
         )
         
         return (hits, misses, hit_ratio, manifest_insert_latency, manifest_read_latency, 
-                advisory_lock_wait_time, concurrent_workers, pg_connection_pool_size, 
+                advisory_lock_wait_time, pg_connection_pool_size, 
                 pg_connection_pool_active)
                 
     except ValueError as e:
@@ -140,13 +135,30 @@ def _create_metrics():
                 def collect(self):
                     return [type('MockSample', (), {'value': max(self._counter, self._value)})()]
             
-            return tuple(MockMetric() for _ in range(9))
+            return tuple(MockMetric() for _ in range(8))
         else:
             raise
 
 (FEATURE_HITS, FEATURE_MISS, FEATURE_HIT_RT, MANIFEST_INSERT_LATENCY, 
- MANIFEST_READ_LATENCY, ADVISORY_LOCK_WAIT_TIME, CONCURRENT_WORKERS,
+ MANIFEST_READ_LATENCY, ADVISORY_LOCK_WAIT_TIME, 
  PG_POOL_SIZE, PG_POOL_ACTIVE) = _create_metrics()
+
+
+def _get_metric_total(metric):
+    """Get total value from Prometheus metric, handling both real and mock implementations."""
+    try:
+        collected = metric.collect()
+        if not collected:
+            return 0
+        
+        # Real Prometheus returns MetricFamily with samples
+        if hasattr(collected[0], 'samples'):
+            return sum(sample.value for sample in collected[0].samples)
+        # Mock implementation returns objects with direct value attribute
+        else:
+            return sum(sample.value for sample in collected)
+    except Exception:
+        return 0
 
 
 def _update_hit_ratio():
@@ -155,12 +167,9 @@ def _update_hit_ratio():
         return
     
     try:
-        # Get current counter values using collect() method instead of private attributes
-        hits_samples = FEATURE_HITS.collect()
-        misses_samples = FEATURE_MISS.collect()
-        
-        hits = sum(sample.value for sample in hits_samples) if hits_samples else 0
-        misses = sum(sample.value for sample in misses_samples) if misses_samples else 0
+        # Get current counter values using proper metric collection
+        hits = _get_metric_total(FEATURE_HITS)
+        misses = _get_metric_total(FEATURE_MISS)
         
         total = hits + misses
         if total > 0:
@@ -540,11 +549,13 @@ class FeatureStore:
             # Generate file path
             cache_file = self.base / f"{cache_key}.parquet.zst"
             
+            # Convert to parquet once, then compress
+            parquet_bytes = features_df.to_parquet(index=True)
+            
             # Save with zstandard compression (level 3 for good speed/compression balance)
             compressor = zstd.ZstdCompressor(level=3)
             with open(cache_file, 'wb') as raw_fh:
                 with compressor.stream_writer(raw_fh) as fh:
-                    parquet_bytes = features_df.to_parquet(index=True)
                     fh.write(parquet_bytes)
             
             file_size = cache_file.stat().st_size
@@ -576,7 +587,7 @@ class FeatureStore:
                                         rows = EXCLUDED.rows,
                                         file_size_bytes = EXCLUDED.file_size_bytes,
                                         last_accessed_ts = CURRENT_TIMESTAMP,
-                                        access_count = EXCLUDED.access_count + 1
+                                        access_count = manifest.access_count + 1
                                 """, (
                                     cache_key, str(cache_file), symbol, start_ts, end_ts, 
                                     len(features_df), file_size
@@ -600,48 +611,40 @@ class FeatureStore:
             # Generate file path
             cache_file = self.base / f"{cache_key}.parquet.zst"
             
+            # Convert to parquet once, then compress
+            parquet_bytes = features_df.to_parquet(index=True)
+            
             # Save with zstandard compression (level 3 for good speed/compression balance)
             compressor = zstd.ZstdCompressor(level=3)
             with open(cache_file, 'wb') as raw_fh:
                 with compressor.stream_writer(raw_fh) as fh:
-                    parquet_bytes = features_df.to_parquet(index=True)
                     fh.write(parquet_bytes)
             
             file_size = cache_file.stat().st_size
             
-            # Use separate connection for thread safety
+            # Use separate connection for thread safety - let context manager handle transactions
             with MANIFEST_INSERT_LATENCY.labels(backend='duckdb', symbol=symbol).time():
                 with duckdb.connect(str(self.db_path)) as conn:
-                    conn.execute("BEGIN TRANSACTION")
-                    try:
-                        conn.execute("""
-                            INSERT INTO manifest 
-                            (key, path, symbol, start_ts, end_ts, rows, file_size_bytes) 
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                            ON CONFLICT (key) DO UPDATE SET
-                                path = EXCLUDED.path,
-                                symbol = EXCLUDED.symbol,
-                                start_ts = EXCLUDED.start_ts,
-                                end_ts = EXCLUDED.end_ts,
-                                rows = EXCLUDED.rows,
-                                file_size_bytes = EXCLUDED.file_size_bytes,
-                                last_accessed_ts = now(),
-                                access_count = EXCLUDED.access_count + 1
-                        """, [
-                            cache_key, str(cache_file), symbol, start_ts, end_ts, 
-                            len(features_df), file_size
-                        ])
-                        conn.execute("COMMIT")
-                        
-                        self.logger.info(f"Cached {len(features_df)} features for {symbol} "
-                                       f"({file_size:,} bytes compressed) [DuckDB]")
-                        
-                    except Exception as e:
-                        try:
-                            conn.execute("ROLLBACK")
-                        except:
-                            pass  # Ignore rollback errors if no transaction is active
-                        raise e
+                    conn.execute("""
+                        INSERT INTO manifest 
+                        (key, path, symbol, start_ts, end_ts, rows, file_size_bytes) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT (key) DO UPDATE SET
+                            path = EXCLUDED.path,
+                            symbol = EXCLUDED.symbol,
+                            start_ts = EXCLUDED.start_ts,
+                            end_ts = EXCLUDED.end_ts,
+                            rows = EXCLUDED.rows,
+                            file_size_bytes = EXCLUDED.file_size_bytes,
+                            last_accessed_ts = now(),
+                            access_count = manifest.access_count + 1
+                    """, [
+                        cache_key, str(cache_file), symbol, start_ts, end_ts, 
+                        len(features_df), file_size
+                    ])
+                    
+                    self.logger.info(f"Cached {len(features_df)} features for {symbol} "
+                                   f"({file_size:,} bytes compressed) [DuckDB]")
                 
         except Exception as e:
             self.logger.error(f"Error caching features (DuckDB) for key {cache_key[:16]}...: {e}")
@@ -667,33 +670,70 @@ class FeatureStore:
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
         try:
-            stats = self.db.execute("""
-                SELECT 
-                    COUNT(*) as total_entries,
-                    COUNT(DISTINCT symbol) as unique_symbols,
-                    SUM(rows) as total_cached_rows,
-                    SUM(file_size_bytes) as total_size_bytes,
-                    MIN(created_ts) as oldest_entry,
-                    MAX(created_ts) as newest_entry
-                FROM manifest
-            """).fetchone()
-            
-            if stats:
-                return {
-                    'total_entries': stats[0],
-                    'unique_symbols': stats[1], 
-                    'total_cached_rows': stats[2] or 0,
-                    'total_size_mb': round((stats[3] or 0) / 1024 / 1024, 2),
-                    'oldest_entry': stats[4],
-                    'newest_entry': stats[5],
-                    'cache_directory': str(self.base)
-                }
+            if self.use_pg_manifest:
+                return self._get_cache_stats_pg()
             else:
-                return {'total_entries': 0}
-                
+                return self._get_cache_stats_duckdb()
         except Exception as e:
             self.logger.error(f"Error getting cache stats: {e}")
             return {'error': str(e)}
+    
+    def _get_cache_stats_pg(self) -> Dict[str, Any]:
+        """Get cache statistics from PostgreSQL manifest."""
+        with pg_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT 
+                        COUNT(*) as total_entries,
+                        COUNT(DISTINCT symbol) as unique_symbols,
+                        SUM(rows) as total_cached_rows,
+                        SUM(file_size_bytes) as total_size_bytes,
+                        MIN(created_ts) as oldest_entry,
+                        MAX(created_ts) as newest_entry
+                    FROM manifest
+                """)
+                stats = cur.fetchone()
+                
+                if stats:
+                    return {
+                        'total_entries': stats['total_entries'],
+                        'unique_symbols': stats['unique_symbols'], 
+                        'total_cached_rows': stats['total_cached_rows'] or 0,
+                        'total_size_mb': round((stats['total_size_bytes'] or 0) / 1024 / 1024, 2),
+                        'oldest_entry': stats['oldest_entry'],
+                        'newest_entry': stats['newest_entry'],
+                        'cache_directory': str(self.base),
+                        'backend': 'postgresql'
+                    }
+                else:
+                    return {'total_entries': 0, 'backend': 'postgresql'}
+    
+    def _get_cache_stats_duckdb(self) -> Dict[str, Any]:
+        """Get cache statistics from DuckDB manifest."""
+        stats = self.db.execute("""
+            SELECT 
+                COUNT(*) as total_entries,
+                COUNT(DISTINCT symbol) as unique_symbols,
+                SUM(rows) as total_cached_rows,
+                SUM(file_size_bytes) as total_size_bytes,
+                MIN(created_ts) as oldest_entry,
+                MAX(created_ts) as newest_entry
+            FROM manifest
+        """).fetchone()
+        
+        if stats:
+            return {
+                'total_entries': stats[0],
+                'unique_symbols': stats[1], 
+                'total_cached_rows': stats[2] or 0,
+                'total_size_mb': round((stats[3] or 0) / 1024 / 1024, 2),
+                'oldest_entry': stats[4],
+                'newest_entry': stats[5],
+                'cache_directory': str(self.base),
+                'backend': 'duckdb'
+            }
+        else:
+            return {'total_entries': 0, 'backend': 'duckdb'}
     
     def cleanup_old_entries(self, days_old: int = 30):
         """
@@ -703,35 +743,73 @@ class FeatureStore:
             days_old: Remove entries older than this many days
         """
         try:
-            cutoff_date = datetime.now() - timedelta(days=days_old)
-            
-            # Get files to delete
-            old_entries = self.db.execute("""
-                SELECT key, path FROM manifest 
-                WHERE last_accessed_ts < ?
-            """, [cutoff_date]).fetchall()
-            
-            deleted_count = 0
-            freed_bytes = 0
-            
-            for key, path in old_entries:
-                try:
-                    file_path = Path(path)
-                    if file_path.exists():
-                        freed_bytes += file_path.stat().st_size
-                        file_path.unlink()
-                    
-                    self.db.execute("DELETE FROM manifest WHERE key = ?", [key])
-                    deleted_count += 1
-                    
-                except Exception as e:
-                    self.logger.warning(f"Error deleting cache entry {key}: {e}")
-            
-            self.logger.info(f"Cleaned up {deleted_count} old cache entries, "
-                           f"freed {freed_bytes / 1024 / 1024:.1f} MB")
-            
+            if self.use_pg_manifest:
+                self._cleanup_old_entries_pg(days_old)
+            else:
+                self._cleanup_old_entries_duckdb(days_old)
         except Exception as e:
             self.logger.error(f"Error during cache cleanup: {e}")
+    
+    def _cleanup_old_entries_pg(self, days_old: int):
+        """Clean up old entries from PostgreSQL manifest."""
+        cutoff_date = datetime.now() - timedelta(days=days_old)
+        
+        with pg_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                # Get files to delete
+                cur.execute("""
+                    SELECT key, path FROM manifest 
+                    WHERE last_accessed_ts < %s
+                """, (cutoff_date,))
+                old_entries = cur.fetchall()
+                
+                deleted_count = 0
+                freed_bytes = 0
+                
+                for entry in old_entries:
+                    try:
+                        file_path = Path(entry['path'])
+                        if file_path.exists():
+                            freed_bytes += file_path.stat().st_size
+                            file_path.unlink()
+                        
+                        cur.execute("DELETE FROM manifest WHERE key = %s", (entry['key'],))
+                        deleted_count += 1
+                        
+                    except Exception as e:
+                        self.logger.warning(f"Error deleting cache entry {entry['key']}: {e}")
+                
+                self.logger.info(f"Cleaned up {deleted_count} old cache entries, "
+                               f"freed {freed_bytes / 1024 / 1024:.1f} MB [PostgreSQL]")
+    
+    def _cleanup_old_entries_duckdb(self, days_old: int):
+        """Clean up old entries from DuckDB manifest."""
+        cutoff_date = datetime.now() - timedelta(days=days_old)
+        
+        # Get files to delete
+        old_entries = self.db.execute("""
+            SELECT key, path FROM manifest 
+            WHERE last_accessed_ts < ?
+        """, [cutoff_date]).fetchall()
+        
+        deleted_count = 0
+        freed_bytes = 0
+        
+        for key, path in old_entries:
+            try:
+                file_path = Path(path)
+                if file_path.exists():
+                    freed_bytes += file_path.stat().st_size
+                    file_path.unlink()
+                
+                self.db.execute("DELETE FROM manifest WHERE key = ?", [key])
+                deleted_count += 1
+                
+            except Exception as e:
+                self.logger.warning(f"Error deleting cache entry {key}: {e}")
+        
+        self.logger.info(f"Cleaned up {deleted_count} old cache entries, "
+                       f"freed {freed_bytes / 1024 / 1024:.1f} MB [DuckDB]")
     
     def clear_cache(self, symbol: Optional[str] = None):
         """
