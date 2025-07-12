@@ -8,6 +8,13 @@ This module handles:
 - Training state management
 - Risk advisor integration
 
+ENVIRONMENT MANAGEMENT:
+- training_env_monitor: Main training environment (Monitor-wrapped)
+- eval_env: Optional evaluation environment for EvalCallback
+  * Set by TrainerAgent.set_evaluation_environment() if evaluation needed
+  * If None, evaluation callbacks are automatically skipped
+  * Used for periodic model evaluation during training
+
 This is an internal module - use src.training.TrainerAgent for public API.
 """
 
@@ -91,6 +98,7 @@ class TrainerCore:
         # Initialize components
         self.model: Optional[DQN] = None
         self.training_env_monitor: Optional[Monitor] = None
+        self.eval_env: Optional[Any] = None  # Evaluation environment (set by TrainerAgent if needed)
         self.risk_advisor: Optional[RiskAdvisor] = None
         self._risk_agent: Optional[RiskAgentV2] = None
         self.training_state: Dict[str, Any] = {}
@@ -299,6 +307,7 @@ class TrainerCore:
             metadata_path = run_dir / f"{run_name}_metadata.json"
             with open(metadata_path, 'w') as f:
                 json.dump(metadata, f, indent=2)
+                # NOTE: Consider gzip compression for large metadata files in future optimization
             
             self.logger.info(f"Model bundle saved: {model_path}")
             return model_path
