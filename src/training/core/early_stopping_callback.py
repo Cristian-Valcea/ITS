@@ -72,13 +72,15 @@ class EarlyStoppingCallback(BaseCallback):
         Returns:
             bool: True to continue training, False to stop
         """
-        # Check if episode just ended
-        if len(self.locals.get('infos', [])) > 0:
-            info = self.locals['infos'][0]
-            if info.get('episode'):
-                self.episode_count += 1
-                episode_reward = info['episode']['r']
-                self.episode_rewards.append(episode_reward)
+        # Check if episode just ended (handle vector environments)
+        infos = self.locals.get('infos', [])
+        if infos:
+            # Iterate over all environments in case of VecEnv
+            for info in infos:
+                if info and info.get('episode'):
+                    self.episode_count += 1
+                    episode_reward = info['episode']['r']
+                    self.episode_rewards.append(episode_reward)
                 
                 # Check for improvement
                 if episode_reward > self.best_reward + self.min_improvement:

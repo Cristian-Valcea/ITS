@@ -53,16 +53,26 @@ def export_torchscript_bundle(
                 
             def forward(self, obs):
                 # Convert observation to the format expected by the policy
+                device = next(self.policy.parameters()).device  # Get policy device
+                
                 if isinstance(obs, torch.Tensor):
-                    obs_tensor = obs
+                    obs_tensor = obs.to(device)
                 else:
-                    obs_tensor = torch.FloatTensor(obs)
+                    obs_tensor = torch.FloatTensor(obs).to(device)
                 
                 # Get action from policy
                 with torch.no_grad():
                     action, _ = self.policy.predict(obs_tensor, deterministic=True)
                     
-                return torch.tensor(action, dtype=torch.long)
+                # Handle different action space types
+                if hasattr(self.policy.action_space, 'dtype'):
+                    if self.policy.action_space.dtype == np.float32:
+                        return torch.tensor(action, dtype=torch.float32, device=device)
+                    else:
+                        return torch.tensor(action, dtype=torch.long, device=device)
+                else:
+                    # Default to long for discrete actions
+                    return torch.tensor(action, dtype=torch.long, device=device)
         
         # Wrap the policy
         policy_wrapper = PolicyWrapper(model.policy)

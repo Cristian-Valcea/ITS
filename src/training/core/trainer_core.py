@@ -316,9 +316,10 @@ class TrainerCore:
             model_zip_path = run_dir / f"{run_name}.zip"
             self.model.save(str(model_zip_path))
             
-            # Also save as policy.pt for evaluation compatibility
+            # Also save as policy.pt for evaluation compatibility (using torch.save for state dict)
             policy_path = run_dir / "policy.pt"
-            self.model.save(str(policy_path))
+            import torch
+            torch.save(self.model.policy.state_dict(), str(policy_path))
             
             # Export TorchScript bundle (will be implemented in policy_export.py)
             from .policy_export import export_torchscript_bundle

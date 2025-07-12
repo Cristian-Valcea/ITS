@@ -333,11 +333,14 @@ def early_stop_callback(
     except Exception as e:
         logger.error(f"Early stop check failed: {e}")
         return True  # Continue on error
-        
-    return base_reward - risk_penalty
 
 
-def early_stop_callback(
+# Note: Duplicate definitions and stubs removed for clarity
+# The working implementations above (RiskPenaltyCallback and RiskAwareCallback classes) 
+# are the canonical versions to use.
+
+
+def create_risk_callbacks(
     eval_env: Any,
     risk_advisor: Optional[Any],
     threshold: float = -1000.0,

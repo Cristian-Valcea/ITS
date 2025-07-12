@@ -59,8 +59,29 @@ def create_training_callbacks(
     
     callbacks = []
     
-    # Placeholder implementation
-    logger.info(f"Creating training callbacks for {run_name}")
+    # Add checkpoint callback
+    if config.get('checkpoint_freq', 0) > 0:
+        checkpoint_callback = CheckpointCallback(
+            save_freq=config['checkpoint_freq'],
+            save_path=str(run_dir / "checkpoints"),
+            name_prefix=f"{run_name}_checkpoint"
+        )
+        callbacks.append(checkpoint_callback)
+    
+    # Add evaluation callback if eval_env provided
+    if eval_env is not None:
+        eval_freq = config.get('eval_freq', 1000)
+        eval_callback = EvalCallback(
+            eval_env,
+            best_model_save_path=str(run_dir),
+            log_path=str(run_dir),
+            eval_freq=eval_freq,
+            deterministic=True,
+            render=False
+        )
+        callbacks.append(eval_callback)
+    
+    logger.info(f"Created {len(callbacks)} training callbacks for {run_name}")
     
     return callbacks
 
