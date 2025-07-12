@@ -14,6 +14,7 @@ This is an internal module - use src.training.TrainerAgent for public API.
 import logging
 import json
 import torch
+import numpy as np
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -79,11 +80,13 @@ def export_torchscript_bundle(
         
         # Create example input for tracing
         obs_space = model.observation_space
+        device = next(policy_wrapper.policy.parameters()).device  # Get policy device
+        
         if hasattr(obs_space, 'shape'):
-            example_obs = torch.randn(1, *obs_space.shape)
+            example_obs = torch.randn(1, *obs_space.shape, device=device)
         else:
             # Fallback for discrete spaces
-            example_obs = torch.randn(1, 10)  # Default size
+            example_obs = torch.randn(1, 10, device=device)  # Default size
         
         # Trace the model
         try:
