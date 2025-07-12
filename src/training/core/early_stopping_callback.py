@@ -81,19 +81,19 @@ class EarlyStoppingCallback(BaseCallback):
                     self.episode_count += 1
                     episode_reward = info['episode']['r']
                     self.episode_rewards.append(episode_reward)
-                
-                # Check for improvement
-                if episode_reward > self.best_reward + self.min_improvement:
-                    self.best_reward = episode_reward
-                    self.patience_counter = 0
-                    if self.verbose >= 1:
-                        self._logger.info(f"Episode {self.episode_count}: New best reward {episode_reward:.2f}")
-                else:
-                    self.patience_counter += 1
-                
-                # Check stopping conditions
-                if self._should_stop():
-                    return False
+                    
+                    # Check for improvement
+                    if episode_reward > self.best_reward + self.min_improvement:
+                        self.best_reward = episode_reward
+                        self.patience_counter = 0
+                        if self.verbose >= 1:
+                            self._logger.info(f"Episode {self.episode_count}: New best reward {episode_reward:.2f}")
+                    else:
+                        self.patience_counter += 1
+                    
+                    # Check stopping conditions
+                    if self._should_stop():
+                        return False
                     
         return True
         
