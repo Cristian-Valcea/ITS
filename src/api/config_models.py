@@ -69,7 +69,7 @@ class EnvironmentConfig(BaseModel):
     # For now, keeping them separate as Orchestrator merges them.
 
 class TrainingConfig(BaseModel):
-    total_timesteps: int = 1000000
+    total_timesteps: int = 20000
     log_interval: int = 100 # For SB3 console log (episodes)
     checkpoint_freq: int = 50000
     eval_freq: int = 100000

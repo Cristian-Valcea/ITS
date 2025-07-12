@@ -18,7 +18,7 @@ Usage:
     # Create enhanced trainer with registry
     config = {
         'algorithm': 'DQN',
-        'total_timesteps': 100000,
+        'total_timesteps': 20000,
         'model_save_dir': 'models/',
         'experiment_registry': {
             'tracking_uri': 'http://mlflow-server:5000',

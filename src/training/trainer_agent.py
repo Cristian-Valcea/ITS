@@ -752,7 +752,7 @@ class TrainerAgent(BaseAgent):
         callbacks = self._create_callbacks(run_dir, run_name)
 
         # Training parameters
-        total_timesteps = self.training_params.get("total_timesteps", 100000)
+        total_timesteps = self.training_params.get("total_timesteps", 20000)
         log_interval = self.training_params.get("log_interval", 100)
 
         # Start training

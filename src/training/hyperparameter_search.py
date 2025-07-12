@@ -562,7 +562,7 @@ def main():
         # Create training function
         training_fn = search.create_training_function(
             trainer_class=None,  # Would be TrainerAgent
-            base_config={"algorithm": "DQN", "total_timesteps": 100000}
+            base_config={"algorithm": "DQN", "total_timesteps": 20000}
         )
         
         # Run search

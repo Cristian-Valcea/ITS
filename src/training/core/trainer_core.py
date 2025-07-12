@@ -219,7 +219,7 @@ class TrainerCore:
         callbacks = self._create_callbacks(run_dir, run_name)
 
         # Training parameters
-        total_timesteps = self.training_params.get("total_timesteps", 100000)
+        total_timesteps = self.training_params.get("total_timesteps", 20000)
         log_interval = self.training_params.get("log_interval", 100)
 
         # Log training configuration details
@@ -334,7 +334,7 @@ class TrainerCore:
             # Save metadata
             metadata = {
                 "algorithm": self.algorithm_name,
-                "training_timesteps": self.training_params.get("total_timesteps", 100000),
+                "training_timesteps": self.training_params.get("total_timesteps", 20000),
                 "created_at": datetime.now().isoformat(),
                 "config": self.config,
                 "model_path": str(model_zip_path),

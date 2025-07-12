@@ -73,15 +73,35 @@ def export_torchscript_bundle(
                 with torch.no_grad():
                     action, _ = self.policy.predict(obs_tensor, deterministic=True)
                     
-                # Handle different action space types
+                # Handle different action space types with enhanced multi-dimensional support
                 if hasattr(self.policy.action_space, 'dtype'):
-                    if self.policy.action_space.dtype == np.float32:
-                        return torch.tensor(action, dtype=torch.float32, device=device)
+                    # Continuous action spaces (Box)
+                    if self.policy.action_space.dtype in [np.float32, np.float64]:
+                        # Ensure action is properly shaped for multi-dimensional continuous actions
+                        if isinstance(action, np.ndarray):
+                            return torch.tensor(action, dtype=torch.float32, device=device)
+                        else:
+                            # Handle scalar actions
+                            return torch.tensor([action], dtype=torch.float32, device=device)
                     else:
-                        return torch.tensor(action, dtype=torch.long, device=device)
+                        # Discrete action spaces
+                        if isinstance(action, np.ndarray):
+                            return torch.tensor(action, dtype=torch.long, device=device)
+                        else:
+                            return torch.tensor([action], dtype=torch.long, device=device)
                 else:
-                    # Default to long for discrete actions
-                    return torch.tensor(action, dtype=torch.long, device=device)
+                    # Fallback: try to infer from action type
+                    if isinstance(action, (float, np.floating)):
+                        return torch.tensor([action], dtype=torch.float32, device=device)
+                    elif isinstance(action, np.ndarray):
+                        # Multi-dimensional: preserve shape and infer dtype
+                        if action.dtype in [np.float32, np.float64]:
+                            return torch.tensor(action, dtype=torch.float32, device=device)
+                        else:
+                            return torch.tensor(action, dtype=torch.long, device=device)
+                    else:
+                        # Default to long for discrete actions
+                        return torch.tensor([action], dtype=torch.long, device=device)
         
         # Wrap the policy
         policy_wrapper = PolicyWrapper(model.policy)

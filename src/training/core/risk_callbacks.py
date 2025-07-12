@@ -340,37 +340,6 @@ def early_stop_callback(
 # are the canonical versions to use.
 
 
-def create_risk_callbacks(
-    eval_env: Any,
-    risk_advisor: Optional[Any],
-    threshold: float = -1000.0,
-    logger: Optional[logging.Logger] = None
-) -> bool:
-    """
-    Determine if training should stop early based on risk metrics.
-    
-    Args:
-        eval_env: Evaluation environment
-        risk_advisor: Risk advisor instance
-        threshold: Risk threshold for early stopping
-        logger: Optional logger instance
-        
-    Returns:
-        True if training should stop, False otherwise
-    """
-    logger = logger or logging.getLogger(__name__)
-    
-    # TODO: Extract early stopping logic from trainer_agent.py
-    
-    # Placeholder implementation
-    should_stop = False
-    
-    if risk_advisor is not None:
-        # TODO: Check risk metrics and decide on early stopping
-        pass
-        
-    return should_stop
-
 
 def create_risk_callbacks(
     risk_advisor: Optional[Any],
