@@ -362,6 +362,16 @@ def validate_environment_config(
     """
     logger = logger or logging.getLogger(__name__)
     
+    # DESIGN SPEC: No market impact features in training observations
+    include_market_impact = config.get('include_market_impact_features', False)
+    if include_market_impact:
+        logger.error(
+            "DESIGN VIOLATION: include_market_impact_features=True is not allowed in training. "
+            "Market impact features should not be included in training observations as per design spec. "
+            "Set include_market_impact_features=False or remove this flag."
+        )
+        return False
+    
     # Validate observation features
     obs_features = config.get('observation_feature_cols', [])
     if not isinstance(obs_features, list):

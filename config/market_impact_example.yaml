@@ -1,6 +1,7 @@
 # Market Impact Features Configuration Example
-# This configuration demonstrates how to enable market impact features
-# in the IntradayJules trading system
+# WARNING: This configuration will FAIL validation for training!
+# Market impact features are NOT allowed in training observations per design spec.
+# This file is for reference only - shows what NOT to do in training configs.
 
 # Feature Engineering Configuration
 feature_engineering:

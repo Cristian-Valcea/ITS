@@ -69,8 +69,8 @@ environment:
     - "day_of_week_sin"
     - "day_of_week_cos"
   
-  # Include market impact features in observations
-  include_market_impact_features: true
+  # Include market impact features in observations (DESIGN SPEC: Must be false for training)
+  include_market_impact_features: false
   
   # Environment parameters
   initial_balance: 100000
