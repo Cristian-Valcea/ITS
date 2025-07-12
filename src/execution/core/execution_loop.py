@@ -10,9 +10,21 @@ This module handles:
 
 This is an internal module - use src.execution.OrchestratorAgent for public API.
 
-IMPORTANT: This module requires the project root to be in PYTHONPATH.
-For development: pip install -e . (editable install)
-For production: Ensure PYTHONPATH includes the project root directory.
+IMPORTANT SETUP REQUIREMENTS:
+1. PYTHONPATH: This module requires the project root to be in PYTHONPATH.
+   - For development: pip install -e . (editable install)
+   - For production: Ensure PYTHONPATH includes the project root directory.
+
+2. CONFIGURATION: Key config parameters:
+   - bar_period_seconds: Bar processing interval (default: 1)
+   - execution.feature_max_workers: Thread pool size for feature engineering
+   - risk.fail_closed_on_missing_positions: Fail-closed mode for missing position data
+   - risk.min_order_size: Minimum order size after throttling (default: 1)
+
+3. INTEGRATION: Before live trading:
+   - Wire real position tracker or enable fail_closed_on_missing_positions
+   - Register RiskEventHandler via register_risk_event_handler()
+   - Configure OrderRouter to handle minimum order sizes gracefully
 """
 
 import logging
@@ -69,6 +81,18 @@ class ExecutionLoop:
     def register_hook(self, event: str, callback: Callable) -> None:
         """Register a callback for a specific event."""
         self.hooks[event] = callback
+    
+    def register_risk_event_handler(self, handler) -> None:
+        """
+        Register a RiskEventHandler for emergency stop and risk events.
+        
+        TODO: Call this method during system initialization to wire risk event handling.
+        
+        Args:
+            handler: RiskEventHandler instance
+        """
+        self.risk_event_handler = handler
+        self.logger.info("Risk event handler registered")
         
     def _trigger_hook(self, event: str, *args, **kwargs) -> None:
         """Trigger a registered hook if it exists (supports both sync and async hooks)."""
@@ -146,8 +170,8 @@ class ExecutionLoop:
             
     async def _process_new_bar(
         self, 
+        symbol: str,
         new_bar_df: pd.DataFrame, 
-        symbol: str, 
         feature_agent=None, 
         risk_agent=None, 
         live_model=None
@@ -156,8 +180,8 @@ class ExecutionLoop:
         Process a new bar of market data.
         
         Args:
-            new_bar_df: New market data bar
             symbol: Trading symbol
+            new_bar_df: New market data bar
             feature_agent: Feature engineering agent
             risk_agent: Risk management agent
             live_model: Trained model for predictions
@@ -189,8 +213,16 @@ class ExecutionLoop:
                 # Monitor executor queue size for latency issues
                 # NOTE: If bars are 1s and features heavy, executor queue can back up
                 # Consider monitoring executor._work_queue.qsize() in production
+                
+                # Use configured thread pool or default
+                max_workers = self.config.get('execution', {}).get('feature_max_workers', None)
+                if max_workers and not hasattr(self, '_feature_executor'):
+                    import concurrent.futures
+                    self._feature_executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+                    
+                executor = getattr(self, '_feature_executor', None)
                 features_df = await loop.run_in_executor(
-                    None, feature_agent.engineer_features, new_bar_df
+                    executor, feature_agent.engineer_features, new_bar_df
                 )
                 if features_df is None or features_df.empty:
                     self.logger.warning("Failed to engineer features")
@@ -313,6 +345,13 @@ class ExecutionLoop:
             market_conditions = await self._get_market_conditions(symbol)
             order = throttle_size(order, self.config.get('risk', {}), market_conditions, self.logger)
             
+            # 2.6. Check minimum order size after throttling
+            min_order_size = self.config.get('risk', {}).get('min_order_size', 1)
+            if order['shares'] < min_order_size:
+                self.logger.info(f"Order size {order['shares']} below minimum {min_order_size} - skipping")
+                self._trigger_hook("order_too_small", symbol, order)
+                return
+            
             # 3. Send to order router (placeholder)
             order_id = await self._send_to_order_router(order)
             
@@ -338,15 +377,33 @@ class ExecutionLoop:
         """
         Get current portfolio positions.
         
-        IMPORTANT: This is a placeholder implementation that returns empty positions.
-        Before live trading, this MUST be connected to a real position tracker that provides:
-        - Current position sizes per symbol
-        - Daily P&L
-        - Total portfolio value
+        IMPORTANT: This is a placeholder implementation.
         
-        Returns empty dict which will cause risk checks to be less effective.
+        PRODUCTION DEPLOYMENT OPTIONS:
+        1. FAIL-CLOSED: Set config 'risk.fail_closed_on_missing_positions' = True
+           - Will block all trades when position data unavailable
+           - Safer for production but may miss opportunities
+        
+        2. FAIL-OPEN: Wire to real position tracker that provides:
+           - Current position sizes per symbol  
+           - Daily P&L
+           - Total portfolio value
+        
+        Current behavior: Returns empty positions (risk checks less effective)
         """
+        # Check if we should fail-closed when positions unavailable
+        fail_closed = self.config.get('risk', {}).get('fail_closed_on_missing_positions', False)
+        
+        if fail_closed:
+            # In fail-closed mode, raise exception to block trading
+            raise RuntimeError(
+                "Position data unavailable and fail_closed_on_missing_positions=True. "
+                "Wire real position tracker or set fail_closed_on_missing_positions=False"
+            )
+        
         # TODO: Wire to real position tracker before live trading
+        # For now, return empty dict (fail-open mode)
+        self.logger.warning("Using empty positions - risk checks will be less effective")
         return {}
     
     async def _get_market_conditions(self, symbol: str) -> Dict[str, Any]:

@@ -192,6 +192,16 @@ def _get_throttle_reason(original: int, throttled: int, market_conditions: Dict,
         return "No throttling applied"
     
     reasons = []
+    
+    # Check volume participation limit
+    if market_conditions:
+        avg_volume = market_conditions.get('avg_volume', float('inf'))
+        max_volume_pct = risk_config.get('max_volume_participation', 0.1)
+        max_shares_by_volume = int(avg_volume * max_volume_pct)
+        if original > max_shares_by_volume:
+            reasons.append("volume participation")
+    
+    # Check other limits
     if throttled <= risk_config.get('max_order_size', 100):
         reasons.append("size limit")
     if market_conditions.get('spread', 0) > risk_config.get('max_spread_bps', 50):
@@ -209,6 +219,9 @@ def check_daily_loss_limit(
 ) -> Tuple[bool, Optional[str]]:
     """
     Check if daily loss limit has been exceeded.
+    
+    TODO: This function exists but is not called from execution loop yet.
+    Consider integrating into pre_trade_check or calling separately.
     
     Args:
         current_pnl: Current daily P&L
@@ -239,6 +252,9 @@ def check_position_concentration(
 ) -> Tuple[bool, Optional[str]]:
     """
     Check if position concentration limits are respected.
+    
+    TODO: This function exists but is not called from execution loop yet.
+    Consider integrating into pre_trade_check or calling separately.
     
     Args:
         symbol: Trading symbol

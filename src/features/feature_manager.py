@@ -228,3 +228,51 @@ class FeatureManager:
             Calculator information dictionary
         """
         return self.registry.get_calculator_info(name)
+
+
+if __name__ == "__main__":
+    import sys
+
+    # Setup logging to stdout for debugging
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        stream=sys.stdout
+    )
+    logger = logging.getLogger("FeatureManagerDebug")
+
+    # Example config
+    config = {
+        "feature_engineering": {
+            "features": ["RSI", "EMA", "VWAP", "Time", "MarketImpact"],
+            "rsi": {"period": 14},
+            "ema": {"span": 20},
+            "vwap": {},
+            "time": {},
+            "marketimpact": {}
+        }
+    }
+
+    # Create a sample OHLCV DataFrame with DatetimeIndex
+    dates = pd.date_range("2024-01-01", periods=100, freq="min")
+    data = {
+        "Open": np.random.rand(100) * 100,
+        "High": np.random.rand(100) * 100,
+        "Low": np.random.rand(100) * 100,
+        "Close": np.random.rand(100) * 100,
+        "Volume": np.random.randint(100, 1000, size=100)
+    }
+    df = pd.DataFrame(data, index=dates)
+
+    # Initialize and run FeatureManager
+    fm = FeatureManager(config, logger=logger, use_performance_tracking=True)
+    result_df = fm.compute_features(df)
+
+    if result_df is not None:
+        print("Computed features DataFrame head:")
+        print(result_df.head())
+        print("\nFeature columns:", result_df.columns.tolist())
+        print("\nPerformance report:")
+        print(fm.get_performance_report())
+    else:
+        print("Feature computation failed or returned empty DataFrame.")
