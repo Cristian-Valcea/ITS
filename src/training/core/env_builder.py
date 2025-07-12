@@ -13,6 +13,7 @@ This is an internal module - use src.training.TrainerAgent for public API.
 """
 
 from __future__ import annotations
+import hashlib
 import logging
 import multiprocessing as mp
 from pathlib import Path
@@ -157,9 +158,13 @@ def _make_single_env(
             if gym is not None:
                 env = gym.wrappers.RecordEpisodeStatistics(env)
             
-            # Set unique random seed for this worker
+            # Set unique random seed for this worker (deterministic across runs)
             if hasattr(env, 'seed'):
-                env.seed(hash(symbol + str(env_id)) % 2**32)
+                # Use SHA1 for deterministic, reproducible seeding across process runs
+                seed_string = f"{symbol}_{env_id}"
+                seed_hash = hashlib.sha1(seed_string.encode('utf-8')).hexdigest()
+                seed_value = int(seed_hash[:8], 16) % (2**32)  # Use first 8 hex chars for 32-bit seed
+                env.seed(seed_value)
             
             return env
             
