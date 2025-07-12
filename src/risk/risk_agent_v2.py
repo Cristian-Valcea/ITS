@@ -34,7 +34,8 @@ class RiskAgentV2(EventHandler):
     
     def __init__(self, calculators: List[BaseRiskCalculator], 
                  rules_engine: RulesEngine, 
-                 limits_config: Dict[str, Any]):
+                 limits_config: Dict[str, Any],
+                 parallel_calculators: bool = False):
         """
         Initialize RiskAgentV2.
         
@@ -42,10 +43,13 @@ class RiskAgentV2(EventHandler):
             calculators: List of risk calculators to run
             rules_engine: Rules engine for policy evaluation
             limits_config: Configuration including active policy
+            parallel_calculators: Whether to run calculators in parallel (for high-freq trading)
+                                 Note: Uses default executor, optimal for ≤32 calculators
         """
         self.calculators = calculators
         self.rules_engine = rules_engine
         self.limits_config = limits_config
+        self.parallel_calculators = parallel_calculators
         self.logger = logging.getLogger(self.__class__.__name__)
         
         # Performance tracking
@@ -302,26 +306,74 @@ class RiskAgentV2(EventHandler):
         # Prepare enhanced data for calculators
         enhanced_data = self._prepare_calculator_data(event_data)
         
-        for calculator in self.calculators:
-            try:
-                # Check if calculator has required inputs
-                required_inputs = calculator.get_required_inputs()
-                if not all(key in enhanced_data for key in required_inputs):
-                    self.logger.debug(f"Skipping {calculator.__class__.__name__}: missing required inputs")
-                    continue
-                
-                # Run calculation
-                result = calculator.calculate_safe(enhanced_data)
-                calc_results[calculator.metric_type.value] = result
-                
-                if result.is_valid:
-                    self.logger.debug(f"{calculator.__class__.__name__} completed in {result.get_calculation_time_us():.2f}µs")
-                else:
-                    self.logger.warning(f"{calculator.__class__.__name__} failed: {result.error_message}")
+        if self.parallel_calculators and len(self.calculators) > 1:
+            # Parallel execution for high-frequency trading
+            # Note: Uses default executor (ThreadPoolExecutor with max_workers=min(32, os.cpu_count() + 4))
+            # For >32 calculators, consider custom executor or monitor PYTHONASYNCIODEBUG for thread pool saturation
+            import asyncio
+            
+            async def run_single_calculator(calculator):
+                try:
+                    # Check if calculator has required inputs
+                    required_inputs = calculator.get_required_inputs()
+                    missing_inputs = [key for key in required_inputs if key not in enhanced_data]
+                    if missing_inputs:
+                        if len(missing_inputs) > 2:  # Many missing inputs - warn
+                            self.logger.warning(f"Skipping {calculator.__class__.__name__}: missing {len(missing_inputs)} inputs: {missing_inputs[:3]}...")
+                        else:
+                            self.logger.debug(f"Skipping {calculator.__class__.__name__}: missing required inputs: {missing_inputs}")
+                        return None, None
                     
-            except Exception as e:
-                self.logger.error(f"Calculator {calculator.__class__.__name__} failed: {e}")
-                # Continue with other calculators
+                    # Run calculation in thread pool (uses default executor)
+                    loop = asyncio.get_running_loop()
+                    result = await loop.run_in_executor(None, calculator.calculate_safe, enhanced_data)
+                    
+                    if result.is_valid:
+                        self.logger.debug(f"{calculator.__class__.__name__} completed in {result.get_calculation_time_us():.2f}µs")
+                    else:
+                        self.logger.warning(f"{calculator.__class__.__name__} failed: {result.error_message}")
+                    
+                    return calculator.metric_type.value, result
+                    
+                except Exception as e:
+                    self.logger.error(f"Calculator {calculator.__class__.__name__} failed: {e}")
+                    return None, None
+            
+            # Run all calculators in parallel
+            tasks = [run_single_calculator(calc) for calc in self.calculators]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Collect results
+            for result in results:
+                if isinstance(result, tuple) and result[0] is not None:
+                    metric_type, calc_result = result
+                    calc_results[metric_type] = calc_result
+        else:
+            # Sequential execution (default)
+            for calculator in self.calculators:
+                try:
+                    # Check if calculator has required inputs
+                    required_inputs = calculator.get_required_inputs()
+                    missing_inputs = [key for key in required_inputs if key not in enhanced_data]
+                    if missing_inputs:
+                        if len(missing_inputs) > 2:  # Many missing inputs - warn
+                            self.logger.warning(f"Skipping {calculator.__class__.__name__}: missing {len(missing_inputs)} inputs: {missing_inputs[:3]}...")
+                        else:
+                            self.logger.debug(f"Skipping {calculator.__class__.__name__}: missing required inputs: {missing_inputs}")
+                        continue
+                    
+                    # Run calculation
+                    result = calculator.calculate_safe(enhanced_data)
+                    calc_results[calculator.metric_type.value] = result
+                    
+                    if result.is_valid:
+                        self.logger.debug(f"{calculator.__class__.__name__} completed in {result.get_calculation_time_us():.2f}µs")
+                    else:
+                        self.logger.warning(f"{calculator.__class__.__name__} failed: {result.error_message}")
+                        
+                except Exception as e:
+                    self.logger.error(f"Calculator {calculator.__class__.__name__} failed: {e}")
+                    # Continue with other calculators
         
         return calc_results
     
@@ -354,10 +406,18 @@ class RiskAgentV2(EventHandler):
             enhanced_data['trade_timestamps'] = trade_timestamps
         
         # Build portfolio values array for drawdown calculations
-        if 'portfolio_values' not in enhanced_data and self.last_portfolio_value is not None:
-            # Simple case: use current value as numpy array
+        if 'portfolio_values' not in enhanced_data:
             import numpy as np
-            enhanced_data['portfolio_values'] = np.array([self.last_portfolio_value])
+            if self.last_portfolio_value is not None:
+                # Use current value as numpy array
+                enhanced_data['portfolio_values'] = np.array([self.last_portfolio_value])
+            elif self.start_of_day_value is not None:
+                # Fallback to start of day value
+                enhanced_data['portfolio_values'] = np.array([self.start_of_day_value])
+            else:
+                # Default to prevent calculator errors
+                enhanced_data['portfolio_values'] = np.array([100000.0])  # Default portfolio value
+                self.logger.warning("No portfolio value available, using default 100k")
         
         # Calculate daily drawdown if we have both values
         if (self.start_of_day_value is not None and 
@@ -469,7 +529,7 @@ class RiskAgentV2(EventHandler):
                     'action': action.value,
                     'reason': policy_result.triggered_rules,
                     'policy_id': policy_result.policy_id,
-                    'evaluation_time_us': policy_result.get_evaluation_time_us(),
+                    'evaluation_time_us': policy_result.get_evaluation_time_us() or 0,
                     'original_event_id': original_event.event_id,
                     'triggered_rules_count': len(policy_result.triggered_rules),
                     'timestamp': datetime.now().isoformat()
@@ -733,13 +793,22 @@ def create_risk_agent_v2(config: Dict[str, Any]) -> RiskAgentV2:
         
         rules_engine.register_policy(policy)
     
+    # Warn if no calculators enabled
+    if not calculators:
+        import logging
+        logger = logging.getLogger('RiskAgentV2Factory')
+        logger.warning("No calculators enabled in configuration - risk agent will have limited functionality")
+    
     # Create limits config
     limits_config = {
         'active_policy': config.get('active_policy', 'default_policy'),
         **config.get('limits', {})
     }
     
-    return RiskAgentV2(calculators, rules_engine, limits_config)
+    # Check for parallel calculator option
+    parallel_calculators = config.get('parallel_calculators', False)
+    
+    return RiskAgentV2(calculators, rules_engine, limits_config, parallel_calculators)
 
 
 if __name__ == "__main__":

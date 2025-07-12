@@ -14,8 +14,7 @@ from typing import Any, Dict, List, Optional, Callable, Union
 from collections import defaultdict, deque
 import logging
 import threading
-from concurrent.futures import ThreadPoolExecutor
-from wsgiref.simple_server import demo_app
+
 from .event_types import RiskEvent, EventType, EventPriority
 from .obs.enhanced_audit_sink import EnhancedJsonAuditSink
 
@@ -61,7 +60,6 @@ class RiskEventBus:
     """
     
     def __init__(self, 
-                 max_workers: int = 10,
                  enable_latency_monitoring: bool = True,
                  latency_slo_us: Dict[EventPriority, float] = None,
                  audit_log_path: str = None):
@@ -69,7 +67,6 @@ class RiskEventBus:
         Initialize the event bus.
         
         Args:
-            max_workers: Maximum number of worker threads
             enable_latency_monitoring: Whether to track latency metrics
             latency_slo_us: SLO thresholds in microseconds per priority
             audit_log_path: Path for audit logs (uses env var or default if None)
@@ -84,7 +81,6 @@ class RiskEventBus:
         }
         
         # Processing infrastructure
-        self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._running = False
         self._worker_tasks: List[asyncio.Task] = []
         
@@ -110,7 +106,7 @@ class RiskEventBus:
         self._error_counts: Dict[EventType, int] = defaultdict(int)
         self._max_errors_per_type = 10
         
-        self.logger.info(f"RiskEventBus initialized with {max_workers} workers")
+        self.logger.info("RiskEventBus initialized")
     
     def register_handler(self, handler: EventHandler) -> None:
         """Register an event handler."""
@@ -138,6 +134,7 @@ class RiskEventBus:
         
         # Add to appropriate priority queue
         await self._priority_queues[event.priority].put(event)
+        # Note: int increment is atomic in CPython, safe in asyncio single-thread context
         self._event_counts[event.event_type] += 1
         
         self.logger.debug(f"Published event {event.event_id} of type {event.event_type}")
@@ -171,9 +168,6 @@ class RiskEventBus:
         
         # Wait for tasks to complete
         await asyncio.gather(*self._worker_tasks, return_exceptions=True)
-        
-        # Shutdown executor
-        self._executor.shutdown(wait=True)
         
         self.logger.info("RiskEventBus stopped")
     
@@ -228,6 +222,9 @@ class RiskEventBus:
                     self._error_counts[event.event_type] += 1
                     
                     # Check circuit breaker threshold
+                    # Note: Circuit breaker is per event_type, affecting ALL handlers for that type
+                    # TODO v3: Consider per-handler breakers for individual handler isolation
+                    # This would allow one failing handler to be disabled while others continue
                     if self._error_counts[event.event_type] >= self._max_errors_per_type:
                         self._circuit_breakers[event.event_type] = True
                         self.logger.critical(f"Circuit breaker opened for {event.event_type}")
@@ -266,9 +263,15 @@ class RiskEventBus:
                         
                         # Calculate percentiles
                         sorted_times = sorted(times)
-                        p99_9 = sorted_times[int(len(sorted_times) * 0.999)]
-                        p99 = sorted_times[int(len(sorted_times) * 0.99)]
-                        p95 = sorted_times[int(len(sorted_times) * 0.95)]
+                        # Guard against small arrays for high percentiles
+                        length = len(sorted_times)
+                        p99_9_idx = min(int(length * 0.999), length - 1)
+                        p99_idx = min(int(length * 0.99), length - 1)
+                        p95_idx = min(int(length * 0.95), length - 1)
+                        
+                        p99_9 = sorted_times[p99_9_idx]
+                        p99 = sorted_times[p99_idx]
+                        p95 = sorted_times[p95_idx]
                         
                         slo_threshold = self._latency_slo_us[priority]
                         
