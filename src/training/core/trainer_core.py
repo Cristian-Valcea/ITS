@@ -300,9 +300,13 @@ class TrainerCore:
     def _save_model_bundle(self, run_dir: Path, run_name: str) -> Path:
         """Save the trained model as a bundle with metadata."""
         try:
-            # Save the SB3 model
-            model_path = run_dir / f"{run_name}.zip"
-            self.model.save(str(model_path))
+            # Save the SB3 model as zip (for SB3 compatibility)
+            model_zip_path = run_dir / f"{run_name}.zip"
+            self.model.save(str(model_zip_path))
+            
+            # Also save as policy.pt for evaluation compatibility
+            policy_path = run_dir / "policy.pt"
+            self.model.save(str(policy_path))
             
             # Export TorchScript bundle (will be implemented in policy_export.py)
             from .policy_export import export_torchscript_bundle
@@ -314,7 +318,8 @@ class TrainerCore:
                 "training_timesteps": self.training_params.get("total_timesteps", 100000),
                 "created_at": datetime.now().isoformat(),
                 "config": self.config,
-                "model_path": str(model_path),
+                "model_path": str(model_zip_path),
+                "policy_path": str(policy_path),
                 "torchscript_path": str(run_dir / f"{run_name}_torchscript.pt")
             }
             
@@ -323,8 +328,9 @@ class TrainerCore:
                 json.dump(metadata, f, indent=2)
                 # NOTE: Consider gzip compression for large metadata files in future optimization
             
-            self.logger.info(f"Model bundle saved: {model_path}")
-            return model_path
+            self.logger.info(f"Model bundle saved: {model_zip_path}")
+            self.logger.info(f"Policy model saved: {policy_path}")
+            return model_zip_path
             
         except Exception as e:
             self.logger.error(f"Failed to save model bundle: {e}")
