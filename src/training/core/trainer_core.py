@@ -222,8 +222,18 @@ class TrainerCore:
         total_timesteps = self.training_params.get("total_timesteps", 100000)
         log_interval = self.training_params.get("log_interval", 100)
 
+        # Log training configuration details
+        self.logger.info(f"=== Training Configuration ===")
+        self.logger.info(f"Total timesteps: {total_timesteps:,}")
+        self.logger.info(f"Log interval: {log_interval}")
+        self.logger.info(f"Algorithm: {self.algorithm_name}")
+        self.logger.info(f"Training params: {self.training_params}")
+        self.logger.info(f"Environment: {type(self.training_env_monitor).__name__}")
+        
         # Start training
-        self.logger.info(f"Starting training for {total_timesteps} timesteps")
+        start_time = datetime.now()
+        self.logger.info(f"Starting training at {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        self.logger.info(f"Calling model.learn() with {total_timesteps:,} timesteps...")
         try:
             self.model.learn(
                 total_timesteps=total_timesteps,
@@ -233,7 +243,11 @@ class TrainerCore:
                 reset_num_timesteps=(existing_model_path is None),
             )
             
-            self.logger.info("Training completed successfully")
+            end_time = datetime.now()
+            training_duration = end_time - start_time
+            self.logger.info(f"Training completed successfully at {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            self.logger.info(f"Training duration: {training_duration}")
+            self.logger.info(f"Timesteps per second: {total_timesteps / training_duration.total_seconds():.2f}")
             
             # Save model bundle
             model_bundle_path = self._save_model_bundle(run_dir, run_name)

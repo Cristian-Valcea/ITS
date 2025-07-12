@@ -1,11 +1,19 @@
 import sys
 import os
+import logging
 from pathlib import Path
 
 # Add project root to Python path
 project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
+
+# Configure logging to stdout with timestamps
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException, APIRouter, Request, Form
 from fastapi.templating import Jinja2Templates
