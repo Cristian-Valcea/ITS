@@ -52,18 +52,18 @@ class EarlyStoppingCallback(BaseCallback):
         self.episode_rewards = []
         self.start_time = None
         
-        self.logger = logging.getLogger(__name__)
+        self._logger = logging.getLogger(__name__)
         
     def _on_training_start(self) -> None:
         """Called when training starts."""
         import time
         self.start_time = time.time()
-        self.logger.info(f"Early stopping callback initialized:")
+        self._logger.info(f"Early stopping callback initialized:")
         if self.max_episodes:
-            self.logger.info(f"  - Max episodes: {self.max_episodes}")
+            self._logger.info(f"  - Max episodes: {self.max_episodes}")
         if self.max_training_time_minutes:
-            self.logger.info(f"  - Max training time: {self.max_training_time_minutes} minutes")
-        self.logger.info(f"  - Plateau patience: {self.plateau_patience} episodes")
+            self._logger.info(f"  - Max training time: {self.max_training_time_minutes} minutes")
+        self._logger.info(f"  - Plateau patience: {self.plateau_patience} episodes")
         
     def _on_step(self) -> bool:
         """
@@ -87,7 +87,7 @@ class EarlyStoppingCallback(BaseCallback):
                     self.best_reward = episode_reward
                     self.patience_counter = 0
                     if self.verbose >= 1:
-                        self.logger.info(f"Episode {self.episode_count}: New best reward {episode_reward:.2f}")
+                        self._logger.info(f"Episode {self.episode_count}: New best reward {episode_reward:.2f}")
                 else:
                     self.patience_counter += 1
                 
@@ -101,7 +101,7 @@ class EarlyStoppingCallback(BaseCallback):
         """Check if training should stop based on configured conditions."""
         # Check max episodes
         if self.max_episodes and self.episode_count >= self.max_episodes:
-            self.logger.info(f"Stopping: Reached max episodes ({self.max_episodes})")
+            self._logger.info(f"Stopping: Reached max episodes ({self.max_episodes})")
             return True
             
         # Check max training time
@@ -109,12 +109,12 @@ class EarlyStoppingCallback(BaseCallback):
             import time
             elapsed_minutes = (time.time() - self.start_time) / 60
             if elapsed_minutes >= self.max_training_time_minutes:
-                self.logger.info(f"Stopping: Reached max training time ({self.max_training_time_minutes} minutes)")
+                self._logger.info(f"Stopping: Reached max training time ({self.max_training_time_minutes} minutes)")
                 return True
                 
         # Check plateau
         if self.patience_counter >= self.plateau_patience:
-            self.logger.info(f"Stopping: Performance plateau detected ({self.plateau_patience} episodes without improvement)")
+            self._logger.info(f"Stopping: Performance plateau detected ({self.plateau_patience} episodes without improvement)")
             return True
             
         return False
@@ -124,7 +124,7 @@ class EarlyStoppingCallback(BaseCallback):
         if self.start_time:
             import time
             total_time = (time.time() - self.start_time) / 60
-            self.logger.info(f"Training completed after {self.episode_count} episodes in {total_time:.1f} minutes")
+            self._logger.info(f"Training completed after {self.episode_count} episodes in {total_time:.1f} minutes")
             if self.episode_rewards:
                 avg_reward = np.mean(self.episode_rewards[-10:])  # Last 10 episodes
-                self.logger.info(f"Average reward (last 10 episodes): {avg_reward:.2f}")
+                self._logger.info(f"Average reward (last 10 episodes): {avg_reward:.2f}")
