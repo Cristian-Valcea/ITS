@@ -77,12 +77,15 @@ class EarlyStoppingCallback(BaseCallback):
         if infos:
             # Iterate over all environments in case of VecEnv
             for info in infos:
+                # Initialize episode_reward to prevent UnboundLocalError
+                episode_reward = None
+                
                 if info and info.get('episode'):
                     self.episode_count += 1
                     episode_reward = info['episode']['r']
                     self.episode_rewards.append(episode_reward)
                     
-                    # Check for improvement
+                    # Check for improvement (episode_reward is guaranteed to be set here)
                     if episode_reward > self.best_reward + self.min_improvement:
                         self.best_reward = episode_reward
                         self.patience_counter = 0
