@@ -39,8 +39,8 @@ def create_training_callbacks(
     """
     Create training callbacks for model training.
     
-    This function will be populated with the actual callback creation logic
-    during the extraction phase.
+    Creates callbacks for early stopping, checkpointing, evaluation, and risk management
+    to align with TrainerCore functionality during hyperparameter optimization.
     
     Args:
         run_dir: Directory for saving training artifacts
@@ -55,9 +55,23 @@ def create_training_callbacks(
     """
     logger = logger or logging.getLogger(__name__)
     
-    # TODO: Extract from _create_callbacks in trainer_agent.py
-    
     callbacks = []
+    
+    # Add early stopping callback to prevent infinite loops (align with TrainerCore)
+    try:
+        from .early_stopping_callback import EarlyStoppingCallback
+        max_episodes = config.get("max_episodes", 50)  # Reasonable default
+        max_training_time = config.get("max_training_time_minutes", 30)  # 30 minute limit
+        early_stopping = EarlyStoppingCallback(
+            max_episodes=max_episodes,
+            max_training_time_minutes=max_training_time,
+            plateau_patience=10,
+            verbose=1
+        )
+        callbacks.append(early_stopping)
+        logger.info("Early stopping callback added to prevent infinite training")
+    except ImportError:
+        logger.warning("EarlyStoppingCallback not available, skipping early stopping")
     
     # Add checkpoint callback
     if config.get('checkpoint_freq', 0) > 0:
@@ -80,6 +94,22 @@ def create_training_callbacks(
             render=False
         )
         callbacks.append(eval_callback)
+    
+    # Add risk-aware callback if risk_advisor provided
+    if risk_advisor is not None:
+        try:
+            from .risk_callbacks import RiskAwareCallback
+            risk_config = config.get('risk_config', {})
+            risk_callback = RiskAwareCallback(
+                risk_advisor=risk_advisor,
+                penalty_weight=risk_config.get("penalty_weight", 0.1),
+                early_stop_threshold=risk_config.get("early_stop_threshold", 0.8),
+                log_freq=config.get("log_interval", 100)
+            )
+            callbacks.append(risk_callback)
+            logger.info("Risk-aware callback added to training")
+        except ImportError:
+            logger.warning("RiskAwareCallback not available, skipping risk callback")
     
     logger.info(f"Created {len(callbacks)} training callbacks for {run_name}")
     
