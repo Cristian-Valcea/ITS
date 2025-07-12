@@ -251,7 +251,7 @@ class TrainerCore:
         
         # Evaluation callback
         eval_freq = self.training_params.get("eval_freq", 5000)
-        if eval_freq > 0 and hasattr(self, 'eval_env'):
+        if eval_freq > 0 and hasattr(self, 'eval_env') and self.eval_env:
             eval_callback = EvalCallback(
                 self.eval_env,
                 best_model_save_path=str(run_dir / "best_model"),
@@ -382,6 +382,9 @@ class TrainerCore:
             self.logger.info(f"✅ Vectorized environment created with {n_envs} workers")
             self.logger.info(f"Expected throughput improvement: {n_envs}x faster rollouts")
             
+            # Store vectorized environment internally for consistency
+            self.training_env_monitor = vec_env
+            
             return vec_env
             
         except Exception as e:
@@ -470,7 +473,7 @@ class TrainerCore:
         """Get the current training state."""
         return {
             'model_created': self.model is not None,
-            'environment_set': self.training_env is not None,
+            'environment_set': self.training_env_monitor is not None,
             'risk_advisor_setup': self.risk_advisor is not None,
             'training_active': self.training_state.get('active', False),
             **self.training_state
@@ -480,16 +483,6 @@ class TrainerCore:
         """Update the training state."""
         self.training_state.update(state_update)
         
-    def log_hardware_info(self) -> None:
-        """
-        Log hardware information for training optimization.
-        
-        This method will be populated with the actual logging logic
-        during the extraction phase.
-        """
-        # TODO: Extract from _log_hardware_info in trainer_agent.py
-        pass
-        
     def validate_training_config(self) -> bool:
         """
         Validate the training configuration.
@@ -497,9 +490,9 @@ class TrainerCore:
         Returns:
             True if configuration is valid, False otherwise
         """
-        required_keys = ['algorithm', 'total_timesteps', 'learning_rate']
-        
-        for key in required_keys:
+        # Check top-level required keys
+        required_top_level = ['algorithm']
+        for key in required_top_level:
             if key not in self.config:
                 self.logger.error(f"Missing required config key: {key}")
                 return False
@@ -511,11 +504,21 @@ class TrainerCore:
             self.logger.error(f"Unsupported algorithm: {algorithm}")
             return False
             
-        # Validate timesteps
-        total_timesteps = self.config.get('total_timesteps', 0)
+        # Check nested training parameters
+        training_params = self.config.get('training_params', {})
+        if 'total_timesteps' not in training_params:
+            self.logger.error("Missing required training_params.total_timesteps")
+            return False
+            
+        total_timesteps = training_params.get('total_timesteps', 0)
         if total_timesteps <= 0:
             self.logger.error(f"Invalid total_timesteps: {total_timesteps}")
             return False
+            
+        # Check algorithm parameters (learning_rate typically in algo_params)
+        algo_params = self.config.get('algo_params', {})
+        if 'learning_rate' not in algo_params:
+            self.logger.warning("learning_rate not found in algo_params - using algorithm default")
             
         return True
         
@@ -525,12 +528,12 @@ class TrainerCore:
             del self.model
             self.model = None
             
-        if self.training_env:
+        if self.training_env_monitor:
             try:
-                self.training_env.close()
+                self.training_env_monitor.close()
             except Exception as e:
                 self.logger.warning(f"Error closing training environment: {e}")
-            self.training_env = None
+            self.training_env_monitor = None
             
         # Clear CUDA cache if using GPU
         if torch.cuda.is_available():
