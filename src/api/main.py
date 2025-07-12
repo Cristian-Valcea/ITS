@@ -67,14 +67,21 @@ app = FastAPI(title="RL Platform API")
 router = APIRouter()
 
 # --- OrchestratorAgent instance (singleton for demo) ---
-def get_orchestrator():
+def get_orchestrator(use_training_config: bool = False):
     """Get or create orchestrator instance"""
+    risk_limits_path = "config/risk_limits_training.yaml" if use_training_config else "config/risk_limits_orchestrator_test.yaml"
+    
+    logger = logging.getLogger("API.OrchestratorFactory")
+    config_type = "TRAINING (relaxed limits)" if use_training_config else "LIVE (strict limits)"
+    logger.info(f"Creating orchestrator with {config_type} - Risk config: {risk_limits_path}")
+    
     return OrchestratorAgent(
         main_config_path="config/main_config_orchestrator_test.yaml",
         model_params_path="config/model_params_orchestrator_test.yaml",
-        risk_limits_path="config/risk_limits_orchestrator_test.yaml"
+        risk_limits_path=risk_limits_path
     )
 
+# Default orchestrator for non-training operations
 orchestrator = get_orchestrator()
 
 # --- Request/Response Models ---
@@ -110,7 +117,11 @@ class TaskStatusResponse(BaseModel):
 def run_training_pipeline_sync(task_id: str, req: TrainingRequest):
     try:
         task_store[task_id]['status'] = 'running'
-        result = orchestrator.run_training_pipeline(
+        
+        # Use training-specific orchestrator with relaxed risk limits
+        training_orchestrator = get_orchestrator(use_training_config=True)
+        
+        result = training_orchestrator.run_training_pipeline(
             symbol=req.symbol,
             start_date=req.start_date,
             end_date=req.end_date,

@@ -1,0 +1,17 @@
+# Training-specific risk limits
+# More relaxed limits to allow longer episodes and better learning
+
+# Core risk limits - relaxed for training
+max_daily_drawdown_pct: 0.10  # 10% for training (vs 2.5% for live trading)
+max_hourly_turnover_ratio: 10.0  # Higher turnover allowed for exploration
+max_daily_turnover_ratio: 40.0   # Higher daily turnover for learning
+halt_on_breach: false  # Don't halt during training, let agent learn
+
+# Environment-specific settings for training
+env_turnover_penalty_factor: 0.005  # Lower penalty to encourage exploration
+env_turnover_termination_threshold_multiplier: 3.0  # Higher threshold
+liquidate_on_halt: false  # No liquidation during training
+
+# Training-specific settings
+allow_extended_episodes: true  # Let episodes run longer
+episode_timeout_multiplier: 2.0  # Allow 2x normal episode length
