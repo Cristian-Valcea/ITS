@@ -9,6 +9,16 @@ This module handles:
 - Real-time risk monitoring
 
 This is an internal module - use src.execution.OrchestratorAgent for public API.
+
+RISK CONFIGURATION DEFAULTS:
+- max_position_size: 1000 shares
+- max_order_size: 100 shares  
+- max_spread_bps: 50 basis points (0.5%)
+- max_volatility: 0.02 (2%)
+- max_volume_participation: 0.1 (10% of ADV)
+- min_order_size: 1 share
+- max_daily_loss: 1000 (currency units)
+- max_position_concentration: 0.1 (10% of portfolio)
 """
 
 import logging

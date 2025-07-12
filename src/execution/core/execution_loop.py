@@ -78,6 +78,14 @@ class ExecutionLoop:
         # Configuration parameters
         self.bar_period = config.get('bar_period_seconds', 1)  # Configurable bar period
         
+        # Shared thread pool executor for feature engineering (prevents thread explosion)
+        max_workers = config.get('execution', {}).get('feature_max_workers', None)
+        if max_workers:
+            import concurrent.futures
+            self._shared_feature_executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        else:
+            self._shared_feature_executor = None
+        
     def register_hook(self, event: str, callback: Callable) -> None:
         """Register a callback for a specific event."""
         self.hooks[event] = callback
@@ -152,7 +160,7 @@ class ExecutionLoop:
                         latest_data = data_agent.get_latest_bar(symbol)
                         if latest_data is not None and not latest_data.empty:
                             await self._process_new_bar(
-                                latest_data, symbol, feature_agent, risk_agent, live_model
+                                symbol, latest_data, feature_agent, risk_agent, live_model
                             )
                     
                     # Sleep for configurable interval before next iteration
@@ -214,15 +222,9 @@ class ExecutionLoop:
                 # NOTE: If bars are 1s and features heavy, executor queue can back up
                 # Consider monitoring executor._work_queue.qsize() in production
                 
-                # Use configured thread pool or default
-                max_workers = self.config.get('execution', {}).get('feature_max_workers', None)
-                if max_workers and not hasattr(self, '_feature_executor'):
-                    import concurrent.futures
-                    self._feature_executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-                    
-                executor = getattr(self, '_feature_executor', None)
+                # Use shared thread pool executor (prevents thread explosion across symbols)
                 features_df = await loop.run_in_executor(
-                    executor, feature_agent.engineer_features, new_bar_df
+                    self._shared_feature_executor, feature_agent.engineer_features, new_bar_df
                 )
                 if features_df is None or features_df.empty:
                     self.logger.warning("Failed to engineer features")
@@ -392,7 +394,8 @@ class ExecutionLoop:
         Current behavior: Returns empty positions (risk checks less effective)
         """
         # Check if we should fail-closed when positions unavailable
-        fail_closed = self.config.get('risk', {}).get('fail_closed_on_missing_positions', False)
+        # DEFAULT: True for production safety - must explicitly set False to allow empty positions
+        fail_closed = self.config.get('risk', {}).get('fail_closed_on_missing_positions', True)
         
         if fail_closed:
             # In fail-closed mode, raise exception to block trading
