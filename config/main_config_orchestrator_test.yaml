@@ -79,7 +79,7 @@ training:
   checkpoint_freq: 500
   data_duration_for_fetch: 10 D
   log_interval: 50
-  total_timesteps: 2000
+  total_timesteps: 100000
 live_trading:
   enabled: true
   production_model_path: models/orch_test/DQN_2025-07-09_15-41-14/policy_bundle/policy.pt

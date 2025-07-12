@@ -160,6 +160,9 @@ class IntradayTradingEnv(gym.Env):
         
         self.logger.info(f"Observation space: {self.observation_space} (Shape: {obs_shape})")
         self.logger.info(f"Action space: {self.action_space}")
+        
+        # Note: 2D observation shape (lookback_window, features) is intentional for time-series data
+        # SB3 warning about "unconventional shape" can be safely ignored for trading environments
 
         # Internal state variables
         self.current_step = 0
