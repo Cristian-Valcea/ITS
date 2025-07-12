@@ -323,7 +323,13 @@ class TrainerCore:
             
             # Export TorchScript bundle (will be implemented in policy_export.py)
             from .policy_export import export_torchscript_bundle
-            export_torchscript_bundle(self.model, run_dir, run_name)
+            torchscript_result = export_torchscript_bundle(self.model, run_dir, run_name)
+            
+            # Log TorchScript export result
+            if torchscript_result:
+                self.logger.info(f"TorchScript export successful: {torchscript_result}")
+            else:
+                self.logger.warning("TorchScript export failed, no deployment model available")
             
             # Save metadata
             metadata = {
@@ -333,7 +339,7 @@ class TrainerCore:
                 "config": self.config,
                 "model_path": str(model_zip_path),
                 "policy_path": str(policy_path),
-                "torchscript_path": str(run_dir / f"{run_name}_torchscript.pt")
+                "torchscript_path": str(torchscript_result) if torchscript_result else None
             }
             
             metadata_path = run_dir / f"{run_name}_metadata.json"
