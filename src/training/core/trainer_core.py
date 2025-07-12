@@ -261,6 +261,18 @@ class TrainerCore:
         """Create training callbacks including risk-aware callbacks."""
         callbacks = []
         
+        # Early stopping callback to prevent infinite loops
+        from .early_stopping_callback import EarlyStoppingCallback
+        max_episodes = self.training_params.get("max_episodes", 50)  # Reasonable default
+        max_training_time = self.training_params.get("max_training_time_minutes", 30)  # 30 minute limit
+        early_stopping = EarlyStoppingCallback(
+            max_episodes=max_episodes,
+            max_training_time_minutes=max_training_time,
+            plateau_patience=10,
+            verbose=1
+        )
+        callbacks.append(early_stopping)
+        
         # Checkpoint callback
         checkpoint_freq = self.training_params.get("checkpoint_freq", 10000)
         if checkpoint_freq > 0:

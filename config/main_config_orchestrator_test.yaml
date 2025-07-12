@@ -80,6 +80,8 @@ training:
   data_duration_for_fetch: 30 D
   log_interval: 50
   total_timesteps: 50000
+  max_episodes: 30  # Stop after 30 episodes to prevent infinite loops
+  max_training_time_minutes: 20  # Stop after 20 minutes maximum
 live_trading:
   enabled: true
   production_model_path: models/orch_test/DQN_2025-07-09_15-41-14/policy_bundle/policy.pt
