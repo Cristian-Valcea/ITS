@@ -372,168 +372,6 @@ def create_risk_callbacks(
     return should_stop
 
 
-class RiskPenaltyCallback:
-    """
-    Callback for applying risk penalties during training.
-    
-    This class will be populated with the actual implementation
-    during the extraction phase.
-    """
-    
-    def __init__(
-        self,
-        risk_advisor: Optional[Any],
-        penalty_weight: float = 0.1,
-        logger: Optional[logging.Logger] = None
-    ):
-        """
-        Initialize the risk penalty callback.
-        
-        Args:
-            risk_advisor: Risk advisor instance
-            penalty_weight: Weight for risk penalty
-            logger: Optional logger instance
-        """
-        self.risk_advisor = risk_advisor
-        self.penalty_weight = penalty_weight
-        self.logger = logger or logging.getLogger(__name__)
-        
-        # TODO: Extract initialization logic from trainer_agent.py
-        
-    def on_step(self) -> bool:
-        """
-        Called at each training step.
-        
-        This method will be populated with the actual step logic
-        during the extraction phase.
-        
-        Returns:
-            True to continue training, False to stop
-        """
-        # TODO: Extract from _on_step in trainer_agent.py
-        return True
-        
-    def calculate_risk_penalty(self, observation: np.ndarray) -> float:
-        """
-        Calculate risk penalty for the current observation.
-        
-        Args:
-            observation: Current environment observation
-            
-        Returns:
-            Risk penalty value
-        """
-        if self.risk_advisor is None:
-            return 0.0
-            
-        # TODO: Extract risk penalty calculation
-        return 0.0
-
-
-class RiskAwareCallback:
-    """
-    Callback for risk-aware training monitoring.
-    
-    This class will be populated with the actual implementation
-    during the extraction phase.
-    """
-    
-    def __init__(
-        self,
-        risk_advisor: Optional[Any],
-        monitoring_frequency: int = 1000,
-        logger: Optional[logging.Logger] = None
-    ):
-        """
-        Initialize the risk-aware callback.
-        
-        Args:
-            risk_advisor: Risk advisor instance
-            monitoring_frequency: How often to monitor risk metrics
-            logger: Optional logger instance
-        """
-        self.risk_advisor = risk_advisor
-        self.monitoring_frequency = monitoring_frequency
-        self.logger = logger or logging.getLogger(__name__)
-        self.step_count = 0
-        self.risk_history = []
-        
-        # TODO: Extract initialization logic from trainer_agent.py
-        
-    def on_step(self) -> bool:
-        """
-        Called at each training step.
-        
-        This method will be populated with the actual step logic
-        during the extraction phase.
-        
-        Returns:
-            True to continue training, False to stop
-        """
-        self.step_count += 1
-        
-        # TODO: Extract from _on_step in trainer_agent.py
-        
-        if self.step_count % self.monitoring_frequency == 0:
-            self._monitor_risk_metrics()
-            
-        return True
-        
-    def on_rollout_end(self) -> None:
-        """
-        Called at the end of each rollout.
-        
-        This method will be populated with the actual rollout end logic
-        during the extraction phase.
-        """
-        # TODO: Extract from _on_rollout_end in trainer_agent.py
-        pass
-        
-    def _monitor_risk_metrics(self) -> None:
-        """Monitor and log risk metrics."""
-        if self.risk_advisor is None:
-            return
-            
-        # TODO: Extract risk monitoring logic
-        risk_metrics = {}
-        
-        self.risk_history.append({
-            'step': self.step_count,
-            'metrics': risk_metrics
-        })
-        
-        self._log_risk_metrics(risk_metrics)
-        
-    def _log_risk_metrics(self, risk_metrics: Dict[str, float]) -> None:
-        """
-        Log risk metrics.
-        
-        This method will be populated with the actual logging logic
-        during the extraction phase.
-        """
-        # TODO: Extract from _log_risk_metrics in trainer_agent.py
-        pass
-        
-    def _convert_obs_to_dict(self, obs: np.ndarray) -> Dict[str, Any]:
-        """
-        Convert observation array to dictionary format.
-        
-        This method will be populated with the actual conversion logic
-        during the extraction phase.
-        """
-        # TODO: Extract from _convert_obs_to_dict in trainer_agent.py
-        return {}
-        
-    def get_risk_history(self) -> list:
-        """Get the history of risk metrics."""
-        return self.risk_history.copy()
-        
-    def reset_risk_history(self) -> None:
-        """Reset the risk metrics history."""
-        self.risk_history.clear()
-        self.step_count = 0
-
-
 def create_risk_callbacks(
     risk_advisor: Optional[Any],
     config: Dict[str, Any],
@@ -558,9 +396,9 @@ def create_risk_callbacks(
     if config.get('use_risk_penalty', False):
         penalty_weight = config.get('risk_penalty_weight', 0.1)
         risk_penalty_cb = RiskPenaltyCallback(
-            risk_advisor=risk_advisor,
-            penalty_weight=penalty_weight,
-            logger=logger
+            advisor=risk_advisor,  # Note: using 'advisor' parameter name from the real class
+            lam=penalty_weight,    # Note: using 'lam' parameter name from the real class
+            verbose=1
         )
         callbacks.append(risk_penalty_cb)
         
@@ -569,8 +407,10 @@ def create_risk_callbacks(
         monitoring_freq = config.get('risk_monitoring_frequency', 1000)
         risk_aware_cb = RiskAwareCallback(
             risk_advisor=risk_advisor,
-            monitoring_frequency=monitoring_freq,
-            logger=logger
+            penalty_weight=penalty_weight if 'penalty_weight' in locals() else 0.1,
+            early_stop_threshold=config.get('early_stop_threshold', 0.8),
+            log_freq=monitoring_freq,
+            verbose=1
         )
         callbacks.append(risk_aware_cb)
         
