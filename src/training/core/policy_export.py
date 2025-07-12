@@ -56,7 +56,15 @@ def export_torchscript_bundle(
                 # Convert observation to the format expected by the policy
                 device = next(self.policy.parameters()).device  # Get policy device
                 
-                if isinstance(obs, torch.Tensor):
+                # Handle different observation types
+                if isinstance(obs, dict):
+                    # Handle Dict observations - convert each value to proper device
+                    obs_tensor = {
+                        key: value.to(device) if isinstance(value, torch.Tensor) 
+                        else torch.tensor(value, dtype=torch.float32, device=device)
+                        for key, value in obs.items()
+                    }
+                elif isinstance(obs, torch.Tensor):
                     obs_tensor = obs.to(device)
                 else:
                     obs_tensor = torch.FloatTensor(obs).to(device)
@@ -82,11 +90,38 @@ def export_torchscript_bundle(
         obs_space = model.observation_space
         device = next(policy_wrapper.policy.parameters()).device  # Get policy device
         
-        if hasattr(obs_space, 'shape'):
-            example_obs = torch.randn(1, *obs_space.shape, device=device)
-        else:
-            # Fallback for discrete spaces
-            example_obs = torch.randn(1, 10, device=device)  # Default size
+        # Handle different observation space types
+        try:
+            if hasattr(obs_space, 'sample'):
+                # Use observation_space.sample() for robust handling of Dict/Box/Discrete spaces
+                example_obs_np = obs_space.sample()
+                
+                # Convert to tensor based on observation type
+                if isinstance(example_obs_np, dict):
+                    # Handle Dict observation spaces
+                    example_obs = {
+                        key: torch.tensor(value, dtype=torch.float32, device=device).unsqueeze(0)
+                        for key, value in example_obs_np.items()
+                    }
+                elif isinstance(example_obs_np, np.ndarray):
+                    # Handle Box observation spaces
+                    example_obs = torch.tensor(example_obs_np, dtype=torch.float32, device=device).unsqueeze(0)
+                else:
+                    # Handle discrete or other spaces
+                    example_obs = torch.tensor([example_obs_np], dtype=torch.float32, device=device)
+                    
+            elif hasattr(obs_space, 'shape'):
+                # Fallback: use shape for Box spaces
+                example_obs = torch.randn(1, *obs_space.shape, device=device)
+            else:
+                # Final fallback for unknown spaces
+                logger.warning("Unknown observation space type, using default size")
+                example_obs = torch.randn(1, 10, device=device)
+                
+        except Exception as obs_error:
+            logger.warning(f"Failed to create example observation: {obs_error}, using fallback")
+            # Safe fallback
+            example_obs = torch.randn(1, 10, device=device)
         
         # Trace the model
         try:
