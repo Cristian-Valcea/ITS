@@ -57,9 +57,8 @@ class EvaluatorAgent(BaseAgent):
         Raises:
             ValueError: If env is not an IntradayTradingEnv instance
         """
-        # Check if env is IntradayTradingEnv or a wrapped version (e.g., FlattenObservation)
-        if not (isinstance(env, IntradayTradingEnv) or 
-                (hasattr(env, 'env') and isinstance(env.env, IntradayTradingEnv))):
+        # Check if the unwrapped environment is IntradayTradingEnv (handles any level of wrapping)
+        if not isinstance(env.unwrapped, IntradayTradingEnv):
             self.logger.error("Invalid environment type provided to EvaluatorAgent.")
             raise ValueError("Environment must be an IntradayTradingEnv or a wrapped IntradayTradingEnv.")
         
@@ -73,13 +72,7 @@ class EvaluatorAgent(BaseAgent):
         Returns:
             The unwrapped IntradayTradingEnv instance
         """
-        if isinstance(self.evaluation_env, IntradayTradingEnv):
-            return self.evaluation_env
-        elif hasattr(self.evaluation_env, 'env') and isinstance(self.evaluation_env.env, IntradayTradingEnv):
-            return self.evaluation_env.env
-        else:
-            # This should not happen due to the type check in set_env
-            raise ValueError("Cannot unwrap environment to IntradayTradingEnv")
+        return self.evaluation_env.unwrapped
 
     def load_model(self, model_path: str, algorithm_name: str = "DQN") -> bool:
         """
