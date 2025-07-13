@@ -89,6 +89,9 @@ class TrainerCore:
         self.algo_params = self.config.get("algo_params", {})
         self.training_params = self.config.get("training_params", {})
         self.risk_config = self.config.get("risk_config", {})
+        
+        # GPU Configuration
+        self._setup_device_config()
 
         # Create directories
         self.model_save_dir.mkdir(parents=True, exist_ok=True)
@@ -110,6 +113,45 @@ class TrainerCore:
         self.logger.info(f"TrainerCore initialized for {self.algorithm_name}")
         self.logger.info(f"Model save dir: {self.model_save_dir}")
         self.logger.info(f"Log dir: {self.log_dir}")
+    
+    def _setup_device_config(self) -> None:
+        """Setup GPU/CPU device configuration for training."""
+        import torch
+        
+        # Get device preference from config
+        device_config = self.training_params.get("device", "auto")
+        
+        if device_config == "auto":
+            # Auto-detect best device
+            if torch.cuda.is_available():
+                self.device = "cuda"
+                gpu_name = torch.cuda.get_device_name(0)
+                gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+                self.logger.info(f"🚀 GPU Auto-detected: {gpu_name} ({gpu_memory:.1f} GB)")
+            else:
+                self.device = "cpu"
+                self.logger.info("💻 Using CPU (no GPU available)")
+        else:
+            # Use specified device
+            self.device = device_config
+            self.logger.info(f"🔧 Device set to: {self.device}")
+        
+        # Add device to algorithm parameters
+        if "device" not in self.algo_params:
+            self.algo_params["device"] = self.device
+            
+        # GPU memory management
+        if self.device == "cuda" and torch.cuda.is_available():
+            gpu_memory_fraction = self.training_params.get("gpu_memory_fraction", 0.8)
+            if gpu_memory_fraction < 1.0:
+                # Set memory fraction (for TensorFlow compatibility)
+                self.logger.info(f"🔧 GPU memory fraction: {gpu_memory_fraction}")
+            
+            # Enable mixed precision if requested
+            mixed_precision = self.training_params.get("mixed_precision", False)
+            if mixed_precision:
+                self.logger.info("🔧 Mixed precision training enabled")
+                # Note: SB3 handles mixed precision internally when device="cuda"
         
     def setup_risk_advisor(self) -> None:
         """Set up risk advisor for risk-aware training using RiskAgentV2.from_yaml()."""

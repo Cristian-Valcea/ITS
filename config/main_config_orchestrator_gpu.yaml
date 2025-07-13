@@ -1,0 +1,122 @@
+data_augmentation:
+  noise_injection: true
+  noise_level: 0.02
+  random_scaling: true
+  scale_max: 1.02
+  scale_min: 0.98
+  window_size: 60
+  window_slicing: false
+ibkr_conn:
+  host: 127.0.0.1
+  port: 7497
+  clientId: 103
+  timeout: 30
+  use_cache: true
+  cache_duration_minutes: 5
+  simulation_mode: true
+data_preprocessing:
+  impute_missing: true
+  normalize: false
+feature_store:
+  force_duckdb: true  # Skip PostgreSQL for training jobs
+environment:
+  initial_capital: 50000.0
+  log_trades_in_env: true
+  position_sizing_pct_capital: 0.25
+  reward_scaling: 0.01  # Scale rewards to ±1 range (divide by 100)
+  trade_cooldown_steps: 0
+  transaction_cost_pct: 0.001
+evaluation:
+  data_duration_for_fetch: 5 D
+  metrics:
+  - total_return_pct
+  - sharpe_ratio
+  - max_drawdown_pct
+  - num_trades
+  - turnover_ratio_period
+  - win_rate_pct
+feature_engineering:
+  ema:
+    windows:
+    - 10
+    - 20
+  feature_cols_to_scale:
+  - rsi_14
+  - ema_10
+  - ema_20
+  - hour_sin
+  - hour_cos
+  features:
+  - RSI
+  - EMA
+  - Time
+  lookback_window: 3
+  observation_feature_cols:
+  - rsi_14
+  - ema_10
+  - ema_20
+  - hour_sin
+  - hour_cos
+  rsi:
+    window: 14
+  time_features:
+    include_hour: true
+    include_minute: false
+    include_day_of_week: false
+    include_month: false
+    include_quarter: false
+    include_year: false
+    use_cyclical_encoding: true
+logging:
+  level: INFO
+  log_to_file: true
+  log_file_path: logs/orchestrator_gpu.log
+  max_file_size_mb: 50
+  backup_count: 5
+orchestrator:
+  data_dir: data/raw_orch_gpu
+  feature_dir: data/processed_orch_gpu
+  model_dir: models/orch_gpu
+  reports_dir: reports/orch_gpu
+  run_evaluation: true
+  run_training: true
+  save_model: true
+  save_reports: true
+risk_management:
+  max_daily_drawdown_pct: 0.05
+  hourly_turnover_cap: 3.0
+  terminate_on_turnover_breach: false  # Don't terminate, just penalize
+  turnover_penalty_factor: 0.02
+  turnover_termination_threshold_multiplier: 2.0
+training:
+  algorithm: DQN
+  # GPU-Optimized hyperparameters
+  buffer_size: 500000  # Increased for GPU memory (was 200k)
+  batch_size: 512      # Larger batches for GPU efficiency (was 256)
+  exploration_fraction: 0.2
+  exploration_final_eps: 0.05
+  exploration_initial_eps: 1.0
+  gamma: 0.99
+  gradient_steps: 1
+  learning_rate: 0.0001
+  learning_starts: 1000
+  target_update_interval: 1000
+  train_freq: 4
+  # Extended training for GPU
+  total_timesteps: 500000  # Increased from 300k for GPU power
+  max_training_time_minutes: 360  # 6 hours for comprehensive training
+  # GPU-optimized early stopping
+  early_stopping:
+    patience: 30  # More patience for longer training
+    min_improvement: 0.001
+    check_freq: 1000
+    verbose: true
+  # Model saving
+  save_freq: 10000
+  save_replay_buffer: false
+  tensorboard_log: logs/tensorboard_gpu
+  verbose: 1
+  # GPU-specific settings
+  device: auto  # Will auto-detect GPU
+  gpu_memory_fraction: 0.8  # Use 80% of GPU memory
+  mixed_precision: true  # Enable mixed precision for faster training
