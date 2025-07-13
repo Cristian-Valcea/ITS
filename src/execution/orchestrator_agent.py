@@ -534,8 +534,8 @@ class OrchestratorAgent:
         # For backward compatibility, extract model path from bundle
         bundle_path = Path(policy_bundle_path)
         if bundle_path.suffix == '.zip':
-            # If bundle is a zip file, the policy is inside the same directory
-            trained_model_path = str(bundle_path.parent / "policy.pt")
+            # If bundle is a zip file, use it directly (contains complete SB3 model)
+            trained_model_path = str(bundle_path)
         else:
             # If bundle is a directory, policy.pt is inside it
             trained_model_path = str(bundle_path / "policy.pt")
