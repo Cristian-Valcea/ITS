@@ -532,7 +532,13 @@ class OrchestratorAgent:
         self.logger.info(f"TrainerAgent completed training. Policy bundle saved at: {policy_bundle_path}")
         
         # For backward compatibility, extract model path from bundle
-        trained_model_path = str(Path(policy_bundle_path) / "policy.pt")
+        bundle_path = Path(policy_bundle_path)
+        if bundle_path.suffix == '.zip':
+            # If bundle is a zip file, the policy is inside the same directory
+            trained_model_path = str(bundle_path.parent / "policy.pt")
+        else:
+            # If bundle is a directory, policy.pt is inside it
+            trained_model_path = str(bundle_path / "policy.pt")
 
         self._trigger_hook('after_training', trained_model_path=trained_model_path)
 
