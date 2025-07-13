@@ -52,9 +52,9 @@ algorithm_params:
 
   # Prioritized Experience Replay (PER) for DQN/C51 - if use_per is true in c51_features
   # These are SB3 DQN's PER parameters. C51 might have its own if it's a separate class.
-  prioritized_replay_alpha: 0.6      # Alpha parameter for PER (how much prioritization to use).
-  prioritized_replay_beta: 0.4       # Beta parameter for PER (controls importance sampling).
-  prioritized_replay_eps: 0.00001    # Epsilon to add to priorities for stability.
+  # prioritized_replay_alpha: 0.6      # Alpha parameter for PER (how much prioritization to use).
+  # prioritized_replay_beta: 0.4       # Beta parameter for PER (controls importance sampling).
+  # prioritized_replay_eps: 0.00001    # Epsilon to add to priorities for stability.
   # replay_buffer_class: null # Set to PrioritizedReplayBuffer if PER is used and not default.
   # replay_buffer_kwargs: {}  # Arguments for the replay buffer class.
 

@@ -25,8 +25,51 @@ class TimeFeatureCalculator(BaseFeatureCalculator):
             return data
             
         df = data.copy()
-        time_features = self.config.get('time_features', [])
-        sin_cos_encode = self.config.get('sin_cos_encode', [])
+        
+        # Handle both old and new config formats
+        time_features_config = self.config.get('time_features', {})
+        if isinstance(time_features_config, dict):
+            # New format: time_features: {include_hour: true, use_cyclical_encoding: true}
+            include_hour = time_features_config.get('include_hour', False)
+            include_minute = time_features_config.get('include_minute', False)
+            include_day_of_week = time_features_config.get('include_day_of_week', False)
+            include_month = time_features_config.get('include_month', False)
+            use_cyclical = time_features_config.get('use_cyclical_encoding', False)
+            
+            # Add time features based on new config
+            if include_hour:
+                df['hour_of_day'] = df.index.hour
+                if use_cyclical:
+                    df['hour_sin'] = np.sin(2 * np.pi * df['hour_of_day'] / 24.0)
+                    df['hour_cos'] = np.cos(2 * np.pi * df['hour_of_day'] / 24.0)
+                    df.drop(columns=['hour_of_day'], inplace=True)
+                    
+            if include_minute:
+                df['minute_of_hour'] = df.index.minute
+                if use_cyclical:
+                    df['minute_sin'] = np.sin(2 * np.pi * df['minute_of_hour'] / 60.0)
+                    df['minute_cos'] = np.cos(2 * np.pi * df['minute_of_hour'] / 60.0)
+                    df.drop(columns=['minute_of_hour'], inplace=True)
+                    
+            if include_day_of_week:
+                df['day_of_week'] = df.index.dayofweek
+                if use_cyclical:
+                    df['day_of_week_sin'] = np.sin(2 * np.pi * df['day_of_week'] / 7.0)
+                    df['day_of_week_cos'] = np.cos(2 * np.pi * df['day_of_week'] / 7.0)
+                    df.drop(columns=['day_of_week'], inplace=True)
+                    
+            if include_month:
+                df['month_of_year'] = df.index.month
+                if use_cyclical:
+                    df['month_sin'] = np.sin(2 * np.pi * df['month_of_year'] / 12.0)
+                    df['month_cos'] = np.cos(2 * np.pi * df['month_of_year'] / 12.0)
+                    df.drop(columns=['month_of_year'], inplace=True)
+                    
+            return df
+        else:
+            # Old format: time_features: ['hour_of_day', 'minute_of_hour']
+            time_features = time_features_config if isinstance(time_features_config, list) else []
+            sin_cos_encode = self.config.get('sin_cos_encode', [])
         
         # Add basic time features
         if 'hour_of_day' in time_features:
@@ -89,35 +132,70 @@ class TimeFeatureCalculator(BaseFeatureCalculator):
     
     def get_feature_names(self) -> List[str]:
         """Get time feature names."""
-        time_features = self.config.get('time_features', [])
-        sin_cos_encode = self.config.get('sin_cos_encode', [])
+        time_features_config = self.config.get('time_features', {})
         feature_names = []
         
-        # Add basic time features (if not sin/cos encoded)
-        if 'hour_of_day' in time_features:
-            if 'hour_of_day' in sin_cos_encode:
-                feature_names.extend(['hour_sin', 'hour_cos'])
-            else:
-                feature_names.append('hour_of_day')
-                
-        if 'minute_of_hour' in time_features:
-            if 'minute_of_hour' in sin_cos_encode:
-                feature_names.extend(['minute_sin', 'minute_cos'])
-            else:
-                feature_names.append('minute_of_hour')
-                
-        if 'day_of_week' in time_features:
-            if 'day_of_week' in sin_cos_encode:
-                feature_names.extend(['day_of_week_sin', 'day_of_week_cos'])
-            else:
-                feature_names.append('day_of_week')
-                
-        if 'month_of_year' in time_features:
-            if 'month_of_year' in sin_cos_encode:
-                feature_names.extend(['month_sin', 'month_cos'])
-            else:
-                feature_names.append('month_of_year')
-                
+        if isinstance(time_features_config, dict):
+            # New format
+            include_hour = time_features_config.get('include_hour', False)
+            include_minute = time_features_config.get('include_minute', False)
+            include_day_of_week = time_features_config.get('include_day_of_week', False)
+            include_month = time_features_config.get('include_month', False)
+            use_cyclical = time_features_config.get('use_cyclical_encoding', False)
+            
+            if include_hour:
+                if use_cyclical:
+                    feature_names.extend(['hour_sin', 'hour_cos'])
+                else:
+                    feature_names.append('hour_of_day')
+                    
+            if include_minute:
+                if use_cyclical:
+                    feature_names.extend(['minute_sin', 'minute_cos'])
+                else:
+                    feature_names.append('minute_of_hour')
+                    
+            if include_day_of_week:
+                if use_cyclical:
+                    feature_names.extend(['day_of_week_sin', 'day_of_week_cos'])
+                else:
+                    feature_names.append('day_of_week')
+                    
+            if include_month:
+                if use_cyclical:
+                    feature_names.extend(['month_sin', 'month_cos'])
+                else:
+                    feature_names.append('month_of_year')
+        else:
+            # Old format
+            time_features = time_features_config if isinstance(time_features_config, list) else []
+            sin_cos_encode = self.config.get('sin_cos_encode', [])
+            
+            # Add basic time features (if not sin/cos encoded)
+            if 'hour_of_day' in time_features:
+                if 'hour_of_day' in sin_cos_encode:
+                    feature_names.extend(['hour_sin', 'hour_cos'])
+                else:
+                    feature_names.append('hour_of_day')
+                    
+            if 'minute_of_hour' in time_features:
+                if 'minute_of_hour' in sin_cos_encode:
+                    feature_names.extend(['minute_sin', 'minute_cos'])
+                else:
+                    feature_names.append('minute_of_hour')
+                    
+            if 'day_of_week' in time_features:
+                if 'day_of_week' in sin_cos_encode:
+                    feature_names.extend(['day_of_week_sin', 'day_of_week_cos'])
+                else:
+                    feature_names.append('day_of_week')
+                    
+            if 'month_of_year' in time_features:
+                if 'month_of_year' in sin_cos_encode:
+                    feature_names.extend(['month_sin', 'month_cos'])
+                else:
+                    feature_names.append('month_of_year')
+                    
         return feature_names
     
     def get_max_lookback(self) -> int:

@@ -103,12 +103,14 @@ def export_torchscript_bundle(
                         # Default to long for discrete actions
                         return torch.tensor([action], dtype=torch.long, device=device)
         
-        # Wrap the policy
+        # Wrap the policy and move to CPU for export
         policy_wrapper = PolicyWrapper(model.policy)
+        policy_wrapper.to("cpu")  # Move to CPU for TorchScript export
+        policy_wrapper.eval()     # Set to evaluation mode
         
         # Create example input for tracing
         obs_space = model.observation_space
-        device = next(policy_wrapper.policy.parameters()).device  # Get policy device
+        device = "cpu"  # Force CPU for export
         
         # Handle different observation space types
         try:

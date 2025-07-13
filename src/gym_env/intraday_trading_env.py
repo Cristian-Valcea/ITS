@@ -56,6 +56,9 @@ class IntradayTradingEnv(gym.Env):
                  trade_cooldown_steps: int = 0, # Number of steps to wait after a trade
                  terminate_on_turnover_breach: bool = False, # Terminate if turnover cap breached significantly
                  turnover_termination_threshold_multiplier: float = 2.0, # e.g. 2x the cap
+                 # Enhanced turnover enforcement parameters
+                 turnover_exponential_penalty_factor: float = 0.1, # Factor for quadratic penalty
+                 turnover_termination_penalty_pct: float = 0.05, # Additional penalty on termination (% of portfolio)
                  # New parameters for Kyle Lambda fill simulation
                  enable_kyle_lambda_fills: bool = True, # Enable Kyle Lambda fill price simulation
                  fill_simulator_config: dict = None, # Configuration for fill simulator
@@ -78,6 +81,8 @@ class IntradayTradingEnv(gym.Env):
             trade_cooldown_steps (int): Minimum number of steps to wait before executing another trade.
             terminate_on_turnover_breach (bool): Whether to terminate the episode if hourly turnover cap is breached by a significant margin.
             turnover_termination_threshold_multiplier (float): Multiplier for `hourly_turnover_cap` to determine termination threshold.
+            turnover_exponential_penalty_factor (float): Factor for quadratic penalty on excess turnover (makes penalty grow exponentially).
+            turnover_termination_penalty_pct (float): Additional penalty applied on termination due to turnover breach (as % of portfolio value).
             enable_kyle_lambda_fills (bool): Whether to use Kyle Lambda fill price simulation instead of mid-price fills.
             fill_simulator_config (dict): Configuration for the fill price simulator.
             volume_data (pd.Series): Optional volume data for better market impact modeling.
@@ -112,6 +117,8 @@ class IntradayTradingEnv(gym.Env):
         self.trade_cooldown_steps = trade_cooldown_steps
         self.terminate_on_turnover_breach = terminate_on_turnover_breach
         self.turnover_termination_threshold_multiplier = turnover_termination_threshold_multiplier
+        self.turnover_exponential_penalty_factor = turnover_exponential_penalty_factor
+        self.turnover_termination_penalty_pct = turnover_termination_penalty_pct
         
         # Kyle Lambda fill simulation setup
         self.enable_kyle_lambda_fills = enable_kyle_lambda_fills
@@ -183,6 +190,11 @@ class IntradayTradingEnv(gym.Env):
         if self.log_trades_flag:
             self.trade_log = []
         self.portfolio_history = [] # To log portfolio value at each step
+        
+        # Action tracking for diagnostics
+        from collections import Counter
+        self.action_counter = Counter()  # Track action distribution
+        self.position_history = []  # Track position changes for diagnostics
 
         self.reset()
 
@@ -306,6 +318,13 @@ class IntradayTradingEnv(gym.Env):
             self.hourly_traded_value = 0.0
 
     def reset(self, seed=None, options=None):
+        # Log action histogram from previous episode (if any)
+        if hasattr(self, 'action_counter') and sum(self.action_counter.values()) > 0:
+            total_actions = sum(self.action_counter.values())
+            action_names = {0: 'SELL', 1: 'HOLD', 2: 'BUY'}
+            histogram_str = ", ".join([f"{action_names.get(action, action)}: {count}" for action, count in sorted(self.action_counter.items())])
+            self.logger.info(f"🎯 ACTION HISTOGRAM (Total: {total_actions}): {histogram_str}")
+        
         super().reset(seed=seed)
 
         self.current_step = 0
@@ -326,6 +345,11 @@ class IntradayTradingEnv(gym.Env):
         if self.log_trades_flag:
             self.trade_log = []
         self.portfolio_history = [self.initial_capital]
+        
+        # Reset action counter for new episode
+        from collections import Counter
+        self.action_counter = Counter()
+        self.position_history = []  # Reset position tracking
 
         # Reset fill simulator
         if self.enable_kyle_lambda_fills and self.fill_simulator:
@@ -362,6 +386,10 @@ class IntradayTradingEnv(gym.Env):
         elif isinstance(action, np.generic):  # Handles numpy scalar types
             action = int(action)
         assert isinstance(action, (int, np.integer)), f"Action must be int, got {type(action)}"
+        
+        # Track action for diagnostics
+        self.action_counter[action] += 1
+        
         desired_position_signal = self._action_map[action] # -1 (Sell), 0 (Hold), 1 (Buy)
         current_price = self._get_current_price()
         timestamp = self.dates[self.current_step]
@@ -402,7 +430,7 @@ class IntradayTradingEnv(gym.Env):
 
         # --- Cooldown Check ---
         if self.steps_since_last_trade < self.trade_cooldown_steps and desired_position_signal != self.current_position:
-            self.logger.debug(f"Step {self.current_step}: Trade cooldown active. Steps since last trade: {self.steps_since_last_trade}/{self.trade_cooldown_steps}. Forcing HOLD.")
+            self.logger.info(f"🕐 TRADE COOLDOWN: Step {self.current_step}, {self.steps_since_last_trade}/{self.trade_cooldown_steps} bars since last trade. Forcing HOLD (Action {action} → HOLD).")
             desired_position_signal = self.current_position # Force hold
             # Action itself is not changed, only its effect for changing position.
 
@@ -421,7 +449,13 @@ class IntradayTradingEnv(gym.Env):
                 
                 realized_pnl_this_step = (exit_fill_price - self.entry_price) * self.position_quantity
                 self.current_capital += (self.position_quantity * exit_fill_price) # Add sale proceeds to cash
-                self.current_capital -= (self.transaction_cost_pct * self.position_quantity * exit_fill_price) # Exit cost
+                
+                # 🔍 DIAGNOSTIC: Fee calculation
+                fee_amount = self.transaction_cost_pct * self.position_quantity * exit_fill_price
+                expected_fee = self.position_quantity * exit_fill_price * 0.001  # Expected: shares * price * 0.001
+                self.logger.info(f"🔍 FEE CALC: Shares={self.position_quantity:.2f}, Price={exit_fill_price:.4f}, Rate={self.transaction_cost_pct:.4f} -> Fee=${fee_amount:.4f} (Expected=${expected_fee:.4f})")
+                
+                self.current_capital -= fee_amount # Exit cost
                 trade_value_executed += self.position_quantity * exit_fill_price
                 shares_traded_this_step += self.position_quantity
                 
@@ -438,7 +472,12 @@ class IntradayTradingEnv(gym.Env):
                 
                 realized_pnl_this_step = (self.entry_price - cover_fill_price) * self.position_quantity
                 self.current_capital -= (self.position_quantity * cover_fill_price) # Cost to buy back
-                self.current_capital -= (self.transaction_cost_pct * self.position_quantity * cover_fill_price) # Exit cost
+                
+                # 🔍 DIAGNOSTIC: Fee calculation (SHORT COVER)
+                fee_amount = self.transaction_cost_pct * self.position_quantity * cover_fill_price
+                self.logger.info(f"🔍 FEE CALC (SHORT COVER): Shares={self.position_quantity:.2f}, Price={cover_fill_price:.4f}, Rate={self.transaction_cost_pct:.4f} -> Fee=${fee_amount:.4f}")
+                
+                self.current_capital -= fee_amount # Exit cost
                 trade_value_executed += self.position_quantity * cover_fill_price
                 shares_traded_this_step += self.position_quantity
                 
@@ -472,7 +511,12 @@ class IntradayTradingEnv(gym.Env):
                     
                     self.entry_price = entry_fill_price
                     self.current_capital -= (self.position_quantity * entry_fill_price) # Cash used
-                    self.current_capital -= (self.transaction_cost_pct * self.position_quantity * entry_fill_price) # Entry cost
+                    
+                    # 🔍 DIAGNOSTIC: Fee calculation (LONG ENTRY)
+                    fee_amount = self.transaction_cost_pct * self.position_quantity * entry_fill_price
+                    self.logger.info(f"🔍 FEE CALC (LONG ENTRY): Shares={self.position_quantity:.2f}, Price={entry_fill_price:.4f}, Rate={self.transaction_cost_pct:.4f} -> Fee=${fee_amount:.4f}")
+                    
+                    self.current_capital -= fee_amount # Entry cost
                     trade_value_executed += self.position_quantity * entry_fill_price
                     shares_traded_this_step += self.position_quantity
                     
@@ -500,7 +544,12 @@ class IntradayTradingEnv(gym.Env):
                     
                     self.entry_price = entry_fill_price
                     self.current_capital += (self.position_quantity * entry_fill_price) # Cash received from shorting (simplified)
-                    self.current_capital -= (self.transaction_cost_pct * self.position_quantity * entry_fill_price) # Entry cost
+                    
+                    # 🔍 DIAGNOSTIC: Fee calculation (SHORT ENTRY)
+                    fee_amount = self.transaction_cost_pct * self.position_quantity * entry_fill_price
+                    self.logger.info(f"🔍 FEE CALC (SHORT ENTRY): Shares={self.position_quantity:.2f}, Price={entry_fill_price:.4f}, Rate={self.transaction_cost_pct:.4f} -> Fee=${fee_amount:.4f}")
+                    
+                    self.current_capital -= fee_amount # Entry cost
                     trade_value_executed += self.position_quantity * entry_fill_price
                     shares_traded_this_step += self.position_quantity
                     
@@ -514,12 +563,23 @@ class IntradayTradingEnv(gym.Env):
                 self.entry_price = 0.0
                 self.position_quantity = 0.0
         
+        # 🔍 DIAGNOSTIC: Track position changes
+        self.position_history.append({
+            'step': self.current_step,
+            'position_signal': self.current_position,
+            'position_quantity': self.position_quantity,
+            'action': action
+        })
+        
         # Update portfolio value after any transactions
         self._update_portfolio_value()
         reward = (self.portfolio_value - portfolio_value_before_action) # Reward is change in total portfolio value
 
         # --- Log trade if executed ---
         if transaction_executed:
+            # 🔍 DIAGNOSTIC: Trade executed
+            self.logger.info(f"🔍 TRADE EXECUTED: Step {self.current_step}, Action {action} -> Position {desired_position_signal}, Shares: {shares_traded_this_step:.2f}, Value: ${trade_value_executed:.2f}")
+            
             if self.log_trades_flag:
                 trade_details = {
                     'step': self.current_step,
@@ -539,7 +599,9 @@ class IntradayTradingEnv(gym.Env):
             self._update_hourly_trades(timestamp) # Prune old trades
             self.trades_this_hour.append((timestamp, trade_value_executed, shares_traded_this_step))
             self.hourly_traded_value += trade_value_executed
-
+        else:
+            # 🔍 DIAGNOSTIC: No trade executed
+            self.logger.debug(f"🔍 NO TRADE: Step {self.current_step}, Action {action} -> Position {desired_position_signal} (current: {self.current_position})")
 
         # --- Risk Management Checks ---
         terminated = False
@@ -554,21 +616,34 @@ class IntradayTradingEnv(gym.Env):
             # reward -= drawdown_penalty 
             # Reward already reflects the loss in portfolio value. Additional penalty can be added if desired.
 
-        # 2. Hourly Turnover Cap
+        # 2. Hourly Turnover Cap - BINDING ENFORCEMENT
         if self.start_of_day_portfolio_value > 0:
             current_hourly_turnover_ratio = self.hourly_traded_value / self.start_of_day_portfolio_value
             if current_hourly_turnover_ratio > self.hourly_turnover_cap:
                 self.logger.warning(f"Step {self.current_step}: Hourly turnover cap breached! Ratio: {current_hourly_turnover_ratio:.2f}x, Limit: {self.hourly_turnover_cap:.2f}x.")
-                # Apply penalty based on excess turnover
-                excess_turnover = current_hourly_turnover_ratio - self.hourly_turnover_cap
-                turnover_penalty = excess_turnover * self.start_of_day_portfolio_value * self.turnover_penalty_factor
-                reward -= turnover_penalty
                 
+                # 🚨 STRONG NEGATIVE REWARD for turnover breach
+                excess_turnover = current_hourly_turnover_ratio - self.hourly_turnover_cap
+                
+                # Progressive penalty: gets exponentially worse with higher excess
+                base_penalty = excess_turnover * self.start_of_day_portfolio_value * self.turnover_penalty_factor
+                exponential_penalty = (excess_turnover ** 2) * self.start_of_day_portfolio_value * self.turnover_exponential_penalty_factor
+                total_turnover_penalty = base_penalty + exponential_penalty
+                
+                reward -= total_turnover_penalty
+                
+                self.logger.warning(f"Step {self.current_step}: Applied turnover penalty: ${total_turnover_penalty:.2f} (base: ${base_penalty:.2f}, exponential: ${exponential_penalty:.2f})")
+                
+                # 🛑 TERMINATION OPTIONS
                 if self.terminate_on_turnover_breach:
                     termination_threshold = self.hourly_turnover_cap * self.turnover_termination_threshold_multiplier
                     if current_hourly_turnover_ratio > termination_threshold:
                         self.logger.warning(f"Step {self.current_step}: Terminating due to excessive hourly turnover! Ratio: {current_hourly_turnover_ratio:.2f}x, Cap: {self.hourly_turnover_cap:.2f}x, Termination Threshold: {termination_threshold:.2f}x")
                         terminated = True
+                        # Additional termination penalty
+                        termination_penalty = self.start_of_day_portfolio_value * self.turnover_termination_penalty_pct
+                        reward -= termination_penalty
+                        self.logger.warning(f"Step {self.current_step}: Applied termination penalty: ${termination_penalty:.2f} ({self.turnover_termination_penalty_pct:.1%} of portfolio)")
         
         # --- Advance Time & Log Portfolio ---
         self.current_step += 1
@@ -640,7 +715,10 @@ class IntradayTradingEnv(gym.Env):
             "max_daily_drawdown_pct": self.max_daily_drawdown_pct,
             "transaction_cost_pct": self.transaction_cost_pct,
             "hourly_turnover_cap": self.hourly_turnover_cap,
-            "current_hourly_traded_value": self.hourly_traded_value
+            "current_hourly_traded_value": self.hourly_traded_value,
+            # 🔍 DIAGNOSTIC: Position tracking
+            "portfolio_shares": self.position_quantity,  # Current shares held
+            "position_signal_history": getattr(self, 'position_history', [])  # Track position changes
         }
 
     def get_trade_log(self):
@@ -722,7 +800,10 @@ if __name__ == '__main__':
         'position_sizing_pct_capital': 0.30, # Use 30% of capital for sizing
         'trade_cooldown_steps': 2,           # Wait 2 steps after a trade
         'terminate_on_turnover_breach': True,# Terminate if turnover is >> cap
-        'turnover_termination_threshold_multiplier': 1.5 # Terminate if turnover > 1.5x cap
+        'turnover_termination_threshold_multiplier': 1.5, # Terminate if turnover > 1.5x cap
+        # Enhanced turnover enforcement
+        'turnover_exponential_penalty_factor': 0.2, # Strong quadratic penalty
+        'turnover_termination_penalty_pct': 0.10    # 10% portfolio penalty on termination
     }
     env = IntradayTradingEnv(**env_config)
 

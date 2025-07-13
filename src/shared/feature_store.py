@@ -648,29 +648,41 @@ class FeatureStore:
             
             file_size = cache_file.stat().st_size
             
-            # Use separate connection for thread safety - let context manager handle transactions
+            # Use separate connection for thread safety with retry for write conflicts
             with MANIFEST_INSERT_LATENCY.labels(backend='duckdb', symbol=symbol).time():
-                with duckdb.connect(str(self.db_path)) as conn:
-                    conn.execute("""
-                        INSERT INTO manifest 
-                        (key, path, symbol, start_ts, end_ts, rows, file_size_bytes) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT (key) DO UPDATE SET
-                            path = EXCLUDED.path,
-                            symbol = EXCLUDED.symbol,
-                            start_ts = EXCLUDED.start_ts,
-                            end_ts = EXCLUDED.end_ts,
-                            rows = EXCLUDED.rows,
-                            file_size_bytes = EXCLUDED.file_size_bytes,
-                            last_accessed_ts = now(),
-                            access_count = manifest.access_count + 1
-                    """, [
-                        cache_key, str(cache_file), symbol, start_ts, end_ts, 
-                        len(features_df), file_size
-                    ])
-                    
-                    self.logger.info(f"Cached {len(features_df)} features for {symbol} "
-                                   f"({file_size:,} bytes compressed) [DuckDB]")
+                import time
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        with duckdb.connect(str(self.db_path)) as conn:
+                            conn.execute("""
+                                INSERT INTO manifest 
+                                (key, path, symbol, start_ts, end_ts, rows, file_size_bytes) 
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                                ON CONFLICT (key) DO UPDATE SET
+                                    path = EXCLUDED.path,
+                                    symbol = EXCLUDED.symbol,
+                                    start_ts = EXCLUDED.start_ts,
+                                    end_ts = EXCLUDED.end_ts,
+                                    rows = EXCLUDED.rows,
+                                    file_size_bytes = EXCLUDED.file_size_bytes,
+                                    last_accessed_ts = now(),
+                                    access_count = manifest.access_count + 1
+                            """, [
+                                cache_key, str(cache_file), symbol, start_ts, end_ts, 
+                                len(features_df), file_size
+                            ])
+                            
+                            self.logger.info(f"Cached {len(features_df)} features for {symbol} "
+                                           f"({file_size:,} bytes compressed) [DuckDB]")
+                            break  # Success, exit retry loop
+                    except Exception as db_error:
+                        if "write-write conflict" in str(db_error) and attempt < max_retries - 1:
+                            self.logger.warning(f"DuckDB write conflict (attempt {attempt + 1}/{max_retries}), retrying...")
+                            time.sleep(0.1 * (attempt + 1))  # Exponential backoff
+                            continue
+                        else:
+                            raise  # Re-raise if not a write conflict or max retries reached
                 
         except Exception as e:
             self.logger.error(f"Error caching features (DuckDB) for key {cache_key[:16]}...: {e}")

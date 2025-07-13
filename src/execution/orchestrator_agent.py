@@ -176,12 +176,18 @@ class OrchestratorAgent:
                 'log_trades': env_cfg.get('log_trades_in_env', True),
                 'lookback_window': feature_engineering.get('lookback_window', 1),
                 'max_daily_drawdown_pct': risk_cfg.get('max_daily_drawdown_pct', 0.02),
-                'hourly_turnover_cap': risk_cfg.get('max_hourly_turnover_ratio', 5.0),
-                'turnover_penalty_factor': risk_cfg.get('env_turnover_penalty_factor', 0.01),
+                'hourly_turnover_cap': risk_cfg.get('hourly_turnover_cap', 5.0),
+                'turnover_penalty_factor': risk_cfg.get('turnover_penalty_factor', 0.01),
                 'position_sizing_pct_capital': env_cfg.get('position_sizing_pct_capital', 0.25),
                 'trade_cooldown_steps': env_cfg.get('trade_cooldown_steps', 0),
-                'terminate_on_turnover_breach': risk_cfg.get('env_terminate_on_turnover_breach', False),
-                'turnover_termination_threshold_multiplier': risk_cfg.get('env_turnover_termination_threshold_multiplier', 2.0)
+                'terminate_on_turnover_breach': risk_cfg.get('terminate_on_turnover_breach', False),
+                'turnover_termination_threshold_multiplier': risk_cfg.get('turnover_termination_threshold_multiplier', 2.0),
+                # Enhanced turnover enforcement parameters
+                'turnover_exponential_penalty_factor': risk_cfg.get('turnover_exponential_penalty_factor', 0.1),
+                'turnover_termination_penalty_pct': risk_cfg.get('turnover_termination_penalty_pct', 0.05),
+                # Enhanced Kyle Lambda fill simulation
+                'enable_kyle_lambda_fills': env_cfg.get('kyle_lambda_fills', {}).get('enable_kyle_lambda_fills', True),
+                'fill_simulator_config': env_cfg.get('kyle_lambda_fills', {}).get('fill_simulator_config', {})
             }
         })
         # Use new TrainerAgent factory function (bounded context)

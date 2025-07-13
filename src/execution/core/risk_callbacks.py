@@ -193,6 +193,9 @@ def throttle_size(
     modified_order['throttled'] = throttled_shares != original_shares
     modified_order['throttle_reason'] = _get_throttle_reason(original_shares, throttled_shares, market_conditions, risk_config)
     
+    # 🔍 DIAGNOSTIC: Log post-throttle shares
+    logger.debug(f"🔍 Post-throttle shares: {throttled_shares} (original: {original_shares})")
+    
     return modified_order
 
 

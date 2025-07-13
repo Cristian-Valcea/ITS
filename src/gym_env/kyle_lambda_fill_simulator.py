@@ -41,14 +41,14 @@ class KyleLambdaFillSimulator:
         """
         self.logger = logging.getLogger(self.__class__.__name__)
         
-        # Default configuration
+        # Default configuration - ENHANCED MARKET IMPACT
         default_config = {
             'lookback_period': 50,
             'min_periods': 10,
-            'impact_decay': 0.9,
+            'impact_decay': 0.7,       # 🔥 REDUCED: More persistent impact (was 0.9)
             'bid_ask_spread_bps': 5.0,  # Default 5 bps spread
             'min_impact_bps': 0.5,     # Minimum impact (0.5 bps)
-            'max_impact_bps': 50.0,    # Maximum impact cap (50 bps)
+            'max_impact_bps': 100.0,   # 🚨 DOUBLED: Higher impact cap (was 50 bps)
             'temporary_impact_decay': 0.5,  # Temporary impact decay factor
             'enable_bid_ask_bounce': True,  # Add bid-ask bounce effect
         }
@@ -203,10 +203,17 @@ class KyleLambdaFillSimulator:
             'fill_count': self.fill_count
         })
         
-        self.logger.debug(
-            f"Fill calculated: mid={mid_price:.4f}, fill={fill_price:.4f}, "
-            f"impact={total_impact_bps:.2f}bps, size={abs_trade_size:.0f}"
-        )
+        # 🔍 ENHANCED LOGGING: Show market impact in action
+        if total_impact_bps > 1.0:  # Log significant impacts
+            self.logger.info(
+                f"🔍 KYLE LAMBDA IMPACT: Mid=${mid_price:.4f} → Fill=${fill_price:.4f} "
+                f"(Impact: {total_impact_bps:.2f}bps, Size: {abs_trade_size:.0f} shares, Side: {side})"
+            )
+        else:
+            self.logger.debug(
+                f"Fill calculated: mid={mid_price:.4f}, fill={fill_price:.4f}, "
+                f"impact={total_impact_bps:.2f}bps, size={abs_trade_size:.0f}"
+            )
         
         return fill_price, impact_info
     

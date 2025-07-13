@@ -76,6 +76,11 @@ class FeatureManager:
                     feature_type.lower(), {}
                 )
                 
+                # Special handling for Time features
+                if feature_type == 'Time' and not feature_specific_config:
+                    feature_specific_config = self.feature_config.copy()  # Pass full config
+                    self.logger.debug(f"Time calculator getting full config: {feature_specific_config}")
+                
                 calculator = self.registry.create_calculator(
                     feature_type, feature_specific_config, self.logger
                 )

@@ -11,6 +11,7 @@ This module handles:
 import logging
 from typing import Optional, Tuple, Any
 import pandas as pd
+import numpy as np
 
 from src.gym_env.intraday_trading_env import IntradayTradingEnv
 
@@ -65,12 +66,30 @@ class BacktestRunner:
             truncated = False
             total_steps = 0
             
+            # Debug observation shape
+            self.logger.info(f"Initial observation shape: {obs.shape}, type: {type(obs)}")
+            self.logger.info(f"Model observation space: {model.observation_space}")
+            self.logger.info(f"Environment observation space: {evaluation_env.observation_space}")
+            
+            # Fix observation shape mismatch - flatten if needed
+            if len(obs.shape) > 1 and model.observation_space.shape != obs.shape:
+                expected_shape = model.observation_space.shape
+                if len(expected_shape) == 1 and np.prod(obs.shape) == expected_shape[0]:
+                    self.logger.info(f"Flattening observation from {obs.shape} to {expected_shape}")
+                    obs = obs.flatten()
+            
             # Log initial state
             initial_portfolio_value = getattr(evaluation_env, 'portfolio_value', 0)
             self.logger.info(f"Backtest initialized. Initial portfolio value: {initial_portfolio_value:.2f}")
 
             # Run backtest loop
             while not (terminated or truncated):
+                # Ensure observation shape matches model expectation
+                if len(obs.shape) > 1 and model.observation_space.shape != obs.shape:
+                    expected_shape = model.observation_space.shape
+                    if len(expected_shape) == 1 and np.prod(obs.shape) == expected_shape[0]:
+                        obs = obs.flatten()
+                
                 # Get action from model
                 action, _states = model.predict(obs, deterministic=deterministic)
                 
