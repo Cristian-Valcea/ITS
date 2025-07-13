@@ -1,9 +1,13 @@
 algorithm_name: DQN
 algorithm_params:
-  buffer_size: 5000
-  learning_rate: 0.001
+  buffer_size: 100000  # Increased from 5000 for better experience replay
+  learning_rate: 0.0001  # Reduced from 0.001 for more stable learning
   policy: MlpPolicy
   verbose: 0
+  batch_size: 64  # Explicit batch size
+  exploration_fraction: 0.1  # Exploration schedule
+  exploration_final_eps: 0.02  # Final exploration rate
+  target_update_interval: 1000  # Target network update frequency
 c51_features:
   dueling_nets: false
   n_step_returns: 1

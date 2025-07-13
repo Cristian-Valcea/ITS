@@ -8,7 +8,7 @@ from ib_insync import IB, util, Contract, Stock # Assuming ib_insync is installe
 
 from .base_agent import BaseAgent
 # from ..utils.config_loader import load_config # Example for loading config
-from src.tools.ibkr_tools import fetch_5min_bars
+# Removed: from src.tools.ibkr_tools import fetch_5min_bars  # Using direct IBKR call instead
 from src.column_names import COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME
 from src.shared import get_feature_store
 from src.shared.market_impact import calc_market_impact_features
@@ -168,6 +168,29 @@ class DataAgent(BaseAgent):
             return "UNKNOWN_START", end_datetime_str.split(" ")[0] if end_datetime_str else "UNKNOWN_END"
 
 
+    def _convert_interval_for_ibkr(self, interval: str) -> str:
+        """
+        Convert interval format from web form to IBKR format.
+        
+        Args:
+            interval: Interval string (e.g., "1min", "5mins", "1hour", "1day")
+            
+        Returns:
+            IBKR-compatible interval string (e.g., "1 min", "5 mins", "1 hour", "1 day")
+        """
+        # Common interval mappings
+        interval_map = {
+            "1min": "1 min",
+            "5mins": "5 mins", 
+            "15mins": "15 mins",
+            "30mins": "30 mins",
+            "1hour": "1 hour",
+            "1day": "1 day"
+        }
+        
+        # Return mapped value or original if not found
+        return interval_map.get(interval, interval)
+    
     def _get_cache_filepath(self, symbol: str, start_date_str_yyyymmdd: str, end_date_str_yyyymmdd: str, bar_size_str: str, data_format: str = "csv") -> str:
         """
         Helper to generate a consistent filepath for cached data using standardized date formats.
@@ -312,17 +335,25 @@ class DataAgent(BaseAgent):
         #bars_df = pd.DataFrame(dummy_data, index=pd.DatetimeIndex(dates, name='date'))
         # Compute start and end dates for fetch_5min_bars
 
-        # Now call fetch_5min_bars with the correct arguments
-        bars_df = fetch_5min_bars(symbol, start_date_str_yyyymmdd, end_date_str_yyyymmdd, use_rth=use_rth)
-        #bars_df, _bt_feed = get_ibkr_data_sync(
-        #    ib_instance=self.ib,
-        #    ticker_symbol=symbol,
-        #    start_date=start_date_str_yyyymmdd,
-        #    end_date=end_date_str_yyyymmdd,
-        #    bar_size='5 mins',      # exactly this string
-        #    what_to_show='TRADES',  # matches your IBKR requests
-        #    use_rth=use_rth
-        #)
+        # Import the direct IBKR function to use the correct interval
+        from src.tools.GetIBKRData import get_ibkr_data_sync, ib
+        
+        # Use the actual requested interval instead of hardcoded 5min
+        bars_df, _bt_feed = get_ibkr_data_sync(
+            ib_instance=ib,
+            ticker_symbol=symbol,
+            start_date=start_date_str_yyyymmdd,
+            end_date=end_date_str_yyyymmdd,
+            bar_size=ibkr_interval,  # Use the converted interval (e.g., "1 min")
+            what_to_show='TRADES',
+            use_rth=use_rth
+        )
+        
+        # Reset index and rename columns to match expected format
+        if 'datetime' in bars_df.columns:
+            bars_df = bars_df.set_index('datetime')
+        elif bars_df.index.name != 'Date' and 'Date' not in bars_df.columns:
+            bars_df.index.name = 'Date'
         # If your system expects the column 'Date' instead of index name:
         bars_df = bars_df.reset_index().rename(columns={'datetime': 'Date'}).set_index('Date')
 
@@ -422,16 +453,56 @@ class DataAgent(BaseAgent):
         # For now, fetch_ibkr_bars's cache naming is based on end_datetime_str and duration_str.
         # We pass start_date mainly for conceptual alignment with the run method's args.
         
-        bars_df = self.fetch_ibkr_bars(
-            symbol=symbol,
-            end_datetime_str=end_date, # This is the crucial IBKR parameter
-            duration_str=duration_str, # This determines how far back from end_date
-            bar_size_str=interval,
-            what_to_show=kwargs.get('what_to_show', "TRADES"),
-            use_rth=kwargs.get('use_rth', True),
-            data_format=data_format,
-            force_fetch=force_fetch
-        )
+        # Convert interval format for IBKR (e.g., "1min" -> "1 min")
+        ibkr_interval = self._convert_interval_for_ibkr(interval)
+        self.logger.info(f"Converted interval '{interval}' to IBKR format '{ibkr_interval}'")
+        
+        # Use direct IBKR call with correct interval instead of fetch_ibkr_bars
+        from src.tools.GetIBKRData import get_ibkr_data_sync, ib
+        
+        try:
+            bars_df, _bt_feed = get_ibkr_data_sync(
+                ib_instance=ib,
+                ticker_symbol=symbol,
+                start_date=start_date,  # Use start_date directly
+                end_date=end_date.split(' ')[0],  # Remove time part if present
+                bar_size=ibkr_interval,  # Use the converted interval (e.g., "1 min")
+                what_to_show=kwargs.get('what_to_show', 'TRADES'),
+                use_rth=kwargs.get('use_rth', True)
+            )
+            
+            # Reset index and rename columns to match expected format
+            if 'datetime' in bars_df.columns:
+                bars_df = bars_df.set_index('datetime')
+            elif bars_df.index.name != 'Date' and 'Date' not in bars_df.columns:
+                bars_df.index.name = 'Date'
+                
+        except Exception as e:
+            self.logger.error(f"Failed to fetch data using direct IBKR call: {e}")
+            return None
+            
+        # Save to cache with correct interval name
+        if bars_df is not None and not bars_df.empty:
+            # Create cache filepath with actual interval (not requested interval)
+            interval_clean = ibkr_interval.replace(' ', '').replace(':', '')
+            cache_filepath = self._get_cache_filepath(
+                symbol,
+                start_date.replace('-', ''),  # Convert to YYYYMMDD
+                end_date.split(' ')[0].replace('-', ''),  # Convert to YYYYMMDD
+                interval_clean,
+                data_format
+            )
+            
+            os.makedirs(os.path.dirname(cache_filepath), exist_ok=True)
+            
+            try:
+                if data_format == "csv":
+                    bars_df.to_csv(cache_filepath)
+                elif data_format == "pkl":
+                    bars_df.to_pickle(cache_filepath)
+                self.logger.info(f"Saved data to {cache_filepath}")
+            except Exception as e:
+                self.logger.error(f"Error caching data to {cache_filepath}: {e}")
 
         if bars_df is not None:
             if self.validate_data(bars_df, symbol):

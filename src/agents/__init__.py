@@ -6,15 +6,20 @@
 # from .feature_agent import FeatureAgent
 # ... and so on for all agents
 
-# Import legacy shims for backward compatibility
-from .trainer_agent import TrainerAgent, create_trainer_agent
+# Legacy shims are now lazy-loaded to avoid deprecation warnings on package init
 # Note: OrchestratorAgent import is lazy to avoid circular imports
 
 def __getattr__(name):
-    """Lazy import for OrchestratorAgent to avoid circular imports."""
+    """Lazy import for legacy shims to avoid deprecation warnings on package init."""
     if name == "OrchestratorAgent":
         from .orchestrator_agent import OrchestratorAgent
         return OrchestratorAgent
+    elif name == "TrainerAgent":
+        from .trainer_agent import TrainerAgent
+        return TrainerAgent
+    elif name == "create_trainer_agent":
+        from .trainer_agent import create_trainer_agent
+        return create_trainer_agent
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 # Or, more generally, allow selective imports using __all__

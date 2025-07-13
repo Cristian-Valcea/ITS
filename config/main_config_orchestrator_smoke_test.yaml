@@ -17,8 +17,6 @@ ibkr_conn:
 data_preprocessing:
   impute_missing: true
   normalize: false
-feature_store:
-  force_duckdb: true  # Skip PostgreSQL for training jobs
 environment:
   initial_capital: 50000.0
   log_trades_in_env: true
@@ -78,12 +76,12 @@ scheduling:
   retrain_symbol: AAPL
   use_cached_data_for_scheduled_run: false
 training:
-  checkpoint_freq: 500
+  checkpoint_freq: 100  # More frequent checkpoints for smoke test
   data_duration_for_fetch: null  # Use full date range instead of override
-  log_interval: 50
-  total_timesteps: 150000  # Production training (~12 epochs over dataset)
-  max_episodes: 50  # More episodes allowed now that drawdown is fixed
-  max_training_time_minutes: 120  # Extended time for 150k timesteps
+  log_interval: 10  # More frequent logging for smoke test
+  total_timesteps: 5000  # Quick smoke test with 5k steps
+  max_episodes: 10  # Fewer episodes for smoke test
+  max_training_time_minutes: 10  # Shorter time limit for smoke test
 live_trading:
   enabled: true
   production_model_path: models/orch_test/DQN_2025-07-09_15-41-14/policy_bundle/policy.pt

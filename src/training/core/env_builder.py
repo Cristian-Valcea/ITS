@@ -154,8 +154,10 @@ def _make_single_env(
             # Create environment instance
             env = IntradayTradingEnv(**env_params)
             
-            # Add episode statistics recording (VecMonitor will pick this up)
+            # Add flattening wrapper to fix SB3 observation shape warning
             if gym is not None:
+                env = gym.wrappers.FlattenObservation(env)
+                # Add episode statistics recording (VecMonitor will pick this up)
                 env = gym.wrappers.RecordEpisodeStatistics(env)
             
             # Set unique random seed for this worker (deterministic across runs)

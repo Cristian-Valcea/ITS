@@ -464,7 +464,21 @@ class OrchestratorAgent:
                 self.logger.error(f"AI agent pipeline failed: {e}", exc_info=True)
                 return None
         else:
-            data_duration_str = self.main_config.get('training', {}).get('data_duration_for_fetch', "90 D")
+            data_duration_str = self.main_config.get('training', {}).get('data_duration_for_fetch')
+            if data_duration_str is None:
+                # Calculate duration from start_date to end_date
+                from datetime import datetime
+                try:
+                    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                    end_dt = datetime.strptime(end_date.split(' ')[0], "%Y-%m-%d")
+                    duration_days = (end_dt - start_dt).days + 1
+                    data_duration_str = f"{duration_days} D"
+                    self.logger.info(f"Calculated duration from date range: {data_duration_str}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to calculate duration from dates: {e}, using default 90 D")
+                    data_duration_str = "90 D"
+            else:
+                self.logger.info(f"Using configured data duration: {data_duration_str}")
             raw_bars_df = self.data_agent.run(
                 symbol=symbol,
                 start_date=start_date,

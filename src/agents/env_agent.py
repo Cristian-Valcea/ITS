@@ -7,6 +7,17 @@ import hashlib
 from .base_agent import BaseAgent
 from src.gym_env.intraday_trading_env import IntradayTradingEnv
 
+# Import gym for observation flattening wrapper
+try:
+    import gymnasium as gym
+    GYM_AVAILABLE = True
+except ImportError:
+    try:
+        import gym
+        GYM_AVAILABLE = True
+    except ImportError:
+        GYM_AVAILABLE = False
+
 # Optional: Import SB3 env checker if available
 try:
     from stable_baselines3.common.env_checker import check_env
@@ -130,6 +141,14 @@ class EnvAgent(BaseAgent):
             }
             env = IntradayTradingEnv(**env_constructor_params)
             self.logger.info("IntradayTradingEnv created successfully.")
+            
+            # Apply FlattenObservation wrapper to fix SB3 observation shape warnings
+            if GYM_AVAILABLE:
+                env = gym.wrappers.FlattenObservation(env)
+                self.logger.info("Applied FlattenObservation wrapper to fix SB3 compatibility.")
+            else:
+                self.logger.warning("Gym not available - observation shape warnings may occur with SB3.")
+            
             self._validate_environment(env)
             self.env_cache[env_id] = env
             self.active_env_id = env_id

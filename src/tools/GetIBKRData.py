@@ -26,6 +26,11 @@ from src.column_names import COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME
 # Global IB instance to manage connection
 ib = IB()
 
+# Configure IB wrapper logging to reduce connection spam in production
+import logging
+ib_logger = logging.getLogger('ib_insync.wrapper')
+ib_logger.setLevel(logging.WARNING)  # Reduce connection spam
+
 async def connect_ibkr(retries=CONNECTION_RETRIES, 
                        delay_seconds=RETRY_DELAY_SECONDS,
                        timeout_seconds=CONNECTION_TIMEOUT_SECONDS):
@@ -318,13 +323,15 @@ async def _fetch_historical_data_chunkedOld(contract, end_date_dt, start_date_dt
 
         max_req_duration_str, _ = _get_duration_and_chunk_params(bar_size) # Max duration for a single request
 
-        # Format endDateTime for the request
-        # IBKR expects 'YYYYMMDD HH:MM:SS' or 'YYYYMMDD HH:MM:SS TMZ'
-        # If timezone naive, TWS local time is assumed. If timezone aware, that timezone is used.
-        # For daily data, time part is often ignored or set to end of day.
-        end_datetime_str = current_end_dt.strftime('%Y%m%d %H:%M:%S')
-        if bar_size == '1 day': # For daily data, often better to not specify time or use end of day
-            end_datetime_str = current_end_dt.strftime('%Y%m%d 23:59:59')
+        # Format endDateTime for the request with explicit UTC timezone
+        # IBKR expects 'YYYYMMDD-HH:MM:SS UTC' to avoid timezone warnings
+        # Future API versions will reject naive datetime strings
+        
+        # Treat naive datetime as UTC and format with explicit timezone
+        if bar_size == '1 day': # For daily data, use end of day
+            end_datetime_str = current_end_dt.strftime('%Y%m%d-23:59:59 UTC')
+        else:
+            end_datetime_str = current_end_dt.strftime('%Y%m%d-%H:%M:%S UTC')
 
         print(f"Fetching chunk for {contract.symbol}: end {end_datetime_str}, duration {max_req_duration_str}, bar {bar_size}")
 

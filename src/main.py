@@ -61,9 +61,9 @@ except ImportError:
         module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
         if module_path not in sys.path:
             sys.path.append(module_path)
-        from src.agents.orchestrator_agent import OrchestratorAgent # Now this should work
+        from src.execution.orchestrator_agent import OrchestratorAgent # Now this should work
     else: # If run as a module (e.g. python -m src.main), imports should be fine.
-        from agents.orchestrator_agent import OrchestratorAgent
+        from execution.orchestrator_agent import OrchestratorAgent
 
 
 # Default config file paths (relative to project root, assuming main.py is in src/)

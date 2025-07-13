@@ -2,7 +2,7 @@
 # More relaxed limits to allow longer episodes and better learning
 
 # Core risk limits - relaxed for training
-max_daily_drawdown_pct: 0.10  # 10% for training (vs 2.5% for live trading)
+max_daily_drawdown_pct: 0.40  # 40% for training (vs 2.5% for live trading) - relaxed to prevent frequent resets
 max_hourly_turnover_ratio: 10.0  # Higher turnover allowed for exploration
 max_daily_turnover_ratio: 40.0   # Higher daily turnover for learning
 halt_on_breach: false  # Don't halt during training, let agent learn
