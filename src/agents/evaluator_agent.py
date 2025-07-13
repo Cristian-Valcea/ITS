@@ -57,12 +57,29 @@ class EvaluatorAgent(BaseAgent):
         Raises:
             ValueError: If env is not an IntradayTradingEnv instance
         """
-        if not isinstance(env, IntradayTradingEnv):
+        # Check if env is IntradayTradingEnv or a wrapped version (e.g., FlattenObservation)
+        if not (isinstance(env, IntradayTradingEnv) or 
+                (hasattr(env, 'env') and isinstance(env.env, IntradayTradingEnv))):
             self.logger.error("Invalid environment type provided to EvaluatorAgent.")
-            raise ValueError("Environment must be an instance of IntradayTradingEnv.")
+            raise ValueError("Environment must be an IntradayTradingEnv or a wrapped IntradayTradingEnv.")
         
         self.evaluation_env = env
         self.logger.info("Evaluation environment set for EvaluatorAgent.")
+    
+    def _get_unwrapped_env(self) -> 'IntradayTradingEnv':
+        """
+        Get the underlying IntradayTradingEnv from a potentially wrapped environment.
+        
+        Returns:
+            The unwrapped IntradayTradingEnv instance
+        """
+        if isinstance(self.evaluation_env, IntradayTradingEnv):
+            return self.evaluation_env
+        elif hasattr(self.evaluation_env, 'env') and isinstance(self.evaluation_env.env, IntradayTradingEnv):
+            return self.evaluation_env.env
+        else:
+            # This should not happen due to the type check in set_env
+            raise ValueError("Cannot unwrap environment to IntradayTradingEnv")
 
     def load_model(self, model_path: str, algorithm_name: str = "DQN") -> bool:
         """
@@ -96,7 +113,9 @@ class EvaluatorAgent(BaseAgent):
             return None, None
 
         model = self.model_loader.get_loaded_model()
-        return self.backtest_runner.run_backtest(model, self.evaluation_env, deterministic)
+        # Use unwrapped environment for backtest runner
+        unwrapped_env = self._get_unwrapped_env()
+        return self.backtest_runner.run_backtest(model, unwrapped_env, deterministic)
 
     def calculate_metrics(
         self, 
@@ -185,7 +204,8 @@ class EvaluatorAgent(BaseAgent):
             trade_log_df, portfolio_history = self.run_backtest(deterministic=True)
             
             # Calculate metrics
-            initial_capital = getattr(self.evaluation_env, 'initial_capital', 0.0)
+            unwrapped_env = self._get_unwrapped_env()
+            initial_capital = getattr(unwrapped_env, 'initial_capital', 0.0)
             metrics = self.calculate_metrics(
                 trade_log_df if trade_log_df is not None else pd.DataFrame(),
                 portfolio_history if portfolio_history is not None else pd.Series(dtype=float),
