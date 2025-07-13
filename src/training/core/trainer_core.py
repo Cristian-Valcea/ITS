@@ -265,11 +265,19 @@ class TrainerCore:
         from .early_stopping_callback import EarlyStoppingCallback
         max_episodes = self.training_params.get("max_episodes", 50)  # Reasonable default
         max_training_time = self.training_params.get("max_training_time_minutes", 30)  # 30 minute limit
+        
+        # Get early stopping configuration
+        early_stopping_config = self.training_params.get("early_stopping", {})
+        plateau_patience = early_stopping_config.get("patience", 10)
+        min_improvement = early_stopping_config.get("min_improvement", 0.01)
+        verbose = early_stopping_config.get("verbose", 1)
+        
         early_stopping = EarlyStoppingCallback(
             max_episodes=max_episodes,
             max_training_time_minutes=max_training_time,
-            plateau_patience=10,
-            verbose=1
+            plateau_patience=plateau_patience,
+            min_improvement=min_improvement,
+            verbose=verbose
         )
         callbacks.append(early_stopping)
         
