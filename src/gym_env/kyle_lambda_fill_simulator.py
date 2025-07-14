@@ -32,14 +32,18 @@ class KyleLambdaFillSimulator:
     replacing naive mid-price fills in backtesting.
     """
     
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, config: Dict[str, Any] = None, seed: int = None):
         """
         Initialize the Kyle Lambda fill simulator.
         
         Args:
             config: Configuration dictionary with Kyle Lambda parameters
+            seed: Random seed for deterministic behavior (optional)
         """
         self.logger = logging.getLogger(self.__class__.__name__)
+        
+        # Initialize seeded random number generator for deterministic behavior
+        self.rng = np.random.default_rng(seed)
         
         # Default configuration - ENHANCED MARKET IMPACT
         default_config = {
@@ -234,6 +238,9 @@ class KyleLambdaFillSimulator:
         Returns:
             Dictionary with impact breakdown
         """
+        # Initialize participation_rate to prevent uninitialized variable error
+        participation_rate = 0.0
+        
         # Base bid-ask spread impact
         spread_impact_bps = self.current_spread_bps / 2.0  # Half spread
         
@@ -267,14 +274,15 @@ class KyleLambdaFillSimulator:
         else:
             temporary_impact_bps = 0.0
         
-        # Bid-ask bounce (random component)
+        # Bid-ask bounce (random component) - use seeded RNG for determinism
         if self.config['enable_bid_ask_bounce']:
-            bounce_impact_bps = np.random.uniform(-0.5, 0.5)  # Random ±0.5 bps
+            bounce_impact_bps = self.rng.uniform(-0.5, 0.5)  # Random ±0.5 bps
         else:
             bounce_impact_bps = 0.0
         
-        # Total impact
+        # Total impact - clip to ensure it doesn't exceed maximum cap
         total_impact_bps = spread_impact_bps + permanent_impact_bps + temporary_impact_bps + bounce_impact_bps
+        total_impact_bps = np.clip(total_impact_bps, self.config['min_impact_bps'], self.config['max_impact_bps'])
         
         return {
             'spread_impact_bps': spread_impact_bps,
@@ -283,7 +291,7 @@ class KyleLambdaFillSimulator:
             'bounce_impact_bps': bounce_impact_bps,
             'total_impact_bps': total_impact_bps,
             'kyle_lambda': self.current_kyle_lambda,
-            'participation_rate': participation_rate if volume > 0 else 0.0,
+            'participation_rate': participation_rate,
             'volume': volume,
             'notional_value': trade_size * mid_price
         }
