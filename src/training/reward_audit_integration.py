@@ -23,12 +23,31 @@ from stable_baselines3.common.callbacks import CallbackList, EvalCallback, Check
 logger = logging.getLogger(__name__)
 
 
+def _build_default_paths(model_save_path: str) -> Dict[str, str]:
+    """
+    Build default sub-folder paths for callbacks.
+    
+    Args:
+        model_save_path: Base path for saving models and results
+    
+    Returns:
+        Dict containing default paths for each callback type
+    """
+    return {
+        'reward_audit': f"{model_save_path}/reward_audit",
+        'checkpoints': f"{model_save_path}/checkpoints", 
+        'best_model': f"{model_save_path}/best_model",
+        'eval_logs': f"{model_save_path}/eval_logs"
+    }
+
+
 def create_comprehensive_callback_list(
     model_save_path: str,
     eval_env=None,
     audit_config: Optional[Dict[str, Any]] = None,
     checkpoint_config: Optional[Dict[str, Any]] = None,
-    eval_config: Optional[Dict[str, Any]] = None
+    eval_config: Optional[Dict[str, Any]] = None,
+    callback_order: str = "audit_first"
 ) -> CallbackList:
     """
     Create a comprehensive callback list including reward-P&L audit.
@@ -39,54 +58,73 @@ def create_comprehensive_callback_list(
         audit_config: Configuration for reward-P&L audit
         checkpoint_config: Configuration for model checkpointing
         eval_config: Configuration for evaluation callback
+        callback_order: Order of callbacks - "audit_first" (sees all steps including eval) 
+                       or "audit_last" (only sees training steps)
     
     Returns:
         CallbackList: Combined callbacks for training
     """
     callbacks = []
     
-    # Default configurations
+    # Build default paths once
+    default_paths = _build_default_paths(model_save_path)
+    
+    # Default configurations with default paths
     audit_config = audit_config or {}
     checkpoint_config = checkpoint_config or {}
     eval_config = eval_config or {}
     
     # 1. Reward-P&L Audit Callback (CRITICAL for production readiness)
     audit_callback = RewardPnLAudit(
-        output_dir=audit_config.get('output_dir', f"{model_save_path}/reward_audit"),
+        output_dir=audit_config.get('output_dir', default_paths['reward_audit']),
         min_correlation_threshold=audit_config.get('min_correlation_threshold', 0.6),
         alert_episodes=audit_config.get('alert_episodes', 10),
         save_plots=audit_config.get('save_plots', True),
         verbose=audit_config.get('verbose', True),
-        fail_fast=audit_config.get('fail_fast', False)  # Set to True for strict validation
+        fail_fast=audit_config.get('fail_fast', False)
     )
-    callbacks.append(audit_callback)
     
     # 2. Model Checkpointing
     checkpoint_callback = CheckpointCallback(
         save_freq=checkpoint_config.get('save_freq', 10000),
-        save_path=checkpoint_config.get('save_path', f"{model_save_path}/checkpoints"),
+        save_path=checkpoint_config.get('save_path', default_paths['checkpoints']),
         name_prefix=checkpoint_config.get('name_prefix', 'model_checkpoint'),
         save_replay_buffer=checkpoint_config.get('save_replay_buffer', True),
         save_vecnormalize=checkpoint_config.get('save_vecnormalize', True),
         verbose=checkpoint_config.get('verbose', 1)
     )
-    callbacks.append(checkpoint_callback)
     
     # 3. Evaluation Callback (if eval environment provided)
+    eval_callback = None
     if eval_env is not None:
         eval_callback = EvalCallback(
             eval_env,
-            best_model_save_path=eval_config.get('best_model_save_path', f"{model_save_path}/best_model"),
-            log_path=eval_config.get('log_path', f"{model_save_path}/eval_logs"),
+            best_model_save_path=eval_config.get('best_model_save_path', default_paths['best_model']),
+            log_path=eval_config.get('log_path', default_paths['eval_logs']),
             eval_freq=eval_config.get('eval_freq', 5000),
             n_eval_episodes=eval_config.get('n_eval_episodes', 10),
             deterministic=eval_config.get('deterministic', True),
             render=eval_config.get('render', False),
             verbose=eval_config.get('verbose', 1)
         )
-        callbacks.append(eval_callback)
     
-    logger.info(f"📋 Created callback list with {len(callbacks)} callbacks:")
+    # Order callbacks based on callback_order parameter
+    if callback_order == "audit_first":
+        # Audit sees all steps including evaluation rollouts
+        callbacks.append(audit_callback)
+        callbacks.append(checkpoint_callback)
+        if eval_callback is not None:
+            callbacks.append(eval_callback)
+    elif callback_order == "audit_last":
+        # Audit only sees training steps, not evaluation rollouts
+        callbacks.append(checkpoint_callback)
+        if eval_callback is not None:
+            callbacks.append(eval_callback)
+        callbacks.append(audit_callback)
+    else:
+        raise ValueError(f"Invalid callback_order: {callback_order}. Must be 'audit_first' or 'audit_last'")
+    
+    logger.info(f"📋 Created callback list with {len(callbacks)} callbacks (order: {callback_order}):")
     for i, callback in enumerate(callbacks, 1):
         logger.info(f"  {i}. {callback.__class__.__name__}")
     
@@ -99,6 +137,7 @@ def enhanced_training_with_audit(
     model_save_path: str,
     eval_env=None,
     audit_strict: bool = False,
+    callback_order: str = "audit_first",
     **kwargs
 ) -> Dict[str, Any]:
     """
@@ -110,6 +149,8 @@ def enhanced_training_with_audit(
         model_save_path: Path to save model and audit results
         eval_env: Optional evaluation environment
         audit_strict: Whether to use strict audit settings (fail_fast=True)
+                     NOTE: This takes precedence over audit_config['fail_fast']
+        callback_order: Order of callbacks - "audit_first" or "audit_last"
         **kwargs: Additional arguments for callback configuration
     
     Returns:
@@ -117,16 +158,43 @@ def enhanced_training_with_audit(
     """
     logger.info("🚀 Starting enhanced training with Reward-P&L audit...")
     
-    # Configure audit settings
-    audit_config = {
-        'output_dir': f"{model_save_path}/reward_audit",
-        'min_correlation_threshold': 0.7 if audit_strict else 0.5,
-        'alert_episodes': 5 if audit_strict else 10,
-        'save_plots': True,
-        'verbose': True,
-        'fail_fast': audit_strict
-    }
-    audit_config.update(kwargs.get('audit_config', {}))
+    # Configure audit settings with explicit precedence rules
+    audit_config = kwargs.get('audit_config', {}).copy()  # Copy to avoid modifying original
+    
+    # Apply audit_strict precedence rules
+    if audit_strict:
+        logger.info("🔒 Audit strict mode enabled - applying strict validation settings")
+        strict_overrides = {
+            'min_correlation_threshold': 0.7,
+            'alert_episodes': 5,
+            'fail_fast': True
+        }
+        
+        # Log any overrides
+        for key, strict_value in strict_overrides.items():
+            if key in audit_config and audit_config[key] != strict_value:
+                logger.warning(
+                    f"⚠️ audit_strict=True overriding audit_config['{key}'] "
+                    f"from {audit_config[key]} to {strict_value}"
+                )
+            audit_config[key] = strict_value
+    else:
+        # Apply defaults only if not specified
+        audit_defaults = {
+            'min_correlation_threshold': 0.5,
+            'alert_episodes': 10,
+            'fail_fast': False
+        }
+        for key, default_value in audit_defaults.items():
+            audit_config.setdefault(key, default_value)
+    
+    # Always set these defaults regardless of strict mode
+    audit_config.setdefault('save_plots', True)
+    audit_config.setdefault('verbose', True)
+    
+    # Build default paths
+    default_paths = _build_default_paths(model_save_path)
+    audit_config.setdefault('output_dir', default_paths['reward_audit'])
     
     # Create comprehensive callback list
     callback_list = create_comprehensive_callback_list(
@@ -134,7 +202,8 @@ def enhanced_training_with_audit(
         eval_env=eval_env,
         audit_config=audit_config,
         checkpoint_config=kwargs.get('checkpoint_config', {}),
-        eval_config=kwargs.get('eval_config', {})
+        eval_config=kwargs.get('eval_config', {}),
+        callback_order=callback_order
     )
     
     try:
@@ -341,18 +410,43 @@ def example_usage():
     # Create model and environment
     model = DQN("MlpPolicy", env, verbose=1)
     
-    # Train with comprehensive auditing
+    # Example 1: Strict production training
     results = enhanced_training_with_audit(
         model=model,
         total_timesteps=100000,
         model_save_path="models/nvda_dqn_audited",
         eval_env=eval_env,
-        audit_strict=True,  # Strict validation for production
+        audit_strict=True,  # Overrides any audit_config settings
+        callback_order="audit_first"  # Audit sees all steps including eval
+    )
+    
+    # Example 2: Custom configuration with explicit precedence
+    results = enhanced_training_with_audit(
+        model=model,
+        total_timesteps=100000,
+        model_save_path="models/nvda_dqn_custom",
+        eval_env=eval_env,
+        audit_strict=False,  # Use custom config
+        callback_order="audit_last",  # Audit only sees training steps
         audit_config={
-            'min_correlation_threshold': 0.7,
-            'fail_fast': True
+            'min_correlation_threshold': 0.6,
+            'alert_episodes': 8,
+            'fail_fast': False
         }
     )
+    
+    # Example 3: Strict mode with warning about overrides
+    results = enhanced_training_with_audit(
+        model=model,
+        total_timesteps=100000,
+        model_save_path="models/nvda_dqn_strict",
+        audit_strict=True,  # This will override the config below
+        audit_config={
+            'min_correlation_threshold': 0.4,  # Will be overridden to 0.7
+            'fail_fast': False  # Will be overridden to True
+        }
+    )
+    # ⚠️ Warning logged: audit_strict=True overriding audit_config settings
     
     # Check results
     if results['success']:

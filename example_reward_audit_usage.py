@@ -61,19 +61,37 @@ def enhanced_usage_example():
     example_code = '''
     from src.training.reward_audit_integration import enhanced_training_with_audit
     
-    # Enhanced training with comprehensive auditing
+    # Example 2a: Strict production training (audit_strict takes precedence)
     results = enhanced_training_with_audit(
         model=model,
         total_timesteps=500000,
-        model_save_path="models/nvda_dqn_audited",
-        eval_env=eval_env,  # Optional evaluation environment
-        audit_strict=True,  # Strict validation for production
+        model_save_path="models/nvda_dqn_strict",
+        eval_env=eval_env,
+        audit_strict=True,  # Overrides any audit_config settings
+        callback_order="audit_first",  # Audit sees all steps including eval
         
-        # Audit configuration
+        # These will be overridden by audit_strict=True
         audit_config={
-            'min_correlation_threshold': 0.7,
-            'alert_episodes': 5,
-            'fail_fast': True  # Stop training if correlation too low
+            'min_correlation_threshold': 0.4,  # Overridden to 0.7
+            'fail_fast': False  # Overridden to True
+        }
+    )
+    # ⚠️ Warning logged about overrides
+    
+    # Example 2b: Custom configuration (audit_strict=False)
+    results = enhanced_training_with_audit(
+        model=model,
+        total_timesteps=500000,
+        model_save_path="models/nvda_dqn_custom",
+        eval_env=eval_env,
+        audit_strict=False,  # Use custom config
+        callback_order="audit_last",  # Audit only sees training steps
+        
+        # Custom audit configuration
+        audit_config={
+            'min_correlation_threshold': 0.6,
+            'alert_episodes': 8,
+            'fail_fast': False
         },
         
         # Checkpoint configuration
@@ -202,6 +220,50 @@ def configuration_examples():
         print(f"  RewardPnLAudit({config})")
 
 
+def callback_ordering_examples():
+    """Examples of callback ordering considerations."""
+    print("\n🔄 Example 6: Callback Ordering Considerations")
+    print("=" * 50)
+    
+    example_code = '''
+    # Option 1: audit_first (DEFAULT) - Audit sees ALL steps
+    results = enhanced_training_with_audit(
+        model=model,
+        total_timesteps=100000,
+        model_save_path="models/audit_first",
+        eval_env=eval_env,
+        callback_order="audit_first"  # Audit → Checkpoint → Eval
+    )
+    # ✅ Audit tracks correlation during both training AND evaluation
+    # ✅ More comprehensive monitoring
+    # ⚠️ Evaluation steps might affect correlation metrics
+    
+    # Option 2: audit_last - Audit only sees training steps
+    results = enhanced_training_with_audit(
+        model=model,
+        total_timesteps=100000,
+        model_save_path="models/audit_last", 
+        eval_env=eval_env,
+        callback_order="audit_last"  # Checkpoint → Eval → Audit
+    )
+    # ✅ Audit only tracks training correlation (cleaner signal)
+    # ✅ Evaluation doesn't interfere with audit metrics
+    # ⚠️ Less comprehensive monitoring
+    
+    # Precedence Rules for audit_strict:
+    enhanced_training_with_audit(
+        audit_strict=True,  # Takes precedence
+        audit_config={
+            'fail_fast': False,  # Overridden to True
+            'min_correlation_threshold': 0.4  # Overridden to 0.7
+        }
+    )
+    # ⚠️ Warnings logged about overrides
+    '''
+    
+    print(example_code)
+
+
 def main():
     """Run all examples."""
     print("🎯 REWARD-P&L AUDIT SYSTEM - USAGE EXAMPLES")
@@ -215,6 +277,7 @@ def main():
     post_training_analysis_example()
     intradayjules_integration_example()
     configuration_examples()
+    callback_ordering_examples()
     
     print("\n" + "=" * 60)
     print("🎉 SUMMARY: Key Benefits")
