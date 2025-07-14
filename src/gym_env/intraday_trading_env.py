@@ -232,7 +232,13 @@ class IntradayTradingEnv(gym.Env):
 
 
     def _get_observation(self) -> NDArray[np.float32]:
-        """Constructs the observation: market features + current position."""
+        """
+        Constructs the observation: market features + current position.
+        
+        CRITICAL: Ensure market_feature_data was properly lagged during preprocessing
+        to prevent look-ahead bias. All indicators (RSI, EMA, etc.) at time t should
+        use only data from times <= t, not future information.
+        """
         market_obs_part = self.market_feature_data[self.current_step].astype(np.float32)
         position_feature = float(self.current_position) # Current position (-1, 0, or 1)
 
@@ -482,7 +488,9 @@ class IntradayTradingEnv(gym.Env):
         self.net_pnl_this_step = 0.0
         self.total_fees_this_step = 0.0
         
-        self.steps_since_last_trade += 1 # Increment regardless of action
+        # Update hourly turnover tracking every step (not just on trades)
+        self._update_hourly_trades(timestamp)
+        
         realized_pnl_this_step = 0.0
         transaction_executed = False
         trade_value_executed = 0.0 # Absolute monetary value of stock traded
@@ -501,11 +509,14 @@ class IntradayTradingEnv(gym.Env):
         # If current_position is 1 (long X shares), and action is Hold (0), we do nothing to quantity.
         # This is complex. Let's simplify: desired_position_signal is the *target state*.
 
-        # --- Cooldown Check ---
+        # --- Cooldown Check (before incrementing counter for strict timing) ---
         if self.steps_since_last_trade < self.trade_cooldown_steps and desired_position_signal != self.current_position:
             self.logger.info(f"🕐 TRADE COOLDOWN: Step {self.current_step}, {self.steps_since_last_trade}/{self.trade_cooldown_steps} bars since last trade. Forcing HOLD (Action {action} → HOLD).")
             desired_position_signal = self.current_position # Force hold
             # Action itself is not changed, only its effect for changing position.
+        
+        # Increment cooldown counter AFTER the check for strict wall-clock timing
+        self.steps_since_last_trade += 1
 
         if desired_position_signal != self.current_position:
             transaction_executed = True
@@ -670,11 +681,13 @@ class IntradayTradingEnv(gym.Env):
         self.logger.debug(f"💰 REWARD BREAKDOWN: Step {self.current_step}, Gross P&L: ${gross_pnl_change:.6f}, Fees: ${self.total_fees_this_step:.6f}, Net P&L: ${self.net_pnl_this_step:.6f}")
         
         # Apply L2 penalty for action changes to discourage ping-ponging
+        # Scale penalty consistently with reward to prevent domination
+        action_change_penalty = 0.0
         if self.action_change_penalty_factor > 0:
-            action_change_penalty = self.action_change_penalty_factor * ((action - self.previous_action) ** 2)
+            action_change_penalty = self.action_change_penalty_factor * ((action - self.previous_action) ** 2) * self.reward_scaling
             reward -= action_change_penalty
             if action != self.previous_action:
-                self.logger.debug(f"🔄 ACTION CHANGE PENALTY: Step {self.current_step}, Action {self.previous_action}→{action}, Penalty: ${action_change_penalty:.6f}")
+                self.logger.debug(f"🔄 ACTION CHANGE PENALTY: Step {self.current_step}, Action {self.previous_action}→{action}, Penalty: ${action_change_penalty:.6f} (scaled)")
         
         # Update previous action for next step
         self.previous_action = action
@@ -704,8 +717,7 @@ class IntradayTradingEnv(gym.Env):
                 }
                 self.trade_log.append(trade_details)
             
-            # Update turnover tracking
-            self._update_hourly_trades(timestamp) # Prune old trades
+            # Update turnover tracking (hourly pruning already done at step start)
             self.trades_this_hour.append((timestamp, trade_value_executed, shares_traded_this_step))
             self.hourly_traded_value += trade_value_executed
         else:
