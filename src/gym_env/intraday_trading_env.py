@@ -341,30 +341,17 @@ class IntradayTradingEnv(gym.Env):
             # Unrealized P&L for short = (self.entry_price - current_price) * self.position_quantity
             position_market_value = (self.entry_price - current_price) * self.position_quantity if self.position_quantity > 0 else 0
         
-        # This definition of portfolio_value depends on how cash changes upon opening positions.
-        # Let's define portfolio_value = self.current_capital (cash) + market_value_of_long_pos - market_value_of_covering_short_pos
-        # If self.current_capital already reflects cash used/gained from trades:
-        long_value = self.position_quantity * current_price if self.current_position == 1 else 0
-        # For short, if entry_price is when short was opened:
-        # cash increased by entry_price * qty. Obligation is current_price * qty.
-        # Net value of short pos relative to initial cash state: (entry_price - current_price) * qty
-        # Let's use a simpler P&L approach for reward and track current_capital as primary cash.
-        # The reward will be based on change in portfolio value.
-        # Previous capital before this step: self.portfolio_value
-        
-        # Portfolio value = current cash + value of (shares * current_price) if long
-        # If short: portfolio value = current cash (which includes proceeds from shorting) - cost_to_cover (shares * current_price)
-        # This needs a consistent definition. Let's use:
-        # Portfolio Value = Cash + (current_price * quantity_long) - (current_price * quantity_short)
-        # where quantity_short is positive if short.
-        # For our simplified model (position is -1, 0, 1, and fixed quantity or full capital deployment):
+        # Portfolio value calculation using mark-to-market approach:
+        # - For longs: cash + market value of shares
+        # - For shorts: cash + unrealized P&L (entry_price - current_price) * quantity
+        # - For flat: just cash
         
         if self.current_position == 1: # Long
             self.portfolio_value = self.current_capital + (self.position_quantity * current_price)
         elif self.current_position == -1: # Short
-            # current_capital already includes proceeds from short sale at self.entry_price
-            # To mark-to-market, subtract the current cost to buy back
-            self.portfolio_value = self.current_capital - (self.position_quantity * current_price)
+            # Mark-to-market: current_capital + unrealized P&L from short position
+            # Unrealized P&L for short = (entry_price - current_price) * quantity
+            self.portfolio_value = self.current_capital + (self.entry_price - current_price) * self.position_quantity
         else: # Flat
             self.portfolio_value = self.current_capital
             
