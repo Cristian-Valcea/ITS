@@ -5,6 +5,11 @@ import numpy as np
 from numpy.typing import NDArray  # for type hints
 import pandas as pd
 import logging
+import json
+import os
+import time
+import hashlib
+from typing import Optional, Dict, Any, Tuple, List
 
 try:
     from .kyle_lambda_fill_simulator import KyleLambdaFillSimulator, FillPriceSimulatorFactory
@@ -52,7 +57,8 @@ class IntradayTradingEnv(gym.Env):
                  max_episode_steps: int = None,
                  log_trades: bool = True,
                  turnover_penalty_factor: float = 0.01, # Penalty per unit of excess turnover
-                 position_sizing_pct_capital: float = 0.25, # Pct of capital to use for sizing
+                 position_sizing_pct_capital: float = 0.25, # Pct of capital to use for sizing (legacy)
+                 equity_scaling_factor: float = 0.02, # k factor for equity-scaled sizing: shares = k * portfolio_value / price
                  trade_cooldown_steps: int = 0, # Number of steps to wait after a trade
                  terminate_on_turnover_breach: bool = False, # Terminate if turnover cap breached significantly
                  turnover_termination_threshold_multiplier: float = 2.0, # e.g. 2x the cap
@@ -62,7 +68,12 @@ class IntradayTradingEnv(gym.Env):
                  # New parameters for Kyle Lambda fill simulation
                  enable_kyle_lambda_fills: bool = True, # Enable Kyle Lambda fill price simulation
                  fill_simulator_config: dict = None, # Configuration for fill simulator
-                 volume_data: pd.Series = None # Optional volume data for better impact modeling
+                 volume_data: pd.Series = None, # Optional volume data for better impact modeling
+                 # Action change penalty to discourage ping-ponging
+                 action_change_penalty_factor: float = 0.001, # L2 penalty factor for action changes
+                 # Reward shaping parameters
+                 turnover_bonus_threshold: float = 0.8, # Bonus when turnover < 80% of cap
+                 turnover_bonus_factor: float = 0.001 # Bonus amount per step when under threshold
                  ):
         """
         Args:
@@ -77,7 +88,8 @@ class IntradayTradingEnv(gym.Env):
             max_episode_steps (int): Max steps per episode.
             log_trades (bool): Whether to log trades.
             turnover_penalty_factor (float): Factor to penalize excess turnover.
-            position_sizing_pct_capital (float): Percentage of current capital to use for sizing new positions.
+            position_sizing_pct_capital (float): Percentage of current capital to use for sizing new positions (legacy method).
+            equity_scaling_factor (float): k factor for equity-scaled position sizing: shares = k * portfolio_value / price.
             trade_cooldown_steps (int): Minimum number of steps to wait before executing another trade.
             terminate_on_turnover_breach (bool): Whether to terminate the episode if hourly turnover cap is breached by a significant margin.
             turnover_termination_threshold_multiplier (float): Multiplier for `hourly_turnover_cap` to determine termination threshold.
@@ -86,6 +98,9 @@ class IntradayTradingEnv(gym.Env):
             enable_kyle_lambda_fills (bool): Whether to use Kyle Lambda fill price simulation instead of mid-price fills.
             fill_simulator_config (dict): Configuration for the fill price simulator.
             volume_data (pd.Series): Optional volume data for better market impact modeling.
+            action_change_penalty_factor (float): L2 penalty factor for action changes to discourage ping-ponging.
+            turnover_bonus_threshold (float): Threshold as fraction of hourly_turnover_cap for bonus (e.g., 0.8 = 80%).
+            turnover_bonus_factor (float): Bonus amount per step when turnover is below threshold.
         """
         super().__init__()
         self.logger = logging.getLogger(f"RLTradingPlatform.Env.IntradayTradingEnv")
@@ -114,11 +129,15 @@ class IntradayTradingEnv(gym.Env):
         self.log_trades_flag = log_trades
         self.turnover_penalty_factor = turnover_penalty_factor
         self.position_sizing_pct_capital = position_sizing_pct_capital
+        self.equity_scaling_factor = equity_scaling_factor
         self.trade_cooldown_steps = trade_cooldown_steps
         self.terminate_on_turnover_breach = terminate_on_turnover_breach
         self.turnover_termination_threshold_multiplier = turnover_termination_threshold_multiplier
         self.turnover_exponential_penalty_factor = turnover_exponential_penalty_factor
         self.turnover_termination_penalty_pct = turnover_termination_penalty_pct
+        self.action_change_penalty_factor = action_change_penalty_factor
+        self.turnover_bonus_threshold = turnover_bonus_threshold
+        self.turnover_bonus_factor = turnover_bonus_factor
         
         # Kyle Lambda fill simulation setup
         self.enable_kyle_lambda_fills = enable_kyle_lambda_fills
@@ -182,6 +201,18 @@ class IntradayTradingEnv(gym.Env):
         self.daily_pnl = 0.0 # Realized P&L for the day
         self.start_of_day_portfolio_value = self.initial_capital
         self.last_date = None
+        
+        # Track net P&L after fees for reward calculation
+        self.net_pnl_this_step = 0.0
+        self.total_fees_this_step = 0.0
+        
+        # Episode-level metrics for monitoring and drift detection
+        self.episode_total_fees = 0.0
+        self.episode_total_turnover = 0.0
+        self.episode_total_trades = 0
+        self.episode_realized_pnl = 0.0
+        self.episode_start_time = None
+        self.episode_end_time = None
 
         self.hourly_traded_value = 0.0 # Sum of absolute value of trades in current hour (rolling window)
         self.trades_this_hour = [] # Stores (timestamp, trade_value, shares_traded)
@@ -195,6 +226,7 @@ class IntradayTradingEnv(gym.Env):
         from collections import Counter
         self.action_counter = Counter()  # Track action distribution
         self.position_history = []  # Track position changes for diagnostics
+        self.previous_action = 1  # Initialize to HOLD action (1) for first step
 
         self.reset()
 
@@ -220,6 +252,38 @@ class IntradayTradingEnv(gym.Env):
     def _get_current_price(self) -> float:
         """Get current mid-market price."""
         return self.price_data.iloc[self.current_step]
+    
+    def _compute_unrealized_pnl(self) -> float:
+        """
+        Compute unrealized P&L for current position.
+        
+        Returns:
+            float: Unrealized P&L in dollars
+        """
+        if self.current_position == 0 or self.position_quantity == 0:
+            return 0.0
+        
+        current_price = self._get_current_price()
+        
+        if self.current_position == 1:  # Long position
+            return (current_price - self.entry_price) * self.position_quantity
+        elif self.current_position == -1:  # Short position
+            return (self.entry_price - current_price) * self.position_quantity
+        
+        return 0.0
+    
+    def _apply_transaction_fee(self, shares: float, price: float, fee_type: str = "") -> float:
+        """Apply transaction fee and track for reward calculation."""
+        fee_amount = self.transaction_cost_pct * shares * price
+        self.current_capital -= fee_amount
+        self.total_fees_this_step += fee_amount
+        self.episode_total_fees += fee_amount  # Track episode-level fees
+        
+        # Log the fee
+        if fee_type:
+            self.logger.info(f"🔍 FEE CALC ({fee_type}): Shares={shares:.2f}, Price={price:.4f}, Rate={self.transaction_cost_pct:.4f} -> Fee=${fee_amount:.4f}")
+        
+        return fee_amount
     
     def _get_fill_price(self, mid_price: float, trade_size: float, side: str) -> tuple:
         """
@@ -326,6 +390,16 @@ class IntradayTradingEnv(gym.Env):
             self.logger.info(f"🎯 ACTION HISTOGRAM (Total: {total_actions}): {histogram_str}")
         
         super().reset(seed=seed)
+        
+        # Set reproducible state and save metadata
+        if seed is not None:
+            self.set_reproducible_state(seed=seed)
+        
+        # Save run metadata for reproducibility (first episode only)
+        if not hasattr(self, '_metadata_saved'):
+            run_id = f"episode_{int(time.time())}"
+            self._save_run_metadata(run_id=run_id, additional_metadata={'episode_seed': seed})
+            self._metadata_saved = True
 
         self.current_step = 0
         self.current_position = 0
@@ -337,6 +411,13 @@ class IntradayTradingEnv(gym.Env):
         self.daily_pnl = 0.0 # Realized P&L
         self.start_of_day_portfolio_value = self.initial_capital
         self.last_date = None
+        
+        # Reset episode-level metrics
+        self.episode_total_fees = 0.0
+        self.episode_total_turnover = 0.0
+        self.episode_total_trades = 0
+        self.episode_realized_pnl = 0.0
+        self.episode_start_time = self.dates[0] if len(self.dates) > 0 else None
         
         self.hourly_traded_value = 0.0
         self.trades_this_hour = []
@@ -350,6 +431,7 @@ class IntradayTradingEnv(gym.Env):
         from collections import Counter
         self.action_counter = Counter()
         self.position_history = []  # Reset position tracking
+        self.previous_action = 1  # Reset to HOLD action for new episode
 
         # Reset fill simulator
         if self.enable_kyle_lambda_fills and self.fill_simulator:
@@ -409,6 +491,10 @@ class IntradayTradingEnv(gym.Env):
         # Store portfolio value before action
         portfolio_value_before_action = self.portfolio_value
         
+        # Reset step-level tracking for reward calculation
+        self.net_pnl_this_step = 0.0
+        self.total_fees_this_step = 0.0
+        
         self.steps_since_last_trade += 1 # Increment regardless of action
         realized_pnl_this_step = 0.0
         transaction_executed = False
@@ -450,12 +536,10 @@ class IntradayTradingEnv(gym.Env):
                 realized_pnl_this_step = (exit_fill_price - self.entry_price) * self.position_quantity
                 self.current_capital += (self.position_quantity * exit_fill_price) # Add sale proceeds to cash
                 
-                # 🔍 DIAGNOSTIC: Fee calculation
-                fee_amount = self.transaction_cost_pct * self.position_quantity * exit_fill_price
+                # Apply transaction fee and track for reward calculation
+                fee_amount = self._apply_transaction_fee(self.position_quantity, exit_fill_price, "LONG EXIT")
                 expected_fee = self.position_quantity * exit_fill_price * 0.001  # Expected: shares * price * 0.001
-                self.logger.info(f"🔍 FEE CALC: Shares={self.position_quantity:.2f}, Price={exit_fill_price:.4f}, Rate={self.transaction_cost_pct:.4f} -> Fee=${fee_amount:.4f} (Expected=${expected_fee:.4f})")
-                
-                self.current_capital -= fee_amount # Exit cost
+                self.logger.info(f"Expected fee: ${expected_fee:.4f}")
                 trade_value_executed += self.position_quantity * exit_fill_price
                 shares_traded_this_step += self.position_quantity
                 
@@ -473,11 +557,8 @@ class IntradayTradingEnv(gym.Env):
                 realized_pnl_this_step = (self.entry_price - cover_fill_price) * self.position_quantity
                 self.current_capital -= (self.position_quantity * cover_fill_price) # Cost to buy back
                 
-                # 🔍 DIAGNOSTIC: Fee calculation (SHORT COVER)
-                fee_amount = self.transaction_cost_pct * self.position_quantity * cover_fill_price
-                self.logger.info(f"🔍 FEE CALC (SHORT COVER): Shares={self.position_quantity:.2f}, Price={cover_fill_price:.4f}, Rate={self.transaction_cost_pct:.4f} -> Fee=${fee_amount:.4f}")
-                
-                self.current_capital -= fee_amount # Exit cost
+                # Apply transaction fee and track for reward calculation
+                fee_amount = self._apply_transaction_fee(self.position_quantity, cover_fill_price, "SHORT COVER")
                 trade_value_executed += self.position_quantity * cover_fill_price
                 shares_traded_this_step += self.position_quantity
                 
@@ -489,17 +570,24 @@ class IntradayTradingEnv(gym.Env):
 
             # 2. Enter new position if not going flat
             if desired_position_signal == 1: # Buy to go Long
-                # Determine quantity: for simplicity, assume we can buy 1 share for now.
-                # A real system would use capital / price or a risk-managed quantity.
-                # Let's assume, for this skeleton, we try to invest a significant portion of capital.
-                # This is a placeholder for proper position sizing.
-                if self.current_capital > current_price: # Can afford at least one share
-                    # Use the new position_sizing_pct_capital parameter
-                    capital_to_allocate = self.current_capital * self.position_sizing_pct_capital
-                    self.position_quantity = np.floor(capital_to_allocate / current_price)
-                    if self.position_quantity == 0 and self.current_capital > current_price : self.position_quantity = 1 # min 1 share if possible
+                # Equity-scaled position sizing: shares = k * portfolio_value / price
+                # This ensures impact and fees scale proportionally with account size
+                target_shares = self.equity_scaling_factor * self.portfolio_value / current_price
+                self.position_quantity = np.floor(target_shares)
+                
+                self.logger.debug(f"🔍 EQUITY SCALING (LONG): k={self.equity_scaling_factor:.3f}, Portfolio=${self.portfolio_value:.2f}, Price=${current_price:.2f} → Target={target_shares:.1f} → Shares={self.position_quantity:.0f}")
+                
+                # Check if we can afford the position
+                required_capital = self.position_quantity * current_price
+                if self.current_capital >= required_capital and self.position_quantity > 0:
+                    # Position is affordable
+                    pass
+                elif self.current_capital > current_price:
+                    # Fallback: at least 1 share if we have enough capital
+                    self.position_quantity = 1
                 else:
-                    self.position_quantity = 0 # Cannot afford
+                    # Cannot afford any position
+                    self.position_quantity = 0
 
                 if self.position_quantity > 0:
                     # Get fill price for buying
@@ -512,11 +600,8 @@ class IntradayTradingEnv(gym.Env):
                     self.entry_price = entry_fill_price
                     self.current_capital -= (self.position_quantity * entry_fill_price) # Cash used
                     
-                    # 🔍 DIAGNOSTIC: Fee calculation (LONG ENTRY)
-                    fee_amount = self.transaction_cost_pct * self.position_quantity * entry_fill_price
-                    self.logger.info(f"🔍 FEE CALC (LONG ENTRY): Shares={self.position_quantity:.2f}, Price={entry_fill_price:.4f}, Rate={self.transaction_cost_pct:.4f} -> Fee=${fee_amount:.4f}")
-                    
-                    self.current_capital -= fee_amount # Entry cost
+                    # Apply transaction fee and track for reward calculation
+                    fee_amount = self._apply_transaction_fee(self.position_quantity, entry_fill_price, "LONG ENTRY")
                     trade_value_executed += self.position_quantity * entry_fill_price
                     shares_traded_this_step += self.position_quantity
                     
@@ -526,12 +611,22 @@ class IntradayTradingEnv(gym.Env):
                     desired_position_signal = 0 # Force flat
 
             elif desired_position_signal == -1: # Sell to go Short
-                # Short selling quantity can also be based on a percentage of capital (notional value)
-                if self.current_capital > 0 : # Simplified check for available margin/capital
-                     capital_to_allocate_notional = self.current_capital * self.position_sizing_pct_capital
-                     self.position_quantity = np.floor(capital_to_allocate_notional / current_price)
-                     if self.position_quantity == 0 and self.current_capital > current_price : self.position_quantity = 1 # min 1 share if possible
+                # Equity-scaled position sizing: shares = k * portfolio_value / price
+                # This ensures impact and fees scale proportionally with account size
+                target_shares = self.equity_scaling_factor * self.portfolio_value / current_price
+                self.position_quantity = np.floor(target_shares)
+                
+                self.logger.debug(f"🔍 EQUITY SCALING (SHORT): k={self.equity_scaling_factor:.3f}, Portfolio=${self.portfolio_value:.2f}, Price=${current_price:.2f} → Target={target_shares:.1f} → Shares={self.position_quantity:.0f}")
+                
+                # Check if we have sufficient capital for margin requirements (simplified)
+                if self.current_capital > 0 and self.position_quantity > 0:
+                    # Position is feasible
+                    pass
+                elif self.current_capital > current_price:
+                    # Fallback: at least 1 share if we have enough capital
+                    self.position_quantity = 1
                 else:
+                    # Cannot afford any position
                     self.position_quantity = 0
 
                 if self.position_quantity > 0:
@@ -545,11 +640,8 @@ class IntradayTradingEnv(gym.Env):
                     self.entry_price = entry_fill_price
                     self.current_capital += (self.position_quantity * entry_fill_price) # Cash received from shorting (simplified)
                     
-                    # 🔍 DIAGNOSTIC: Fee calculation (SHORT ENTRY)
-                    fee_amount = self.transaction_cost_pct * self.position_quantity * entry_fill_price
-                    self.logger.info(f"🔍 FEE CALC (SHORT ENTRY): Shares={self.position_quantity:.2f}, Price={entry_fill_price:.4f}, Rate={self.transaction_cost_pct:.4f} -> Fee=${fee_amount:.4f}")
-                    
-                    self.current_capital -= fee_amount # Entry cost
+                    # Apply transaction fee and track for reward calculation
+                    fee_amount = self._apply_transaction_fee(self.position_quantity, entry_fill_price, "SHORT ENTRY")
                     trade_value_executed += self.position_quantity * entry_fill_price
                     shares_traded_this_step += self.position_quantity
                     
@@ -573,10 +665,40 @@ class IntradayTradingEnv(gym.Env):
         
         # Update portfolio value after any transactions
         self._update_portfolio_value()
-        reward = (self.portfolio_value - portfolio_value_before_action) # Reward is change in total portfolio value
+        
+        # REWARD SHAPING: Use net P&L after fees per step
+        gross_pnl_change = (self.portfolio_value - portfolio_value_before_action)
+        self.net_pnl_this_step = gross_pnl_change  # Net P&L already includes fees (they reduce portfolio value)
+        reward = self.net_pnl_this_step
+        
+        # Add turnover bonus when below threshold
+        current_turnover_ratio = self.hourly_traded_value / max(self.start_of_day_portfolio_value, 1.0)
+        turnover_threshold = self.hourly_turnover_cap * self.turnover_bonus_threshold
+        
+        if current_turnover_ratio < turnover_threshold:
+            turnover_bonus = self.turnover_bonus_factor * self.start_of_day_portfolio_value
+            reward += turnover_bonus
+            self.logger.debug(f"🎁 TURNOVER BONUS: Step {self.current_step}, Turnover: {current_turnover_ratio:.3f} < {turnover_threshold:.3f}, Bonus: ${turnover_bonus:.6f}")
+        
+        self.logger.debug(f"💰 REWARD BREAKDOWN: Step {self.current_step}, Gross P&L: ${gross_pnl_change:.6f}, Fees: ${self.total_fees_this_step:.6f}, Net P&L: ${self.net_pnl_this_step:.6f}")
+        
+        # Apply L2 penalty for action changes to discourage ping-ponging
+        if self.action_change_penalty_factor > 0:
+            action_change_penalty = self.action_change_penalty_factor * ((action - self.previous_action) ** 2)
+            reward -= action_change_penalty
+            if action != self.previous_action:
+                self.logger.debug(f"🔄 ACTION CHANGE PENALTY: Step {self.current_step}, Action {self.previous_action}→{action}, Penalty: ${action_change_penalty:.6f}")
+        
+        # Update previous action for next step
+        self.previous_action = action
 
         # --- Log trade if executed ---
         if transaction_executed:
+            # Track episode-level metrics
+            self.episode_total_trades += 1
+            self.episode_total_turnover += trade_value_executed
+            self.episode_realized_pnl += realized_pnl_this_step
+            
             # 🔍 DIAGNOSTIC: Trade executed
             self.logger.info(f"🔍 TRADE EXECUTED: Step {self.current_step}, Action {action} -> Position {desired_position_signal}, Shares: {shares_traded_this_step:.2f}, Value: ${trade_value_executed:.2f}")
             
@@ -673,15 +795,48 @@ class IntradayTradingEnv(gym.Env):
 
         info = self._get_info()
         info['portfolio_value'] = self.portfolio_value # Ensure latest is passed
+        
+        # 🎯 REWARD-P&L AUDIT: Expose detailed P&L breakdown for correlation analysis
         info['realized_pnl_step'] = realized_pnl_this_step
+        info['unrealized_pnl_step'] = self._compute_unrealized_pnl()
+        info['total_pnl_step'] = realized_pnl_this_step + info['unrealized_pnl_step']
+        info['fees_step'] = self.total_fees_this_step
+        info['net_pnl_step'] = self.net_pnl_this_step  # P&L after fees
+        info['raw_reward'] = reward  # Before scaling
+        info['scaled_reward'] = reward * self.reward_scaling  # After scaling
+        info['cumulative_realized_pnl'] = self.daily_pnl  # Running total
+        info['cumulative_portfolio_pnl'] = self.portfolio_value - self.initial_capital
+        
         if transaction_executed:
-            info['last_trade_details'] = self.trade_log[-1] if self.trade_log else {}
+            info['last_trade_details'] = self.trade_log[-1] if hasattr(self, 'trade_log') and self.trade_log else {}
         
         self.logger.debug(
             f"Step: {self.current_step-1}, Action: {action}(Signal:{self._action_map[action]}), "
             f"Price: {current_price:.2f}, Reward(scaled): {reward * self.reward_scaling:.4f}, PortfolioVal: {self.portfolio_value:.2f}, "
             f"Position: {self.current_position}({self.position_quantity:.2f} units), Term: {terminated}, Trunc: {truncated}"
         )
+        
+        # Log comprehensive episode summary when episode ends
+        if terminated or truncated:
+            episode_summary = self._get_episode_summary()
+            info['episode_summary'] = episode_summary
+            
+            # Log key metrics for monitoring and drift detection
+            self.logger.info("=" * 80)
+            self.logger.info("📊 EPISODE SUMMARY - MONITORING & DRIFT DETECTION")
+            self.logger.info("=" * 80)
+            self.logger.info(f"🕐 Duration: {episode_summary['episode_start_time']} → {episode_summary['episode_end_time']}")
+            self.logger.info(f"📈 Performance: {episode_summary['total_return_pct']:+.2f}% (${episode_summary['net_pnl_after_fees']:+,.2f})")
+            self.logger.info(f"💰 P&L Breakdown: Realized=${episode_summary['realized_pnl']:+,.2f}, Unrealized=${episode_summary['unrealized_pnl']:+,.2f}")
+            self.logger.info(f"💸 Total Fees: ${episode_summary['total_fees']:,.2f} ({episode_summary['fee_rate_pct']:.3f}% of turnover)")
+            self.logger.info(f"🔄 Trading Activity: {episode_summary['total_trades']} trades, ${episode_summary['total_turnover']:,.0f} turnover ({episode_summary['turnover_ratio']:.2f}x)")
+            self.logger.info(f"⚡ Trade Efficiency: ${episode_summary['avg_trade_size']:,.0f} avg size, {episode_summary['trades_per_hour']:.1f} trades/hour")
+            self.logger.info(f"🎯 Actions: {episode_summary['action_histogram']}")
+            self.logger.info(f"📍 Final Position: {episode_summary['final_position']} ({episode_summary['final_position_quantity']:.0f} shares)")
+            self.logger.info("=" * 80)
+            
+            # Save episode summary to CSV for analysis and drift detection
+            self._save_episode_summary_to_csv(episode_summary)
         
         return observation, reward * self.reward_scaling, terminated, truncated, info
 
@@ -720,6 +875,198 @@ class IntradayTradingEnv(gym.Env):
             "portfolio_shares": self.position_quantity,  # Current shares held
             "position_signal_history": getattr(self, 'position_history', [])  # Track position changes
         }
+    
+    def _get_episode_summary(self):
+        """Generate comprehensive episode summary for monitoring and drift detection."""
+        self.episode_end_time = self.dates[min(self.current_step, len(self.dates)-1)]
+        
+        # Calculate episode duration
+        episode_duration = None
+        if self.episode_start_time and self.episode_end_time:
+            episode_duration = (self.episode_end_time - self.episode_start_time).total_seconds() / 3600  # hours
+        
+        # Calculate performance metrics
+        total_return_pct = ((self.portfolio_value - self.initial_capital) / self.initial_capital) * 100
+        turnover_ratio = self.episode_total_turnover / max(self.initial_capital, 1.0)
+        fee_rate_pct = (self.episode_total_fees / max(self.episode_total_turnover, 1.0)) * 100
+        
+        # Calculate trade efficiency metrics
+        avg_trade_size = self.episode_total_turnover / max(self.episode_total_trades, 1)
+        trades_per_hour = self.episode_total_trades / max(episode_duration, 1.0) if episode_duration else 0
+        
+        # Calculate P&L breakdown
+        unrealized_pnl = self.portfolio_value - self.initial_capital - self.episode_realized_pnl
+        net_pnl_after_fees = self.portfolio_value - self.initial_capital
+        
+        summary = {
+            # Episode identification
+            'episode_start_time': self.episode_start_time,
+            'episode_end_time': self.episode_end_time,
+            'episode_duration_hours': episode_duration,
+            'total_steps': self.current_step,
+            
+            # Portfolio performance
+            'initial_capital': self.initial_capital,
+            'final_portfolio_value': self.portfolio_value,
+            'total_return_pct': total_return_pct,
+            'net_pnl_after_fees': net_pnl_after_fees,
+            
+            # P&L breakdown
+            'realized_pnl': self.episode_realized_pnl,
+            'unrealized_pnl': unrealized_pnl,
+            'total_fees': self.episode_total_fees,
+            'fee_rate_pct': fee_rate_pct,
+            
+            # Trading activity
+            'total_trades': self.episode_total_trades,
+            'total_turnover': self.episode_total_turnover,
+            'turnover_ratio': turnover_ratio,
+            'avg_trade_size': avg_trade_size,
+            'trades_per_hour': trades_per_hour,
+            
+            # Risk metrics
+            'max_daily_drawdown_pct': self.max_daily_drawdown_pct,
+            'hourly_turnover_cap': self.hourly_turnover_cap,
+            'final_position': self.current_position,
+            'final_position_quantity': self.position_quantity,
+            
+            # Action distribution
+            'action_histogram': dict(getattr(self, 'action_counter', {}))
+        }
+        
+        return summary
+    
+    def _save_run_metadata(self, run_id: str = None, config_dict: Dict = None, additional_metadata: Dict = None):
+        """Save run configuration and metadata for reproducibility."""
+        if run_id is None:
+            run_id = f"run_{int(time.time())}_{hashlib.md5(str(time.time()).encode()).hexdigest()[:8]}"
+        
+        # Create logs directory if it doesn't exist
+        logs_dir = "logs/run_metadata"
+        os.makedirs(logs_dir, exist_ok=True)
+        
+        # Collect environment configuration
+        env_config = {
+            'initial_capital': self.initial_capital,
+            'transaction_cost_pct': self.transaction_cost_pct,
+            'hourly_turnover_cap': self.hourly_turnover_cap,
+            'max_daily_drawdown_pct': self.max_daily_drawdown_pct,
+            'reward_scaling': self.reward_scaling,
+            'trade_cooldown_steps': self.trade_cooldown_steps,
+            'equity_scaling_factor': self.equity_scaling_factor,
+            'turnover_bonus_threshold': self.turnover_bonus_threshold,
+            'turnover_bonus_factor': self.turnover_bonus_factor,
+            'action_change_penalty_factor': self.action_change_penalty_factor,
+            'enable_kyle_lambda_fills': self.enable_kyle_lambda_fills,
+            'lookback_window': self.lookback_window,
+            'max_episode_steps': self._max_episode_steps
+        }
+        
+        # Get current random state for reproducibility
+        numpy_state = np.random.get_state()
+        
+        metadata = {
+            'run_id': run_id,
+            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'environment_config': env_config,
+            'data_info': {
+                'market_features_shape': self.market_feature_data.shape,
+                'price_data_length': len(self.price_data),
+                'date_range': {
+                    'start': str(self.dates[0]) if len(self.dates) > 0 else None,
+                    'end': str(self.dates[-1]) if len(self.dates) > 0 else None
+                }
+            },
+            'random_state': {
+                'numpy_state_type': str(numpy_state[0]),
+                'numpy_state_size': len(numpy_state[1]) if numpy_state[1] is not None else 0,
+                'numpy_state_pos': int(numpy_state[2]),
+                'numpy_state_has_gauss': int(numpy_state[3]),
+                'numpy_state_cached_gaussian': float(numpy_state[4])
+            },
+            'system_info': {
+                'python_version': os.sys.version,
+                'numpy_version': np.__version__,
+                'pandas_version': pd.__version__
+            }
+        }
+        
+        # Add external config if provided
+        if config_dict:
+            metadata['external_config'] = config_dict
+            
+        # Add additional metadata if provided
+        if additional_metadata:
+            metadata['additional'] = additional_metadata
+        
+        # Save to file
+        filename = f"{logs_dir}/run_metadata_{run_id}.json"
+        try:
+            with open(filename, 'w') as f:
+                json.dump(metadata, f, indent=2, default=str)
+            self.logger.info(f"💾 Run metadata saved: {filename}")
+            return filename
+        except Exception as e:
+            self.logger.error(f"Failed to save run metadata: {e}")
+            return None
+    
+    def _load_run_metadata(self, metadata_file: str) -> Dict:
+        """Load run metadata for reproducibility."""
+        try:
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+            self.logger.info(f"📂 Run metadata loaded: {metadata_file}")
+            return metadata
+        except Exception as e:
+            self.logger.error(f"Failed to load run metadata: {e}")
+            return {}
+    
+    def set_reproducible_state(self, seed: int = None, metadata_file: str = None):
+        """Set reproducible random state from seed or metadata file."""
+        if metadata_file:
+            metadata = self._load_run_metadata(metadata_file)
+            if 'random_state' in metadata:
+                # Note: Full numpy state restoration is complex, so we'll use seed if available
+                self.logger.info("🔄 Loaded metadata - using seed for reproducibility")
+        
+        if seed is not None:
+            np.random.seed(seed)
+            self.logger.info(f"🎲 Random seed set: {seed}")
+            return seed
+        else:
+            # Generate and set a random seed
+            seed = np.random.randint(0, 2**31 - 1)
+            np.random.seed(seed)
+            self.logger.info(f"🎲 Random seed generated and set: {seed}")
+            return seed
+    
+    def _save_episode_summary_to_csv(self, episode_summary: Dict, csv_file: str = "logs/episode_summaries.csv"):
+        """Save episode summary to CSV for easy analysis and drift detection."""
+        # Create logs directory if it doesn't exist
+        os.makedirs(os.path.dirname(csv_file), exist_ok=True)
+        
+        # Flatten the summary for CSV format
+        flattened_summary = {}
+        for key, value in episode_summary.items():
+            if isinstance(value, dict):
+                # Flatten nested dictionaries
+                for subkey, subvalue in value.items():
+                    flattened_summary[f"{key}_{subkey}"] = subvalue
+            else:
+                flattened_summary[key] = value
+        
+        # Convert to DataFrame
+        df_row = pd.DataFrame([flattened_summary])
+        
+        # Append to CSV file
+        try:
+            if os.path.exists(csv_file):
+                df_row.to_csv(csv_file, mode='a', header=False, index=False)
+            else:
+                df_row.to_csv(csv_file, mode='w', header=True, index=False)
+            self.logger.info(f"📊 Episode summary saved to: {csv_file}")
+        except Exception as e:
+            self.logger.error(f"Failed to save episode summary to CSV: {e}")
 
     def get_trade_log(self):
         if self.log_trades_flag:
