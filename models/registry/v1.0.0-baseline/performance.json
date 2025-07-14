@@ -1,0 +1,33 @@
+{
+  "training_performance": {
+    "total_episodes": 159,
+    "average_return_pct": -5.16,
+    "best_episode_pct": -0.66,
+    "worst_episode_pct": -18.10,
+    "std_deviation_pct": 6.45,
+    "win_rate_pct": 0.0,
+    "first_10_episodes_avg_pct": -0.84,
+    "last_10_episodes_avg_pct": -12.39,
+    "learning_progression_pct": -11.56,
+    "average_trades_per_episode": 196.9,
+    "average_episode_duration_hours": 225.0,
+    "average_turnover_ratio": 4.59,
+    "average_fees_per_episode": 229.61,
+    "average_pnl_per_episode": -2581.96
+  },
+  "key_observations": [
+    "Negative learning progression - performance deteriorated over time",
+    "Zero win rate - no profitable episodes",
+    "Excessive trading frequency (196.9 trades/episode)",
+    "High turnover ratio (4.59x) indicating overtrading",
+    "Long episode duration (225 hours) suggests multi-day episodes instead of intraday"
+  ],
+  "identified_issues": [
+    "Data duration configuration causing multi-day episodes",
+    "Trade cooldown insufficient to prevent overtrading",
+    "Reward function not properly incentivizing profitable behavior",
+    "Position sizing may be too aggressive"
+  ],
+  "episode_summaries_file": "src/logs/episode_summaries.csv",
+  "evaluation_status": "pending"
+}
