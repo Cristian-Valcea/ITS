@@ -1,0 +1,14 @@
+{
+  "algo": "DQN",
+  "obs_shape": [
+    3,
+    7
+  ],
+  "action_space": 3,
+  "created": "2025-07-09T12:38:37.625549",
+  "run_name": "DQN_2025-07-09_15-38-31",
+  "policy_id": "DQN_2025-07-09_15-38-31",
+  "version": "1.0",
+  "framework": "torchscript",
+  "export_method": "trace"
+}

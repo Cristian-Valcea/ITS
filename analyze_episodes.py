@@ -1,0 +1,28 @@
+import pandas as pd
+
+# Load the correct episode summaries file
+df = pd.read_csv('src/logs/episode_summaries.csv')
+
+print("=" * 60)
+print("📊 TRAINING RESULTS ANALYSIS")
+print("=" * 60)
+print(f"Total episodes: {len(df)}")
+print(f"Average return: {df['total_return_pct'].mean():.2f}%")
+print(f"Best episode: {df['total_return_pct'].max():.2f}%")
+print(f"Worst episode: {df['total_return_pct'].min():.2f}%")
+print(f"Standard deviation: {df['total_return_pct'].std():.2f}%")
+print()
+print("📈 LEARNING PROGRESSION:")
+print(f"First 10 episodes avg: {df['total_return_pct'].head(10).mean():.2f}%")
+print(f"Last 10 episodes avg: {df['total_return_pct'].tail(10).mean():.2f}%")
+print(f"Improvement: {df['total_return_pct'].tail(10).mean() - df['total_return_pct'].head(10).mean():.2f}%")
+print()
+print("🔄 TRADING ACTIVITY:")
+print(f"Average trades per episode: {df['total_trades'].mean():.1f}")
+print(f"Average episode duration: {df['episode_duration_hours'].mean():.1f} hours")
+print(f"Average turnover ratio: {df['turnover_ratio'].mean():.2f}x")
+print()
+print("💰 FINANCIAL METRICS:")
+print(f"Average fees per episode: ${df['total_fees'].mean():.2f}")
+print(f"Average P&L: ${df['net_pnl_after_fees'].mean():.2f}")
+print(f"Win rate: {(df['total_return_pct'] > 0).mean() * 100:.1f}%")

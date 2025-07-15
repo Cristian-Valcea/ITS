@@ -1,3 +1,22 @@
+# Model Registry - Track versioned models but ignore working models
+!models/registry/
+models/registry/*/model/
+!models/registry/*/metadata.json
+!models/registry/*/performance.json
+!models/registry/*/README.md
+!models/registry/LATEST.txt
+!models/registry/README.md
+
+# Working models (not versioned)
+models/DQN_*/
+models/PPO_*/
+models/A2C_*/
+models/SAC_*/
+src/models/DQN_*/
+src/models/PPO_*/
+src/models/A2C_*/
+src/models/SAC_*/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -134,7 +153,6 @@ dmypy.json
 *.xls
 data/
 logs/
-models/
 checkpoints/
 *.pkl
 *.pickle

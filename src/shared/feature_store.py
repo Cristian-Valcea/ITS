@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Callable
 from datetime import datetime, timedelta
 from io import BytesIO
+from .duckdb_manager import get_duckdb_connection, close_write_duckdb_connections, close_all_duckdb_connections
 
 # PostgreSQL imports for manifest operations with advisory locks
 try:
@@ -281,7 +282,7 @@ class FeatureStore:
         if not self.use_pg_manifest:
             # Fallback to DuckDB manifest database
             self.db_path = self.base / "manifest.duckdb"
-            self.db = duckdb.connect(str(self.db_path))
+            # Don't keep persistent connection - use connection manager
             self._initialize_manifest_table()
             self.logger.info(f"Using DuckDB manifest database: {self.db_path}")
         
@@ -290,32 +291,33 @@ class FeatureStore:
     
     def _initialize_manifest_table(self):
         """Initialize the manifest table for tracking cached features."""
-        self.db.execute("""
-            CREATE TABLE IF NOT EXISTS manifest(
-                key TEXT PRIMARY KEY,
-                path TEXT NOT NULL,
-                symbol TEXT NOT NULL,
-                start_ts BIGINT NOT NULL,
-                end_ts BIGINT NOT NULL,
-                rows INTEGER NOT NULL,
-                file_size_bytes INTEGER,
-                created_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_accessed_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                access_count INTEGER DEFAULT 1
-            )
-        """)
-        
-        # Add access_count column if it doesn't exist (for existing databases)
-        try:
-            self.db.execute("ALTER TABLE manifest ADD COLUMN access_count INTEGER DEFAULT 1")
-        except Exception:
-            # Column already exists or other error - ignore
-            pass
-        
-        # Create indexes for efficient queries
-        self.db.execute("CREATE INDEX IF NOT EXISTS idx_symbol ON manifest(symbol)")
-        self.db.execute("CREATE INDEX IF NOT EXISTS idx_created_ts ON manifest(created_ts)")
-        self.db.execute("CREATE INDEX IF NOT EXISTS idx_last_accessed ON manifest(last_accessed_ts)")
+        with get_duckdb_connection(self.db_path, mode='rw') as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS manifest(
+                    key TEXT PRIMARY KEY,
+                    path TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    start_ts BIGINT NOT NULL,
+                    end_ts BIGINT NOT NULL,
+                    rows INTEGER NOT NULL,
+                    file_size_bytes INTEGER,
+                    created_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_accessed_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    access_count INTEGER DEFAULT 1
+                )
+            """)
+            
+            # Add access_count column if it doesn't exist (for existing databases)
+            try:
+                conn.execute("ALTER TABLE manifest ADD COLUMN access_count INTEGER DEFAULT 1")
+            except Exception:
+                # Column already exists or other error - ignore
+                pass
+            
+            # Create indexes for efficient queries
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_symbol ON manifest(symbol)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_created_ts ON manifest(created_ts)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_last_accessed ON manifest(last_accessed_ts)")
     
     def _sha256(self, *parts: bytes) -> str:
         """Compute SHA-256 hash of multiple byte parts."""
@@ -500,8 +502,8 @@ class FeatureStore:
         
         try:
             with MANIFEST_READ_LATENCY.labels(backend='duckdb', symbol=symbol).time():
-                # Use a separate connection for thread safety
-                with duckdb.connect(str(self.db_path)) as conn:
+                # Use connection manager for thread safety
+                with get_duckdb_connection(self.db_path, mode='r') as conn:
                     result = conn.execute(
                         "SELECT path FROM manifest WHERE key = ?", 
                         [cache_key]
@@ -510,16 +512,25 @@ class FeatureStore:
                     if result:
                         path = result[0]
                         if Path(path).exists():
-                            # Update last accessed timestamp
-                            conn.execute(
-                                "UPDATE manifest SET last_accessed_ts = CURRENT_TIMESTAMP WHERE key = ?",
-                                [cache_key]
-                            )
+                            # Update last accessed timestamp (need write connection)
+                            try:
+                                with get_duckdb_connection(self.db_path, mode='rw') as write_conn:
+                                    write_conn.execute(
+                                        "UPDATE manifest SET last_accessed_ts = CURRENT_TIMESTAMP WHERE key = ?",
+                                        [cache_key]
+                                    )
+                            except Exception as update_error:
+                                # Don't fail cache hit if timestamp update fails
+                                self.logger.debug(f"Failed to update access timestamp: {update_error}")
                             return path
                         else:
-                            # File missing - clean up manifest entry
+                            # File missing - clean up manifest entry (need write connection)
                             self.logger.warning(f"Cached file missing: {path}")
-                            conn.execute("DELETE FROM manifest WHERE key = ?", [cache_key])
+                            try:
+                                with get_duckdb_connection(self.db_path, mode='rw') as write_conn:
+                                    write_conn.execute("DELETE FROM manifest WHERE key = ?", [cache_key])
+                            except Exception as cleanup_error:
+                                self.logger.warning(f"Failed to cleanup missing cache entry: {cleanup_error}")
                     
                     return None
             
@@ -553,7 +564,7 @@ class FeatureStore:
                         with conn.cursor() as cur:
                             cur.execute("DELETE FROM manifest WHERE key = %s", (cache_key,))
                 else:
-                    with duckdb.connect(str(self.db_path)) as conn:
+                    with get_duckdb_connection(self.db_path, mode='rw') as conn:
                         conn.execute("DELETE FROM manifest WHERE key = ?", [cache_key])
             except Exception as cleanup_error:
                 self.logger.warning(f"Error cleaning up bad cache entry: {cleanup_error}")
@@ -648,41 +659,29 @@ class FeatureStore:
             
             file_size = cache_file.stat().st_size
             
-            # Use separate connection for thread safety with retry for write conflicts
+            # Use connection manager with retry for write conflicts
             with MANIFEST_INSERT_LATENCY.labels(backend='duckdb', symbol=symbol).time():
-                import time
-                max_retries = 3
-                for attempt in range(max_retries):
-                    try:
-                        with duckdb.connect(str(self.db_path)) as conn:
-                            conn.execute("""
-                                INSERT INTO manifest 
-                                (key, path, symbol, start_ts, end_ts, rows, file_size_bytes) 
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
-                                ON CONFLICT (key) DO UPDATE SET
-                                    path = EXCLUDED.path,
-                                    symbol = EXCLUDED.symbol,
-                                    start_ts = EXCLUDED.start_ts,
-                                    end_ts = EXCLUDED.end_ts,
-                                    rows = EXCLUDED.rows,
-                                    file_size_bytes = EXCLUDED.file_size_bytes,
-                                    last_accessed_ts = now(),
-                                    access_count = manifest.access_count + 1
-                            """, [
-                                cache_key, str(cache_file), symbol, start_ts, end_ts, 
-                                len(features_df), file_size
-                            ])
-                            
-                            self.logger.info(f"Cached {len(features_df)} features for {symbol} "
-                                           f"({file_size:,} bytes compressed) [DuckDB]")
-                            break  # Success, exit retry loop
-                    except Exception as db_error:
-                        if "write-write conflict" in str(db_error) and attempt < max_retries - 1:
-                            self.logger.warning(f"DuckDB write conflict (attempt {attempt + 1}/{max_retries}), retrying...")
-                            time.sleep(0.1 * (attempt + 1))  # Exponential backoff
-                            continue
-                        else:
-                            raise  # Re-raise if not a write conflict or max retries reached
+                with get_duckdb_connection(self.db_path, mode='rw', max_retries=3) as conn:
+                    conn.execute("""
+                        INSERT INTO manifest 
+                        (key, path, symbol, start_ts, end_ts, rows, file_size_bytes) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT (key) DO UPDATE SET
+                            path = EXCLUDED.path,
+                            symbol = EXCLUDED.symbol,
+                            start_ts = EXCLUDED.start_ts,
+                            end_ts = EXCLUDED.end_ts,
+                            rows = EXCLUDED.rows,
+                            file_size_bytes = EXCLUDED.file_size_bytes,
+                            last_accessed_ts = now(),
+                            access_count = manifest.access_count + 1
+                    """, [
+                        cache_key, str(cache_file), symbol, start_ts, end_ts, 
+                        len(features_df), file_size
+                    ])
+                    
+                    self.logger.info(f"Cached {len(features_df)} features for {symbol} "
+                                   f"({file_size:,} bytes compressed) [DuckDB]")
                 
         except Exception as e:
             self.logger.error(f"Error caching features (DuckDB) for key {cache_key[:16]}...: {e}")
@@ -748,16 +747,17 @@ class FeatureStore:
     
     def _get_cache_stats_duckdb(self) -> Dict[str, Any]:
         """Get cache statistics from DuckDB manifest."""
-        stats = self.db.execute("""
-            SELECT 
-                COUNT(*) as total_entries,
-                COUNT(DISTINCT symbol) as unique_symbols,
-                SUM(rows) as total_cached_rows,
-                SUM(file_size_bytes) as total_size_bytes,
-                MIN(created_ts) as oldest_entry,
-                MAX(created_ts) as newest_entry
-            FROM manifest
-        """).fetchone()
+        with get_duckdb_connection(self.db_path, mode='r') as conn:
+            stats = conn.execute("""
+                SELECT 
+                    COUNT(*) as total_entries,
+                    COUNT(DISTINCT symbol) as unique_symbols,
+                    SUM(rows) as total_cached_rows,
+                    SUM(file_size_bytes) as total_size_bytes,
+                    MIN(created_ts) as oldest_entry,
+                    MAX(created_ts) as newest_entry
+                FROM manifest
+            """).fetchone()
         
         if stats:
             return {
@@ -840,10 +840,11 @@ class FeatureStore:
         cutoff_date = datetime.now() - timedelta(days=days_old)
         
         # Get files to delete
-        old_entries = self.db.execute("""
-            SELECT key, path FROM manifest 
-            WHERE last_accessed_ts < ?
-        """, [cutoff_date]).fetchall()
+        with get_duckdb_connection(self.db_path, mode='r') as conn:
+            old_entries = conn.execute("""
+                SELECT key, path FROM manifest 
+                WHERE last_accessed_ts < ?
+            """, [cutoff_date]).fetchall()
         
         deleted_count = 0
         freed_bytes = 0
@@ -855,7 +856,8 @@ class FeatureStore:
                     freed_bytes += file_path.stat().st_size
                     file_path.unlink()
                 
-                self.db.execute("DELETE FROM manifest WHERE key = ?", [key])
+                with get_duckdb_connection(self.db_path, mode='rw') as write_conn:
+                    write_conn.execute("DELETE FROM manifest WHERE key = ?", [key])
                 deleted_count += 1
                 
             except Exception as e:
@@ -907,16 +909,17 @@ class FeatureStore:
     
     def _clear_cache_duckdb(self, symbol: Optional[str] = None):
         """Clear cache entries from DuckDB manifest."""
-        if symbol:
-            entries = self.db.execute(
-                "SELECT path FROM manifest WHERE symbol = ?", [symbol]
-            ).fetchall()
-            self.db.execute("DELETE FROM manifest WHERE symbol = ?", [symbol])
-            self.logger.info(f"Cleared cache for symbol {symbol} [DuckDB]")
-        else:
-            entries = self.db.execute("SELECT path FROM manifest").fetchall()
-            self.db.execute("DELETE FROM manifest")
-            self.logger.info("Cleared entire cache [DuckDB]")
+        with get_duckdb_connection(self.db_path, mode='rw') as conn:
+            if symbol:
+                entries = conn.execute(
+                    "SELECT path FROM manifest WHERE symbol = ?", [symbol]
+                ).fetchall()
+                conn.execute("DELETE FROM manifest WHERE symbol = ?", [symbol])
+                self.logger.info(f"Cleared cache for symbol {symbol} [DuckDB]")
+            else:
+                entries = conn.execute("SELECT path FROM manifest").fetchall()
+                conn.execute("DELETE FROM manifest")
+                self.logger.info("Cleared entire cache [DuckDB]")
         
         # Delete physical files
         deleted_count = 0
@@ -930,13 +933,14 @@ class FeatureStore:
         self.logger.info(f"Deleted {deleted_count} cache files [DuckDB]")
     
     def close(self):
-        """Close database connection."""
-        if hasattr(self, 'db') and self.db:
-            try:
-                self.db.close()
-                self.logger.info("FeatureStore database connection closed")
-            except Exception as e:
-                self.logger.warning(f"Error closing database connection: {e}")
+        """Close database connections and cleanup resources."""
+        try:
+            if not self.use_pg_manifest:
+                # Close any DuckDB connections for this database
+                close_all_duckdb_connections()
+                self.logger.info("FeatureStore DuckDB connections closed")
+        except Exception as e:
+            self.logger.warning(f"Error closing FeatureStore connections: {e}")
     
     def __enter__(self):
         """Context manager entry."""

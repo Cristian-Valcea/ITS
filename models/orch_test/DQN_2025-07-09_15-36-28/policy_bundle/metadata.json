@@ -1,0 +1,24 @@
+{
+  "version": "1.0",
+  "policy_id": "DQN_2025-07-09_15-36-28",
+  "bundle_format_version": "1.0",
+  "obs_space": {
+    "type": "Box",
+    "shape": [
+      3,
+      7
+    ],
+    "dtype": "float32"
+  },
+  "action_space": {
+    "type": "Discrete",
+    "shape": [],
+    "dtype": "int64"
+  },
+  "model_hash": "f71de3b5dbf8787ada335a0da09b292f25944df46387a9dd35bac44798c523bf",
+  "created_at": "2025-07-09T15:36:33.589588",
+  "framework": "stable-baselines3",
+  "algorithm": "DQN",
+  "sb3_version": "2.6.0",
+  "torch_version": "2.7.1+cpu"
+}

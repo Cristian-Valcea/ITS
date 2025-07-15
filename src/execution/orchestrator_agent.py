@@ -23,6 +23,12 @@ if str(PROJECT_ROOT) not in sys.path:
 try:
     # Shared constants (centralized)
     from ..shared.constants import CLOSE, OPEN_PRICE, HIGH, LOW, VOLUME
+    from ..shared.duckdb_manager import (
+        close_all_duckdb_connections, 
+        close_write_duckdb_connections,
+        training_phase,
+        evaluation_phase
+    )
     
     # Legacy agents (still in agents/ - will be migrated)
     from ..agents.data_agent import DataAgent
@@ -562,6 +568,10 @@ class OrchestratorAgent:
 
         self._trigger_hook('after_training', trained_model_path=trained_model_path)
 
+        # Close write connections before evaluation to prevent DuckDB conflicts
+        self.logger.info("🔒 Closing DuckDB write connections before evaluation...")
+        close_write_duckdb_connections()
+
         if run_evaluation_after_train and trained_model_path:
             eval_results = self.run_evaluation_pipeline(
                 symbol=symbol,
@@ -573,6 +583,10 @@ class OrchestratorAgent:
             )
             self._trigger_hook('after_evaluation', eval_results=eval_results)
 
+        # Final cleanup of all DuckDB connections after training pipeline
+        self.logger.info("🧹 Cleaning up all DuckDB connections after training...")
+        close_all_duckdb_connections()
+        
         self.logger.info(f"--- Training Pipeline for {symbol} COMPLETED ---")
         return trained_model_path
 
@@ -589,6 +603,10 @@ class OrchestratorAgent:
         Run the evaluation pipeline: data, features, environment, evaluation.
         """
         self.logger.info(f"--- Starting Evaluation Pipeline for {symbol} ({start_date} to {end_date}, {interval}) on model: {model_path} ---")
+        
+        # Ensure clean DuckDB state for evaluation (read-only operations)
+        self.logger.info("🔒 Ensuring clean DuckDB state for evaluation...")
+        close_write_duckdb_connections()
 
         eval_data_duration_str = self.main_config.get('evaluation', {}).get('data_duration_for_fetch', "30 D")
         raw_eval_bars_df = self.data_agent.run(
@@ -754,6 +772,10 @@ class OrchestratorAgent:
 
             if trained_model_path:
                 self.logger.info(f"Fold {fold_number}: Training successful. Model: {trained_model_path}")
+                
+                # Close write connections between training and evaluation in walk-forward
+                self.logger.info(f"🔒 Fold {fold_number}: Closing write connections before evaluation...")
+                close_write_duckdb_connections()
                 
                 fold_metrics = self.run_evaluation_pipeline(
                     symbol=symbol,

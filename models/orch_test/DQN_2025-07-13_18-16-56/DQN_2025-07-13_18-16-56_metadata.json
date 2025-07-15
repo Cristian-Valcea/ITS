@@ -1,0 +1,38 @@
+{
+  "algorithm": "DQN",
+  "training_timesteps": 150000,
+  "created_at": "2025-07-13T18:25:20.208864",
+  "config": {
+    "model_save_dir": "models/orch_test/",
+    "log_dir": "logs/tensorboard_orch_test/",
+    "algorithm": "DQN",
+    "algo_params": {
+      "buffer_size": 100000,
+      "learning_rate": 0.0001,
+      "policy": "MlpPolicy",
+      "verbose": 0,
+      "batch_size": 64,
+      "exploration_fraction": 0.1,
+      "exploration_final_eps": 0.02,
+      "target_update_interval": 1000,
+      "device": "cuda"
+    },
+    "training_params": {
+      "checkpoint_freq": 500,
+      "data_duration_for_fetch": null,
+      "log_interval": 50,
+      "total_timesteps": 150000,
+      "max_episodes": 50,
+      "max_training_time_minutes": 120
+    },
+    "risk_config": {
+      "enabled": false,
+      "policy_yaml": "config/risk_limits_orchestrator_test.yaml",
+      "penalty_weight": 0.1,
+      "early_stop_threshold": 0.8
+    }
+  },
+  "model_path": "models\\orch_test\\DQN_2025-07-13_18-16-56\\DQN_2025-07-13_18-16-56.zip",
+  "policy_path": "models\\orch_test\\DQN_2025-07-13_18-16-56\\policy.pt",
+  "torchscript_path": "models\\orch_test\\DQN_2025-07-13_18-16-56\\DQN_2025-07-13_18-16-56_torchscript.pt"
+}
