@@ -22,10 +22,15 @@ feature_store:
 environment:
   initial_capital: 50000.0
   log_trades_in_env: true
-  position_sizing_pct_capital: 0.25
-  reward_scaling: 0.0001  # Scale rewards to ±1 range (divide by 10,000)
-  trade_cooldown_steps: 5  # THROTTLE: Require 5 bars between trades
+  position_sizing_pct_capital: 0.25  # Legacy percentage-based sizing
+  equity_scaling_factor: 0.02       # k factor for equity-scaled sizing: shares = k * portfolio_value / price
+  reward_scaling: 0.01    # Scale rewards for optimal gradient signals (100x increase from 0.0001)
+  trade_cooldown_steps: 12  # STRONG THROTTLE: Require 12 bars (12 minutes) between trades
   transaction_cost_pct: 0.001
+  action_change_penalty_factor: 0.001  # L2 penalty for action changes to discourage ping-ponging
+  # Reward shaping parameters
+  turnover_bonus_threshold: 0.8        # Bonus when turnover < 80% of cap
+  turnover_bonus_factor: 0.001         # Bonus amount per step when under threshold
   # Enhanced Kyle Lambda fill simulation for realistic market impact
   kyle_lambda_fills:
     enable_kyle_lambda_fills: true
@@ -108,9 +113,9 @@ training:
   # GPU-Optimized hyperparameters with improved learning
   buffer_size: 500000  # Increased for GPU memory (was 200k)
   batch_size: 512      # Larger batches for GPU efficiency (was 256)
-  exploration_fraction: 0.15  # FASTER DECAY: Reduced exploration period (was 0.3)
-  exploration_final_eps: 0.02   # LOWER FINAL: More exploitation (was 0.05)
-  exploration_initial_eps: 1.0
+  exploration_fraction: 0.4   # SLOWER DECAY: Extended exploration period for conservative learning
+  exploration_final_eps: 0.05  # MODERATE FINAL: Balanced exploration/exploitation
+  exploration_initial_eps: 0.5 # TAMED START: Start with moderate exploration (was 1.0)
   gamma: 0.99
   gradient_steps: 1
   learning_rate: 0.0001
@@ -119,13 +124,15 @@ training:
   train_freq: 4
   # Extended training for GPU with better convergence
   total_timesteps: 500000  # Increased from 300k for GPU power
-  max_training_time_minutes: 360  # 6 hours for comprehensive training
-  # Improved early stopping for learning
+  max_episodes: 200  # Allow many episodes for meaningful training
+  max_training_time_minutes: 15  # At least 15 minutes of real training time
+  # Improved early stopping for learning - step-based checking
   early_stopping:
-    patience: 50  # More patience for learning convergence
+    patience: 100  # Much more patience for learning convergence (episodes)
     min_improvement: 0.01  # Require meaningful improvement
-    check_freq: 2000  # Check less frequently for stability
+    check_freq: 10000  # Check every 10k steps for stability
     verbose: true
+    min_episodes_before_stopping: 50  # Minimum episodes before early stopping kicks in
   # Model saving
   save_freq: 10000
   save_replay_buffer: false

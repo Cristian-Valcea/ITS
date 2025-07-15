@@ -23,7 +23,7 @@ environment:
   initial_capital: 50000.0
   log_trades_in_env: true
   position_sizing_pct_capital: 0.25
-  reward_scaling: 0.0001  # Scale rewards to ±1 range (divide by 10,000)
+  reward_scaling: 0.01    # Scale rewards for optimal gradient signals (100x increase from 0.0001)
   trade_cooldown_steps: 0
   transaction_cost_pct: 0.001
 evaluation:
