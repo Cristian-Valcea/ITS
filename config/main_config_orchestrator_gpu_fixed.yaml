@@ -105,15 +105,28 @@ orchestrator:
 risk:
   # Risk observation features
   include_risk_features: true          # Add risk features to observation space
-  vol_window: 60                       # Volatility calculation window
-  penalty_lambda: 0.5                  # Volatility penalty factor
-  dd_limit: 0.02                       # Training drawdown limit (2%)
-  eval_dd_limit: 0.02                  # Evaluation drawdown limit (2%)
-  # Curriculum learning (optional)
+  vol_window: 60                       # Volatility calculation window (≈1h for 1-min data, configurable: 30/90/120 for sweeps)
+  penalty_lambda: 1.5                  # INCREASED: Volatility penalty factor (was 0.5)
+  dd_limit: 0.03                       # RELAXED: Training drawdown limit (3% vs 2%)
+  eval_dd_limit: 0.02                  # STRICT: Evaluation drawdown limit (2%)
+  # Curriculum learning - ENABLED for progressive risk tightening
   curriculum:
-    enabled: false                     # Disable curriculum learning
+    enabled: true                      # ENABLE curriculum learning
     logic: and                         # Logic for curriculum triggers
     use_perf_trigger: false           # Don't use performance triggers
+    stages:
+      - steps: 0
+        dd_limit: 0.04
+        lambda: 0.5
+      - steps: 50000
+        dd_limit: 0.03
+        lambda: 1.0
+      - steps: 150000
+        dd_limit: 0.025
+        lambda: 1.5
+      - steps: 300000
+        dd_limit: 0.02
+        lambda: 2.0
 risk_management:
   max_daily_drawdown_pct: 0.05
   hourly_turnover_cap: 3.0

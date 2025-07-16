@@ -35,17 +35,17 @@ class RiskObsWrapper(gym.ObservationWrapper):
         self.logger = logging.getLogger("RiskObsWrapper")
         
         # Extend observation space to include risk features
-        # Original observation space + 3 risk features
+        # Original observation space + 5 risk features (volatility, drawdown, position_fraction, notional_exposure, position_size)
         original_shape = env.observation_space.shape
         
         # Handle both 1D (flattened) and 2D observation spaces
         if len(original_shape) == 1:
-            # Already flattened - just add 3 features
-            new_shape = (original_shape[0] + 3,)
+            # Already flattened - just add 5 features
+            new_shape = (original_shape[0] + 5,)
         else:
-            # Multi-dimensional - flatten first, then add 3 features
+            # Multi-dimensional - flatten first, then add 5 features
             flattened_size = np.prod(original_shape)
-            new_shape = (flattened_size + 3,)
+            new_shape = (flattened_size + 5,)
         
         self.observation_space = spaces.Box(
             low=-np.inf,
@@ -54,7 +54,7 @@ class RiskObsWrapper(gym.ObservationWrapper):
             dtype=np.float32
         )
         
-        self.logger.info(f"Extended observation space: {original_shape} → {new_shape}")
+        self.logger.info(f"Extended observation space: {original_shape} → {new_shape} (added 5 risk features: volatility, drawdown, position_fraction, notional_exposure, position_size)")
     
     def observation(self, obs: np.ndarray) -> np.ndarray:
         """
@@ -69,16 +69,23 @@ class RiskObsWrapper(gym.ObservationWrapper):
         # Get risk features from RiskManager
         risk_features = self.risk_manager.get_risk_features()
         
-        # Get current position from environment (normalized)
+        # Get current position and portfolio info from environment
         current_position = getattr(self.env, 'current_position', 0)
         max_position = getattr(self.env, 'max_position', 100)  # Reasonable default
-        normalized_position = current_position / max_position if max_position > 0 else 0.0
+        portfolio_value = getattr(self.env, 'portfolio_value', 100000.0)
+        current_price = getattr(self.env, 'current_price', 100.0)  # Fallback price
         
-        # Create risk feature vector
+        # Calculate enhanced position features
+        position_fraction = current_position / max_position if max_position > 0 else 0.0
+        notional_exposure = (current_position * current_price) / portfolio_value if portfolio_value > 0 else 0.0
+        
+        # Create enhanced risk feature vector (5 features)
         risk_vector = np.array([
             risk_features['volatility'],      # Current return volatility (0-1)
             risk_features['drawdown_pct'],    # Current drawdown percentage (0-1)
-            normalized_position               # Normalized position size (-1 to 1)
+            position_fraction,                # Position as fraction of max position (-1 to 1)
+            notional_exposure,                # Notional exposure as fraction of portfolio (0-1)
+            float(current_position)           # Raw position size (for network to learn scaling)
         ], dtype=np.float32)
         
         # Flatten observation if needed (to handle multi-dimensional obs)
