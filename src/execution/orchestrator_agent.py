@@ -93,6 +93,10 @@ except ImportError:
     from risk.risk_agent_adapter import RiskAgentAdapter
     from risk.risk_agent_v2 import RiskAgentV2
     
+    # New modular risk controls
+    from risk.controls.risk_manager import RiskManager
+    from gym_env.wrappers.risk_wrapper import RiskObsWrapper, VolatilityPenaltyReward
+    
     # Legacy column names
     COL_CLOSE = CLOSE
     COL_OPEN = OPEN_PRICE
