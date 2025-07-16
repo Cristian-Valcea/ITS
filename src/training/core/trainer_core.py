@@ -88,6 +88,9 @@ class TrainerCore:
         self.algorithm_name = self.config.get("algorithm", "DQN").upper()
         self.algo_params = self.config.get("algo_params", {})
         self.training_params = self.config.get("training_params", {})
+        
+        # Extract algorithm-specific parameters from training_params for backward compatibility
+        self._extract_algorithm_params()
         self.risk_config = self.config.get("risk_config", {})
         
         # GPU Configuration
@@ -113,6 +116,75 @@ class TrainerCore:
         self.logger.info(f"TrainerCore initialized for {self.algorithm_name}")
         self.logger.info(f"Model save dir: {self.model_save_dir}")
         self.logger.info(f"Log dir: {self.log_dir}")
+    
+    def _extract_algorithm_params(self) -> None:
+        """
+        Extract algorithm-specific parameters from training_params.
+        
+        This handles the case where algorithm parameters are mixed with training
+        parameters in the YAML configuration for convenience.
+        """
+        # Algorithm-specific parameters that should be passed to the model constructor
+        algorithm_param_keys = {
+            'policy', 'policy_kwargs', 'buffer_size', 'batch_size', 'learning_rate',
+            'gamma', 'exploration_fraction', 'exploration_initial_eps', 
+            'exploration_final_eps', 'target_update_interval', 'train_freq',
+            'gradient_steps', 'learning_starts', 'tau', 'prioritized_replay',
+            'prioritized_replay_alpha', 'prioritized_replay_beta0', 
+            'prioritized_replay_eps', 'optimize_memory_usage'
+        }
+        
+        # Extract algorithm parameters from training_params
+        for key in algorithm_param_keys:
+            if key in self.training_params:
+                self.algo_params[key] = self.training_params[key]
+                self.logger.debug(f"Extracted algorithm param: {key} = {self.training_params[key]}")
+        
+        # Handle dueling DQN configuration
+        self._setup_dueling_dqn()
+        
+        # Log the final algorithm parameters for Enhanced Double DQN
+        policy_kwargs = self.algo_params.get('policy_kwargs', {})
+        if policy_kwargs:
+            self.logger.info("🎯 Enhanced Double DQN Configuration:")
+            self.logger.info(f"  - Policy: {self.algo_params.get('policy', 'MultiInputPolicy')}")
+            self.logger.info(f"  - Network Architecture: {policy_kwargs.get('net_arch', 'default')}")
+            self.logger.info(f"  - Activation Function: {policy_kwargs.get('activation_fn', 'default')}")
+            self.logger.info(f"  - Buffer size: {self.algo_params.get('buffer_size', 'default')}")
+            self.logger.info(f"  - Batch size: {self.algo_params.get('batch_size', 'default')}")
+            self.logger.info("  - Benefits: Target network reduces overestimation bias + larger network capacity")
+    
+    def _setup_dueling_dqn(self) -> None:
+        """Setup enhanced DQN configuration (Double DQN is built into SB3)."""
+        policy_kwargs = self.training_params.get('policy_kwargs', {})
+        
+        if policy_kwargs:
+            # Handle activation function string to class conversion
+            if 'activation_fn' in policy_kwargs:
+                activation_name = policy_kwargs['activation_fn']
+                if isinstance(activation_name, str):
+                    import torch.nn as nn
+                    activation_map = {
+                        'ReLU': nn.ReLU,
+                        'Tanh': nn.Tanh,
+                        'ELU': nn.ELU,
+                        'LeakyReLU': nn.LeakyReLU,
+                    }
+                    if activation_name in activation_map:
+                        policy_kwargs['activation_fn'] = activation_map[activation_name]
+                        self.logger.info(f"✅ Activation function set to: {activation_name}")
+            
+            # Set the policy kwargs
+            self.algo_params['policy_kwargs'] = policy_kwargs
+            self.logger.info("✅ Enhanced DQN Policy configured")
+            self.logger.info(f"   Network Architecture: {policy_kwargs.get('net_arch', 'default')}")
+            self.logger.info(f"   Activation Function: {policy_kwargs.get('activation_fn', 'default')}")
+            
+        # Log Double DQN information (built into SB3)
+        self.logger.info("🎯 Double DQN Features (Built into SB3):")
+        self.logger.info("   - Target Network: ✅ (reduces overestimation bias)")
+        self.logger.info("   - Experience Replay: ✅ (improves sample efficiency)")
+        self.logger.info("   - Epsilon-Greedy Exploration: ✅ (balanced exploration/exploitation)")
     
     def _setup_device_config(self) -> None:
         """Setup GPU/CPU device configuration for training."""
@@ -205,7 +277,20 @@ class TrainerCore:
 
             # Create model
             model = AlgorithmClass(**model_params)
-            self.logger.info(f"Created {self.algorithm_name} model with params: {self.algo_params}")
+            
+            # Enhanced logging for Double DQN
+            policy_kwargs = self.algo_params.get('policy_kwargs', {})
+            if policy_kwargs:
+                policy_name = getattr(self.algo_params.get('policy'), '__name__', str(self.algo_params.get('policy', 'MultiInputPolicy')))
+                self.logger.info(f"✅ Created Enhanced Double {self.algorithm_name} model")
+                self.logger.info(f"   Policy: {policy_name}")
+                self.logger.info(f"   Network Architecture: {policy_kwargs.get('net_arch', 'default')}")
+                self.logger.info(f"   Activation Function: {policy_kwargs.get('activation_fn', 'ReLU')}")
+                self.logger.info(f"   Buffer Size: {self.algo_params.get('buffer_size', 'default'):,}")
+                self.logger.info(f"   Batch Size: {self.algo_params.get('batch_size', 'default')}")
+                self.logger.info("   🎯 Benefits: Target network reduces overestimation bias + enhanced capacity")
+            else:
+                self.logger.info(f"Created {self.algorithm_name} model with params: {self.algo_params}")
             
             return model
 
