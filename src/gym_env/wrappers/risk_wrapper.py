@@ -149,13 +149,13 @@ class VolatilityPenaltyReward(gym.RewardWrapper):
         # Get current timestamp
         current_dt = getattr(self.env, 'current_dt', None)
         
-        # Prepare info dict for RiskManager
-        risk_info = {
-            'timestamp': current_dt,
-            'portfolio_value': portfolio_value,
-            'position': current_position,
-            'step_return': step_return
-        }
+        # Prepare full info dict for RiskManager (as suggested)
+        risk_info = dict(
+            portfolio_value=portfolio_value,
+            step_return=step_return,
+            position=current_position,
+            timestamp=current_dt,
+        )
         
         # Get risk assessment from RiskManager
         risk_result = self.risk_manager.step(risk_info)

@@ -470,6 +470,13 @@ class IntradayTradingEnv(gym.Env):
         current_price = self._get_current_price()
         timestamp = self.dates[self.current_step]
 
+        # End-of-day flat rule: Force position=0 at 15:55 to cut overnight risk
+        if hasattr(timestamp, 'time') and timestamp.time() >= pd.Timestamp('15:55').time():
+            if self.current_position != 0:
+                self.logger.info(f"🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at {timestamp.time()} "
+                               f"(was {self.current_position})")
+                desired_position_signal = 0  # Force flat position
+        
         # Update fill simulator with current market data
         if self.enable_kyle_lambda_fills and self.fill_simulator:
             current_volume = None

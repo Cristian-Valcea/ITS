@@ -38,8 +38,9 @@ class RiskManager:
         
         # Initialize volatility penalty tracker
         vol_config = {
-            'window_size': config.get('vol_window', 60),
-            'penalty_lambda': config.get('penalty_lambda', 0.25)
+            'vol_window': config.get('vol_window', 60),  # Use vol_window key to match config
+            'penalty_lambda': config.get('penalty_lambda', 0.25),
+            'target_sigma': config.get('target_sigma', 0.0)  # Add target_sigma support
         }
         self.volatility_penalty = VolatilityPenalty(vol_config)
         
@@ -70,7 +71,7 @@ class RiskManager:
             'drawdown_breached': False
         }
         
-        self.logger.info(f"RiskManager initialized - vol_window: {vol_config['window_size']}, "
+        self.logger.info(f"RiskManager initialized - vol_window: {vol_config['vol_window']}, "
                         f"penalty_lambda: {vol_config['penalty_lambda']}, dd_limit: {self.dd_limit}")
     
     def step(self, info: Dict[str, Any]) -> Dict[str, Any]:

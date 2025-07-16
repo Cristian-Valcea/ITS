@@ -101,13 +101,15 @@ class VolatilityPenalty:
         
         Args:
             config: Configuration dict containing:
-                - window_size: Rolling window size (default: 60)
+                - vol_window: Rolling window size (default: 60)
                 - penalty_lambda: Penalty weight (default: 0.25)
+                - target_sigma: Target volatility threshold (default: 0.0)
         """
         self.logger = logging.getLogger("VolatilityPenalty")
         
-        self.window_size = config.get('window_size', 60)
+        self.window_size = config.get('vol_window', 60)  # Use vol_window to match config
         self.penalty_lambda = config.get('penalty_lambda', 0.25)
+        self.target_sigma = config.get('target_sigma', 0.0)  # Target volatility threshold
         
         # Initialize Welford variance calculator
         self.welford = WelfordVariance(self.window_size)
@@ -115,9 +117,10 @@ class VolatilityPenalty:
         # Tracking for statistics
         self.total_penalty = 0.0
         self.step_count = 0
+        self.cumulative_penalty = 0.0  # Track cumulative penalty for visibility
         
         self.logger.info(f"VolatilityPenalty initialized - window: {self.window_size}, "
-                        f"lambda: {self.penalty_lambda}")
+                        f"lambda: {self.penalty_lambda}, target_sigma: {self.target_sigma}")
     
     def update(self, step_return: float) -> float:
         """
@@ -132,17 +135,21 @@ class VolatilityPenalty:
         # Update volatility calculation
         current_volatility = self.welford.update(step_return)
         
-        # Calculate penalty: λ * σ
-        penalty = self.penalty_lambda * current_volatility
+        # Calculate penalty: λ * max(0, σ - target_σ)
+        # Only penalize volatility above target threshold
+        excess_volatility = max(0.0, current_volatility - self.target_sigma)
+        penalty = self.penalty_lambda * excess_volatility
         
         # Track statistics
         self.total_penalty += penalty
+        self.cumulative_penalty += penalty
         self.step_count += 1
         
-        # Log significant volatility events
-        if current_volatility > 0.05:  # 5% volatility threshold
-            self.logger.debug(f"High volatility detected: {current_volatility:.4f} "
-                            f"(penalty: {penalty:.4f})")
+        # Log significant volatility events (more visible logging)
+        if penalty > 0.001:  # Log any meaningful penalty
+            self.logger.debug(f"Volatility penalty applied: σ={current_volatility:.4f}, "
+                            f"target={self.target_sigma:.4f}, excess={excess_volatility:.4f}, "
+                            f"penalty={penalty:.4f}, cumulative={self.cumulative_penalty:.4f}")
         
         return penalty
     
@@ -175,8 +182,15 @@ class VolatilityPenalty:
     
     def reset(self):
         """Reset state for new episode."""
+        # Log episode summary before reset
+        if self.step_count > 0:
+            avg_penalty = self.total_penalty / self.step_count
+            self.logger.info(f"Episode completed - Total penalty: {self.total_penalty:.4f}, "
+                           f"Avg penalty/step: {avg_penalty:.6f}, Steps: {self.step_count}")
+        
         self.welford.reset()
         self.total_penalty = 0.0
+        self.cumulative_penalty = 0.0
         self.step_count = 0
         
         self.logger.debug("VolatilityPenalty reset for new episode")
@@ -187,7 +201,9 @@ class VolatilityPenalty:
             'current_volatility': self.get_current_volatility(),
             'average_volatility': self.get_average_volatility(),
             'total_penalty': self.total_penalty,
+            'cumulative_penalty': self.cumulative_penalty,
             'penalty_lambda': self.penalty_lambda,
+            'target_sigma': self.target_sigma,
             'window_size': self.window_size,
             'step_count': self.step_count
         }

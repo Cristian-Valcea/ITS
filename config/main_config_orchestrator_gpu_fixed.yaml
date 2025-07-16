@@ -107,6 +107,7 @@ risk:
   include_risk_features: true          # Add risk features to observation space
   vol_window: 60                       # Volatility calculation window (≈1h for 1-min data, configurable: 30/90/120 for sweeps)
   penalty_lambda: 1.5                  # INCREASED: Volatility penalty factor (was 0.5)
+  target_sigma: 0.0                    # Target volatility threshold - only penalize excess volatility
   dd_limit: 0.03                       # RELAXED: Training drawdown limit (3% vs 2%)
   eval_dd_limit: 0.02                  # STRICT: Evaluation drawdown limit (2%)
   # Curriculum learning - ENABLED for progressive risk tightening
