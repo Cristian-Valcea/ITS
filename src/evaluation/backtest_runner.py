@@ -85,10 +85,26 @@ class BacktestRunner:
             # Run backtest loop
             while not (terminated or truncated):
                 # Ensure observation shape matches model expectation
-                if len(obs.shape) > 1 and model.observation_space.shape != obs.shape:
-                    expected_shape = model.observation_space.shape
-                    if len(expected_shape) == 1 and np.prod(obs.shape) == expected_shape[0]:
-                        obs = obs.flatten()
+                if len(obs.shape) > 1:
+                    # Always flatten multi-dimensional observations
+                    obs = obs.flatten()
+                
+                # Handle observation size mismatch (e.g., old models vs new risk features)
+                expected_size = model.observation_space.shape[0]
+                actual_size = obs.shape[0]
+                
+                if actual_size != expected_size:
+                    if actual_size > expected_size:
+                        # Truncate extra features (e.g., risk features not in old model)
+                        obs = obs[:expected_size]
+                        if total_steps == 1:  # Log only once
+                            self.logger.warning(f"Truncating observation from {actual_size} to {expected_size} features for model compatibility")
+                    else:
+                        # Pad with zeros if observation is too small
+                        padding = np.zeros(expected_size - actual_size, dtype=obs.dtype)
+                        obs = np.concatenate([obs, padding])
+                        if total_steps == 1:  # Log only once
+                            self.logger.warning(f"Padding observation from {actual_size} to {expected_size} features for model compatibility")
                 
                 # Get action from model
                 action, _states = model.predict(obs, deterministic=deterministic)

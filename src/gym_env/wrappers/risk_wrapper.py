@@ -37,7 +37,15 @@ class RiskObsWrapper(gym.ObservationWrapper):
         # Extend observation space to include risk features
         # Original observation space + 3 risk features
         original_shape = env.observation_space.shape
-        new_shape = (original_shape[0] + 3,)  # +3 for volatility, drawdown, position_size
+        
+        # Handle both 1D (flattened) and 2D observation spaces
+        if len(original_shape) == 1:
+            # Already flattened - just add 3 features
+            new_shape = (original_shape[0] + 3,)
+        else:
+            # Multi-dimensional - flatten first, then add 3 features
+            flattened_size = np.prod(original_shape)
+            new_shape = (flattened_size + 3,)
         
         self.observation_space = spaces.Box(
             low=-np.inf,
@@ -73,8 +81,14 @@ class RiskObsWrapper(gym.ObservationWrapper):
             normalized_position               # Normalized position size (-1 to 1)
         ], dtype=np.float32)
         
-        # Concatenate original observation with risk features
-        extended_obs = np.concatenate([obs, risk_vector])
+        # Flatten observation if needed (to handle multi-dimensional obs)
+        if obs.ndim > 1:
+            obs_flat = obs.flatten()
+        else:
+            obs_flat = obs
+        
+        # Concatenate flattened observation with risk features
+        extended_obs = np.concatenate([obs_flat, risk_vector])
         
         return extended_obs
 
