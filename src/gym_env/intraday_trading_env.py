@@ -13,12 +13,15 @@ from typing import Optional, Dict, Any, Tuple, List
 
 try:
     from .kyle_lambda_fill_simulator import KyleLambdaFillSimulator, FillPriceSimulatorFactory
+    from ..risk.advanced_reward_shaping import AdvancedRewardShaper
 except ImportError:
     # Fallback for direct execution
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent))
     from kyle_lambda_fill_simulator import KyleLambdaFillSimulator, FillPriceSimulatorFactory
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from risk.advanced_reward_shaping import AdvancedRewardShaper
 
 class IntradayTradingEnv(gym.Env):
     """
@@ -73,7 +76,9 @@ class IntradayTradingEnv(gym.Env):
                  action_change_penalty_factor: float = 0.001, # L2 penalty factor for action changes
                  # Reward shaping parameters
                  turnover_bonus_threshold: float = 0.8, # Bonus when turnover < 80% of cap
-                 turnover_bonus_factor: float = 0.001 # Bonus amount per step when under threshold
+                 turnover_bonus_factor: float = 0.001, # Bonus amount per step when under threshold
+                 # Advanced reward shaping configuration
+                 advanced_reward_config: Dict[str, Any] = None # Configuration for advanced reward shaping
                  ):
         """
         Args:
@@ -153,6 +158,14 @@ class IntradayTradingEnv(gym.Env):
         else:
             self.fill_simulator = None
             self.logger.info("Using mid-price fills (Kyle Lambda simulation disabled)")
+        
+        # Initialize Advanced Reward Shaping
+        if advanced_reward_config and advanced_reward_config.get('enabled', False):
+            self.advanced_reward_shaper = AdvancedRewardShaper(advanced_reward_config)
+            self.logger.info("🎯 Advanced Reward Shaping enabled")
+        else:
+            self.advanced_reward_shaper = None
+            self.logger.info("Advanced Reward Shaping disabled")
 
         if not (0.01 <= self.position_sizing_pct_capital <= 1.0):
             self.logger.warning(f"position_sizing_pct_capital ({self.position_sizing_pct_capital}) is outside the recommended range [0.01, 1.0]. Clamping to 0.25.")
@@ -430,6 +443,14 @@ class IntradayTradingEnv(gym.Env):
         # Reset fill simulator
         if self.enable_kyle_lambda_fills and self.fill_simulator:
             self.fill_simulator.reset()
+        
+        # Reset advanced reward shaping
+        if self.advanced_reward_shaper:
+            self.advanced_reward_shaper.reset()
+            # Initialize tracking variables for advanced reward shaping
+            self.returns_history = []
+            self.portfolio_values_history = [self.initial_capital]
+            self.volatility_history = []
 
         self._handle_new_day() 
         
@@ -676,6 +697,58 @@ class IntradayTradingEnv(gym.Env):
         gross_pnl_change = (self.portfolio_value - portfolio_value_before_action)
         self.net_pnl_this_step = gross_pnl_change  # Net P&L already includes fees (they reduce portfolio value)
         reward = self.net_pnl_this_step
+        
+        # ADVANCED REWARD SHAPING: Apply cutting-edge risk-aware reward modifications
+        if self.advanced_reward_shaper:
+            # Calculate required metrics for advanced reward shaping
+            self.portfolio_values_history.append(self.portfolio_value)
+            
+            # Calculate current return
+            if len(self.portfolio_values_history) > 1:
+                current_return = (self.portfolio_value - self.portfolio_values_history[-2]) / self.portfolio_values_history[-2]
+                self.returns_history.append(current_return)
+            else:
+                current_return = 0.0
+                self.returns_history.append(0.0)
+            
+            # Calculate rolling volatility (if enough history)
+            if len(self.returns_history) >= 10:  # Minimum for volatility calculation
+                recent_returns = np.array(self.returns_history[-60:])  # Last 60 steps (1 hour)
+                current_volatility = np.std(recent_returns) * np.sqrt(252 * 390)  # Annualized volatility
+            else:
+                current_volatility = 0.0
+            
+            # Calculate current drawdown
+            if len(self.portfolio_values_history) > 1:
+                peak_value = max(self.portfolio_values_history)
+                current_drawdown = (peak_value - self.portfolio_value) / peak_value
+            else:
+                current_drawdown = 0.0
+            
+            # Apply advanced reward shaping
+            shaped_reward, shaping_info = self.advanced_reward_shaper.shape_reward(
+                base_reward=reward,
+                pnl=self.net_pnl_this_step,
+                current_return=current_return,
+                volatility=current_volatility,
+                drawdown=current_drawdown
+            )
+            
+            # Update reward with shaped version
+            reward = shaped_reward
+            
+            # Log advanced reward shaping details (debug level)
+            if shaping_info.get('total_shaping', 0) != 0:
+                self.logger.debug(f"🎯 ADVANCED REWARD SHAPING: Step {self.current_step}")
+                self.logger.debug(f"   Base reward: ${shaping_info.get('base_reward', 0):.6f}")
+                self.logger.debug(f"   Shaped reward: ${shaping_info.get('shaped_reward', 0):.6f}")
+                self.logger.debug(f"   Total shaping: ${shaping_info.get('total_shaping', 0):.6f}")
+                if 'lagrangian_penalty' in shaping_info:
+                    self.logger.debug(f"   Lagrangian penalty: ${shaping_info['lagrangian_penalty']:.6f} (λ={shaping_info.get('lambda_value', 0):.4f})")
+                if 'sharpe_reward' in shaping_info:
+                    self.logger.debug(f"   Sharpe reward: ${shaping_info['sharpe_reward']:.6f} (Sharpe={shaping_info.get('current_sharpe', 0):.4f})")
+                if 'cvar_penalty' in shaping_info:
+                    self.logger.debug(f"   CVaR penalty: ${shaping_info['cvar_penalty']:.6f} (CVaR={shaping_info.get('cvar', 0):.4f})")
         
         # Add turnover bonus when below threshold
         current_turnover_ratio = self.hourly_traded_value / max(self.start_of_day_portfolio_value, 1.0)

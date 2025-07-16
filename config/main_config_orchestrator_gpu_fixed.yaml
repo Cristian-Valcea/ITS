@@ -43,6 +43,40 @@ environment:
       max_impact_bps: 100.0      # Higher impact cap (doubled from 50 bps)
       temporary_impact_decay: 0.5
       enable_bid_ask_bounce: true
+  # ADVANCED REWARD SHAPING - Pass configuration to environment
+  advanced_reward_config:
+    enabled: true                      # Enable advanced reward shaping
+    
+    # 1. LAGRANGIAN CONSTRAINT - Learnable multiplier for volatility-based drawdown punishment
+    lagrangian_constraint:
+      enabled: true                    # Enable Lagrangian constraint learning
+      initial_lambda: 0.1              # Initial learnable multiplier λ
+      lambda_lr: 0.001                 # Learning rate for λ updates
+      target_volatility: 0.02          # Target volatility threshold (2% daily)
+      vol_window: 60                   # Rolling window for volatility calculation (60 steps = 1h)
+      constraint_tolerance: 0.001      # Tolerance for constraint satisfaction
+      lambda_min: 0.01                 # Minimum λ value
+      lambda_max: 10.0                 # Maximum λ value
+      update_frequency: 100            # Update λ every N steps
+    
+    # 2. SHARPE-ADJUSTED REWARD - Normalize PnL by rolling volatility
+    sharpe_adjusted_reward:
+      enabled: true                    # Enable Sharpe-adjusted rewards
+      rolling_window: 60               # Rolling window for Sharpe calculation (1h)
+      min_periods: 30                  # Minimum periods for stable calculation
+      sharpe_scaling: 1.0              # Scaling factor for Sharpe rewards
+      volatility_floor: 0.001          # Minimum volatility to avoid division by zero
+      annualization_factor: 252       # Trading days per year for annualized Sharpe
+      
+    # 3. CVaR-RL FRAMEWORK - Conditional Value at Risk policy gradient
+    cvar_rl:
+      enabled: true                    # Enable CVaR-RL for tail risk control
+      confidence_level: 0.05           # CVaR confidence level (5% tail risk)
+      cvar_window: 120                 # Window for CVaR calculation (2h)
+      cvar_weight: 0.3                 # Weight for CVaR term in reward
+      tail_penalty_factor: 2.0         # Additional penalty for extreme losses
+      quantile_smoothing: 0.1          # Smoothing parameter for quantile estimation
+      min_samples_cvar: 50             # Minimum samples before CVaR calculation
 evaluation:
   data_duration_for_fetch: 5 D
   metrics:
@@ -110,6 +144,41 @@ risk:
   target_sigma: 0.0                    # Target volatility threshold - only penalize excess volatility
   dd_limit: 0.03                       # RELAXED: Training drawdown limit (3% vs 2%)
   eval_dd_limit: 0.02                  # STRICT: Evaluation drawdown limit (2%)
+  
+  # ADVANCED REWARD & RISK SHAPING - Cutting-edge techniques
+  advanced_reward_shaping:
+    enabled: true                      # Enable advanced reward shaping
+    
+    # 1. LAGRANGIAN CONSTRAINT - Learnable multiplier for volatility-based drawdown punishment
+    lagrangian_constraint:
+      enabled: true                    # Enable Lagrangian constraint learning
+      initial_lambda: 0.1              # Initial learnable multiplier λ
+      lambda_lr: 0.001                 # Learning rate for λ updates
+      target_volatility: 0.02          # Target volatility threshold (2% daily)
+      vol_window: 60                   # Rolling window for volatility calculation (60 steps = 1h)
+      constraint_tolerance: 0.001      # Tolerance for constraint satisfaction
+      lambda_min: 0.01                 # Minimum λ value
+      lambda_max: 10.0                 # Maximum λ value
+      update_frequency: 100            # Update λ every N steps
+    
+    # 2. SHARPE-ADJUSTED REWARD - Normalize PnL by rolling volatility
+    sharpe_adjusted_reward:
+      enabled: true                    # Enable Sharpe-adjusted rewards
+      rolling_window: 60               # Rolling window for Sharpe calculation (1h)
+      min_periods: 30                  # Minimum periods for stable calculation
+      sharpe_scaling: 1.0              # Scaling factor for Sharpe rewards
+      volatility_floor: 0.001          # Minimum volatility to avoid division by zero
+      annualization_factor: 252       # Trading days per year for annualized Sharpe
+      
+    # 3. CVaR-RL FRAMEWORK - Conditional Value at Risk policy gradient
+    cvar_rl:
+      enabled: true                    # Enable CVaR-RL for tail risk control
+      confidence_level: 0.05           # CVaR confidence level (5% tail risk)
+      cvar_window: 120                 # Window for CVaR calculation (2h)
+      cvar_weight: 0.3                 # Weight for CVaR term in reward
+      tail_penalty_factor: 2.0         # Additional penalty for extreme losses
+      quantile_smoothing: 0.1          # Smoothing parameter for quantile estimation
+      min_samples_cvar: 50             # Minimum samples before CVaR calculation
   # Curriculum learning - ENABLED for progressive risk tightening
   curriculum:
     enabled: true                      # ENABLE curriculum learning
