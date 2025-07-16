@@ -53,7 +53,7 @@ function Start-MonitoringProcess {
 # Launch TensorBoard (Port 6006)
 # ========================================================================
 Write-Host "📊 Starting TensorBoard on http://localhost:6006..." -ForegroundColor Green
-Start-Process cmd -ArgumentList "/k", "cd /d C:\Projects\IntradayJules `&`& tensorboard --logdir logs\tensorboard_gpu_fixed --port 6006 --host 0.0.0.0" -WindowStyle Normal
+Start-Process cmd -ArgumentList "/k", "cd /d C:\Projects\IntradayJules `&`& tensorboard --logdir logs\tensorboard_gpu_fixed --port 6006 --host localhost" -WindowStyle Normal
 Start-Sleep -Seconds 3
 
 # ========================================================================

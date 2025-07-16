@@ -34,7 +34,7 @@ REM ========================================================================
 REM Launch TensorBoard (Port 6006)
 REM ========================================================================
 echo 📊 Starting TensorBoard on http://localhost:6006...
-start "TensorBoard-GPU-Fixed" cmd /k "cd /d C:\Projects\IntradayJules && call venv\Scripts\activate.bat && tensorboard --logdir logs\tensorboard_gpu_fixed --port 6006 --host 0.0.0.0"
+start "TensorBoard-GPU-Fixed" cmd /k "cd /d C:\Projects\IntradayJules && call venv\Scripts\activate.bat && tensorboard --logdir logs\tensorboard_gpu_fixed --port 6006 --host localhost"
 
 REM Wait a moment for TensorBoard to start
 timeout /t 3 /nobreak >nul

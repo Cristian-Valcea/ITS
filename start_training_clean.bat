@@ -134,7 +134,7 @@ REM Launch monitoring tools (each in separate window, inheriting venv)
 REM ========================================================================
 
 echo Starting TensorBoard on http://localhost:6006...
-start "TensorBoard" cmd /k "tensorboard --logdir logs\tensorboard_gpu_fixed --port 6006 --host 0.0.0.0"
+start "TensorBoard" cmd /k "tensorboard --logdir logs\tensorboard_gpu_fixed --port 6006 --host localhost"
 timeout /t 2 /nobreak >nul
 
 echo Starting log monitor...
