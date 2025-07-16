@@ -40,6 +40,14 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, EvalCallback
 from stable_baselines3.common.vec_env import VecEnv
 
+# Advanced algorithms from sb3-contrib
+try:
+    from sb3_contrib import QRDQN
+    SB3_CONTRIB_AVAILABLE = True
+except ImportError:
+    QRDQN = None
+    SB3_CONTRIB_AVAILABLE = False
+
 # Internal imports
 try:
     from ...gym_env.intraday_trading_env import IntradayTradingEnv
@@ -143,9 +151,18 @@ class TrainerCore:
         # Handle dueling DQN configuration
         self._setup_dueling_dqn()
         
-        # Log the final algorithm parameters for Enhanced Double DQN
+        # Log the final algorithm parameters for Advanced DQN
         policy_kwargs = self.algo_params.get('policy_kwargs', {})
-        if policy_kwargs:
+        if self.algorithm_name == 'QR-DQN':
+            self.logger.info("🎯 Advanced QR-DQN Configuration:")
+            self.logger.info(f"  - Algorithm: Quantile Regression DQN (Distributional RL)")
+            self.logger.info(f"  - Policy: {self.algo_params.get('policy', 'MultiInputPolicy')}")
+            self.logger.info(f"  - Network Architecture: {policy_kwargs.get('net_arch', 'default')}")
+            self.logger.info(f"  - Quantiles: {policy_kwargs.get('n_quantiles', 200)}")
+            self.logger.info(f"  - Buffer size: {self.algo_params.get('buffer_size', 'default')}")
+            self.logger.info(f"  - Batch size: {self.algo_params.get('batch_size', 'default')}")
+            self.logger.info("  - Benefits: Full return distribution + reduced overestimation bias")
+        elif policy_kwargs:
             self.logger.info("🎯 Enhanced Double DQN Configuration:")
             self.logger.info(f"  - Policy: {self.algo_params.get('policy', 'MultiInputPolicy')}")
             self.logger.info(f"  - Network Architecture: {policy_kwargs.get('net_arch', 'default')}")
@@ -249,7 +266,7 @@ class TrainerCore:
         """Access to the underlying risk agent for compatibility."""
         return self._risk_agent
         
-    def create_model(self) -> Optional[DQN]:
+    def create_model(self) -> Optional[Any]:
         """
         Create and configure the RL model.
         
@@ -278,9 +295,19 @@ class TrainerCore:
             # Create model
             model = AlgorithmClass(**model_params)
             
-            # Enhanced logging for Double DQN
+            # Enhanced logging for Advanced DQN algorithms
             policy_kwargs = self.algo_params.get('policy_kwargs', {})
-            if policy_kwargs:
+            if self.algorithm_name == 'QR-DQN':
+                policy_name = getattr(self.algo_params.get('policy'), '__name__', str(self.algo_params.get('policy', 'MultiInputPolicy')))
+                self.logger.info(f"✅ Created Advanced {self.algorithm_name} model")
+                self.logger.info(f"   Algorithm: Quantile Regression DQN (Distributional RL)")
+                self.logger.info(f"   Policy: {policy_name}")
+                self.logger.info(f"   Network Architecture: {policy_kwargs.get('net_arch', 'default')}")
+                self.logger.info(f"   Quantiles: {policy_kwargs.get('n_quantiles', 200)}")
+                self.logger.info(f"   Buffer Size: {self.algo_params.get('buffer_size', 'default'):,}")
+                self.logger.info(f"   Batch Size: {self.algo_params.get('batch_size', 'default')}")
+                self.logger.info("   🎯 Benefits: Full return distribution learning + reduced overestimation bias")
+            elif policy_kwargs:
                 policy_name = getattr(self.algo_params.get('policy'), '__name__', str(self.algo_params.get('policy', 'MultiInputPolicy')))
                 self.logger.info(f"✅ Created Enhanced Double {self.algorithm_name} model")
                 self.logger.info(f"   Policy: {policy_name}")
@@ -686,7 +713,7 @@ class TrainerCore:
                 
         # Validate algorithm
         algorithm = self.config.get('algorithm')
-        supported_algorithms = ['DQN', 'PPO', 'A2C', 'SAC']
+        supported_algorithms = ['DQN', 'QR-DQN', 'PPO', 'A2C', 'SAC']
         if algorithm not in supported_algorithms:
             self.logger.error(f"Unsupported algorithm: {algorithm}")
             return False

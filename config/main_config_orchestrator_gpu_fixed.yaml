@@ -90,14 +90,14 @@ feature_engineering:
 logging:
   level: INFO
   log_to_file: true
-  log_file_path: logs/orchestrator_gpu_fixed_ddqn.log  # Updated for Double-Dueling DQN
+  log_file_path: logs/orchestrator_gpu_fixed_rainbow_qrdqn.log  # Updated for Rainbow QR-DQN
   max_file_size_mb: 50
   backup_count: 5
 orchestrator:
-  data_dir: data/raw_orch_gpu_ddqn
-  feature_dir: data/processed_orch_gpu_ddqn
-  model_dir: models/orch_gpu_ddqn
-  reports_dir: reports/orch_gpu_ddqn
+  data_dir: data/raw_orch_gpu_rainbow_qrdqn
+  feature_dir: data/processed_orch_gpu_rainbow_qrdqn
+  model_dir: models/orch_gpu_rainbow_qrdqn
+  reports_dir: reports/orch_gpu_rainbow_qrdqn
   run_evaluation: true
   run_training: true
   save_model: true
@@ -138,13 +138,21 @@ risk_management:
   turnover_exponential_penalty_factor: 0.15  # Quadratic penalty factor
   turnover_termination_penalty_pct: 0.08     # 8% portfolio penalty on termination
 training:
-  algorithm: DQN
-  # Double-Dueling DQN Configuration - Advanced Q-Learning with bias reduction
-  # Note: SB3 DQN already implements Double DQN (target network), we add Dueling architecture
+  algorithm: QR-DQN  # UPGRADED: Quantile Regression DQN (Distributional RL)
+  # Advanced DQN Configuration - Rainbow DQN Components
+  # 1. Double DQN: Built into SB3 (target network reduces overestimation bias)
+  # 2. Distributional RL: Learn full return distribution instead of expected value
+  # 3. Enhanced Architecture: Larger network capacity for complex learning
   policy: MultiInputPolicy    # Base policy for multi-input observations
-  policy_kwargs:             # Enhanced network architecture for better learning
+  policy_kwargs:             # Enhanced network architecture for distributional learning
     net_arch: [512, 512, 256]  # Larger network for complex feature learning
     activation_fn: ReLU      # Activation function
+    n_quantiles: 200         # DISTRIBUTIONAL: Number of quantiles for return distribution
+  
+  # Enhanced exploration with epsilon-greedy (optimized for distributional learning)
+  exploration_fraction: 0.3   # FASTER DECAY: Distributional RL learns faster
+  exploration_final_eps: 0.02 # LOWER FINAL: More exploitation with better value estimates
+  exploration_initial_eps: 0.8 # HIGHER START: More exploration for distributional learning
   # GPU-Optimized hyperparameters with improved learning
   buffer_size: 500000  # Increased for GPU memory (was 200k)
   batch_size: 512      # Larger batches for GPU efficiency (was 256)
@@ -171,7 +179,7 @@ training:
   # Model saving
   save_freq: 10000
   save_replay_buffer: false
-  tensorboard_log: logs/tensorboard_gpu_ddqn
+  tensorboard_log: logs/tensorboard_gpu_rainbow_qrdqn
   verbose: 1
   # GPU-specific settings
   device: auto  # Will auto-detect GPU

@@ -34,8 +34,18 @@ try:
         "A2C": A2C,
         "SAC": SAC,
     }
+    
+    # Import advanced algorithms from sb3-contrib
+    try:
+        from sb3_contrib import QRDQN
+        SB3_ALGORITHMS["QR-DQN"] = QRDQN
+        SB3_CONTRIB_AVAILABLE = True
+    except ImportError:
+        SB3_CONTRIB_AVAILABLE = False
+        
 except ImportError:
     SB3_AVAILABLE = False
+    SB3_CONTRIB_AVAILABLE = False
     BaseAlgorithm = None
     SB3_ALGORITHMS = {}
 
