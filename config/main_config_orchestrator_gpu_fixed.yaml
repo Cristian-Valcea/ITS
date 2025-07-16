@@ -61,17 +61,20 @@ feature_engineering:
   - rsi_14
   - ema_10
   - ema_20
+  - vwap
   - hour_sin
   - hour_cos
   features:
   - RSI
   - EMA
+  - VWAP
   - Time
   lookback_window: 3
   observation_feature_cols:
   - rsi_14
   - ema_10
   - ema_20
+  - vwap
   - hour_sin
   - hour_cos
   rsi:
@@ -99,6 +102,18 @@ orchestrator:
   run_training: true
   save_model: true
   save_reports: true
+risk:
+  # Risk observation features
+  include_risk_features: true          # Add risk features to observation space
+  vol_window: 60                       # Volatility calculation window
+  penalty_lambda: 0.5                  # Volatility penalty factor
+  dd_limit: 0.02                       # Training drawdown limit (2%)
+  eval_dd_limit: 0.02                  # Evaluation drawdown limit (2%)
+  # Curriculum learning (optional)
+  curriculum:
+    enabled: false                     # Disable curriculum learning
+    logic: and                         # Logic for curriculum triggers
+    use_perf_trigger: false           # Don't use performance triggers
 risk_management:
   max_daily_drawdown_pct: 0.05
   hourly_turnover_cap: 3.0
