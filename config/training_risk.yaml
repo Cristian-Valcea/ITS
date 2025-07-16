@@ -1,0 +1,113 @@
+# Risk-Aware Training Configuration
+# Modular risk control system with volatility penalty and curriculum learning
+
+# Risk Control Configuration
+risk:
+  # Volatility Penalty Settings
+  vol_window: 60              # Rolling window for volatility calculation (steps)
+  penalty_lambda: 0.25        # Weight for volatility penalty in reward
+  
+  # Drawdown Control
+  dd_limit: 0.03              # Maximum drawdown limit during training (3%)
+  eval_dd_limit: 0.02         # Stricter limit during evaluation (2%)
+  
+  # Risk Features in Observation Space
+  include_risk_features: true  # Add volatility, drawdown, position to obs
+  
+  # Curriculum Learning (optional)
+  curriculum:
+    enabled: false            # Enable curriculum progression
+    use_perf_trigger: false   # Use performance-based triggers (vs episode-based)
+    logic: "and"              # "and" or "or" for advancement conditions
+    
+    stages:
+      - name: "exploration"
+        episodes: [0, 19]       # Episodes 0-19
+        dd_limit: 0.04          # 4% drawdown limit
+        penalty_lambda: 0.0     # No volatility penalty initially
+        advance_conditions:
+          min_episodes: 10
+          min_sharpe: 0.5
+          
+      - name: "stabilization"  
+        episodes: [20, 39]      # Episodes 20-39
+        dd_limit: 0.03          # 3% drawdown limit
+        penalty_lambda: 0.1     # Light volatility penalty
+        advance_conditions:
+          min_episodes: 10
+          min_sharpe: 0.8
+          max_drawdown: 0.025
+          
+      - name: "optimization"
+        episodes: [40, 99]      # Episodes 40-99
+        dd_limit: 0.025         # 2.5% drawdown limit
+        penalty_lambda: 0.25    # Full volatility penalty
+        advance_conditions:
+          min_episodes: 20
+          min_sharpe: 1.0
+
+# Environment Configuration (extends base config)
+environment:
+  # Base trading environment settings
+  initial_capital: 100000.0
+  transaction_cost_pct: 0.001
+  reward_scaling: 1.0
+  
+  # Risk-aware environment settings
+  position_sizing_pct_capital: 0.25
+  max_episode_steps: 1000
+  
+  # Kyle Lambda fill simulation
+  kyle_lambda_fills:
+    enable_kyle_lambda_fills: true
+    fill_simulator_config:
+      base_kyle_lambda: 0.01
+      volatility_adjustment: true
+
+# Training Configuration
+training:
+  algorithm: "DQN"
+  total_timesteps: 100000
+  episodes: 100
+  
+  # Early stopping based on risk metrics
+  early_stopping:
+    enabled: true
+    patience: 20
+    min_improvement: 0.01
+    monitor_metric: "sharpe_ratio"  # or "risk_adjusted_return"
+  
+  # Logging and monitoring
+  logging:
+    log_risk_metrics: true
+    risk_log_frequency: 10      # Log risk metrics every N episodes
+    tensorboard_risk_plots: true
+
+# Evaluation Configuration  
+evaluation:
+  # Use stricter risk limits during evaluation
+  use_eval_risk_limits: true
+  
+  # Evaluation metrics
+  metrics:
+    - "sharpe_ratio"
+    - "max_drawdown" 
+    - "volatility"
+    - "risk_adjusted_return"
+    - "volatility_penalty_ratio"
+
+# Hyperparameter Optimization (for Optuna sweeps)
+hyperopt:
+  parameters:
+    vol_window: [30, 60, 120]           # Window sizes to test
+    penalty_lambda: [0.1, 0.25, 0.5]   # Penalty weights to test  
+    dd_limit: [0.02, 0.03, 0.04]       # Drawdown limits to test
+  
+  objective: "risk_adjusted_sharpe"     # Optimization target
+  n_trials: 50
+  
+# Paths (extends base paths)
+paths:
+  risk_logs_dir: "logs/risk/"
+  risk_plots_dir: "reports/risk_plots/"
+  curriculum_log: "logs/curriculum.csv"

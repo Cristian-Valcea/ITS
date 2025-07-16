@@ -104,6 +104,7 @@ class IntradayTradingEnv(gym.Env):
         """
         super().__init__()
         self.logger = logging.getLogger(f"RLTradingPlatform.Env.IntradayTradingEnv")
+        self.TRADE_LOG_LEVEL = logging.DEBUG   # switch to INFO for verbose runs
         
         if not isinstance(processed_feature_data, np.ndarray):
             self.logger.error("processed_feature_data must be a NumPy array.")
@@ -287,7 +288,7 @@ class IntradayTradingEnv(gym.Env):
         
         # Log the fee
         if fee_type:
-            self.logger.info(f"🔍 FEE CALC ({fee_type}): Shares={shares:.2f}, Price={price:.4f}, Rate={self.transaction_cost_pct:.4f} -> Fee=${fee_amount:.4f}")
+            self.logger.log(self.TRADE_LOG_LEVEL, f"🔍 FEE CALC ({fee_type}): Shares={shares:.2f}, Price={price:.4f}, Rate={self.transaction_cost_pct:.4f} -> Fee=${fee_amount:.4f}")
         
         return fee_amount
     
@@ -511,7 +512,7 @@ class IntradayTradingEnv(gym.Env):
 
         # --- Cooldown Check (before incrementing counter for strict timing) ---
         if self.steps_since_last_trade < self.trade_cooldown_steps and desired_position_signal != self.current_position:
-            self.logger.info(f"🕐 TRADE COOLDOWN: Step {self.current_step}, {self.steps_since_last_trade}/{self.trade_cooldown_steps} bars since last trade. Forcing HOLD (Action {action} → HOLD).")
+            self.logger.log(self.TRADE_LOG_LEVEL, f"🕐 TRADE COOLDOWN: Step {self.current_step}, {self.steps_since_last_trade}/{self.trade_cooldown_steps} bars since last trade. Forcing HOLD (Action {action} → HOLD).")
             desired_position_signal = self.current_position # Force hold
             # Action itself is not changed, only its effect for changing position.
         
@@ -537,7 +538,7 @@ class IntradayTradingEnv(gym.Env):
                 # Apply transaction fee and track for reward calculation
                 fee_amount = self._apply_transaction_fee(self.position_quantity, exit_fill_price, "LONG EXIT")
                 expected_fee = self.position_quantity * exit_fill_price * 0.001  # Expected: shares * price * 0.001
-                self.logger.info(f"Expected fee: ${expected_fee:.4f}")
+                self.logger.debug(f"Expected fee: ${expected_fee:.4f}")
                 trade_value_executed += self.position_quantity * exit_fill_price
                 shares_traded_this_step += self.position_quantity
                 
@@ -700,7 +701,7 @@ class IntradayTradingEnv(gym.Env):
             self.episode_realized_pnl += realized_pnl_this_step
             
             # 🔍 DIAGNOSTIC: Trade executed
-            self.logger.info(f"🔍 TRADE EXECUTED: Step {self.current_step}, Action {action} -> Position {desired_position_signal}, Shares: {shares_traded_this_step:.2f}, Value: ${trade_value_executed:.2f}")
+            self.logger.log(self.TRADE_LOG_LEVEL, f"🔍 TRADE EXECUTED: Step {self.current_step}, Action {action} -> Position {desired_position_signal}, Shares: {shares_traded_this_step:.2f}, Value: ${trade_value_executed:.2f}")
             
             if self.log_trades_flag:
                 trade_details = {

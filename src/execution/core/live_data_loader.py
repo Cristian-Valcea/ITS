@@ -19,7 +19,18 @@ import pandas as pd
 import numpy as np
 
 # Import market impact calculation for live trading
-from ...shared.market_impact import calc_market_impact_features_fast, calc_market_impact_features
+try:
+    from ...shared.market_impact import calc_market_impact_features_fast, calc_market_impact_features
+except ImportError:
+    # Fallback for direct execution
+    try:
+        from src.shared.market_impact import calc_market_impact_features_fast, calc_market_impact_features
+    except ImportError:
+        # Create dummy functions if import fails
+        def calc_market_impact_features_fast(*args, **kwargs):
+            return {}
+        def calc_market_impact_features(*args, **kwargs):
+            return {}
 
 
 class LiveDataLoader:

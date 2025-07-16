@@ -52,6 +52,10 @@ try:
     from ..risk.risk_agent_adapter import RiskAgentAdapter
     from ..risk.risk_agent_v2 import RiskAgentV2
     
+    # New modular risk controls
+    from ..risk.controls.risk_manager import RiskManager
+    from ..gym_env.wrappers.risk_wrapper import RiskObsWrapper, VolatilityPenaltyReward
+    
     # Legacy column names (fallback)
     try:
         from src.column_names import COL_CLOSE, COL_OPEN, COL_HIGH, COL_LOW, COL_VOLUME
@@ -70,12 +74,22 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).parent.parent))
     
     from shared.constants import CLOSE, OPEN_PRICE, HIGH, LOW, VOLUME
+    from shared.duckdb_manager import (
+        close_all_duckdb_connections, 
+        close_write_duckdb_connections,
+        training_phase,
+        evaluation_phase
+    )
     from agents.data_agent import DataAgent
     from agents.feature_agent import FeatureAgent
     from agents.env_agent import EnvAgent
     from agents.evaluator_agent import EvaluatorAgent
     from training.trainer_agent import create_trainer_agent
     from execution.execution_agent_stub import create_execution_agent_stub
+    from execution.core.execution_loop import ExecutionLoop
+    from execution.core.order_router import OrderRouter
+    from execution.core.pnl_tracker import PnLTracker
+    from execution.core.live_data_loader import LiveDataLoader
     from risk.risk_agent_adapter import RiskAgentAdapter
     from risk.risk_agent_v2 import RiskAgentV2
     
@@ -131,9 +145,11 @@ class OrchestratorAgent:
         main_config_path: str,
         model_params_path: str,
         risk_limits_path: str,
-        hooks: Optional[Dict[str, Callable]] = None
+        hooks: Optional[Dict[str, Callable]] = None,
+        read_only: bool = False
     ):
         self.logger = logging.getLogger("RLTradingPlatform.OrchestratorAgent")
+        self.read_only = read_only
         self.logger.info("Initializing OrchestratorAgent...")
 
         # Load configs
@@ -172,7 +188,7 @@ class OrchestratorAgent:
             **self.main_config.get('feature_engineering', {}), # Original content
             'data_dir_processed': paths.get('data_dir_processed', 'data/processed/'), # Add these paths
             'scalers_dir': paths.get('scalers_dir', 'data/scalers/')
-        })
+        }, read_only=self.read_only)
         self.env_agent = EnvAgent(config={
             'env_config': {
                 'initial_capital': env_cfg.get('initial_capital', 100000.0),
@@ -418,6 +434,57 @@ class OrchestratorAgent:
         # Add more as needed (time warping, permutation, etc.)
         return features
 
+    def _create_risk_wrapped_environment(self, base_env, is_training: bool = True):
+        """
+        Wrap the base environment with risk controls.
+        
+        Args:
+            base_env: Base trading environment from EnvAgent
+            is_training: Whether this is for training (vs evaluation)
+            
+        Returns:
+            Risk-wrapped environment with volatility penalty and risk observations
+        """
+        # Get risk configuration
+        risk_config = self.main_config.get('risk', {})
+        
+        # Use different drawdown limits for training vs evaluation
+        if is_training:
+            dd_limit = risk_config.get('dd_limit', 0.03)  # 3% for training
+        else:
+            dd_limit = risk_config.get('eval_dd_limit', 0.02)  # 2% for evaluation
+        
+        # Create risk manager configuration
+        risk_manager_config = {
+            'vol_window': risk_config.get('vol_window', 60),
+            'penalty_lambda': risk_config.get('penalty_lambda', 0.25),
+            'dd_limit': dd_limit
+        }
+        
+        # Create RiskManager instance
+        risk_manager = RiskManager(risk_manager_config)
+        
+        # Apply wrappers in order
+        wrapped_env = base_env
+        
+        # 1. Add risk features to observation space (if enabled)
+        if risk_config.get('include_risk_features', True):
+            wrapped_env = RiskObsWrapper(wrapped_env, risk_manager)
+            self.logger.info(f"✅ Applied RiskObsWrapper - extended observation space")
+        
+        # 2. Add volatility penalty to rewards
+        wrapped_env = VolatilityPenaltyReward(wrapped_env, risk_manager)
+        self.logger.info(f"✅ Applied VolatilityPenaltyReward - λ={risk_manager_config['penalty_lambda']}")
+        
+        # Store risk manager reference for logging
+        wrapped_env._risk_manager = risk_manager
+        
+        phase_name = "training" if is_training else "evaluation"
+        self.logger.info(f"🛡️ Risk-wrapped environment created for {phase_name} - "
+                        f"dd_limit: {dd_limit:.1%}, vol_window: {risk_manager_config['vol_window']}")
+        
+        return wrapped_env
+
     def run_training_pipeline(
         self,
         symbol: str,
@@ -535,6 +602,12 @@ class OrchestratorAgent:
             return None
         self.logger.info(f"EnvAgent created training environment: {training_environment}")
 
+        # Apply risk control wrappers
+        training_environment = self._create_risk_wrapped_environment(
+            training_environment, 
+            is_training=True
+        )
+
         # Log hardware info before training starts
         try:
             import torch
@@ -557,6 +630,11 @@ class OrchestratorAgent:
             return None
         self.logger.info(f"TrainerAgent completed training. Policy bundle saved at: {policy_bundle_path}")
         
+        # Log risk metrics from training
+        if hasattr(training_environment, '_risk_manager'):
+            risk_summary = training_environment._risk_manager.get_episode_summary()
+            self.logger.info(f"🛡️ Training Risk Summary: {risk_summary}")
+        
         # For backward compatibility, extract model path from bundle
         bundle_path = Path(policy_bundle_path)
         if bundle_path.suffix == '.zip':
@@ -570,7 +648,12 @@ class OrchestratorAgent:
 
         # Close write connections before evaluation to prevent DuckDB conflicts
         self.logger.info("🔒 Closing DuckDB write connections before evaluation...")
-        close_write_duckdb_connections()
+        try:
+            close_write_duckdb_connections()
+        except NameError:
+            self.logger.warning("⚠️ close_write_duckdb_connections not available, skipping cleanup")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Failed to close DuckDB connections: {e}")
 
         if run_evaluation_after_train and trained_model_path:
             eval_results = self.run_evaluation_pipeline(
@@ -606,7 +689,22 @@ class OrchestratorAgent:
         
         # Ensure clean DuckDB state for evaluation (read-only operations)
         self.logger.info("🔒 Ensuring clean DuckDB state for evaluation...")
-        close_write_duckdb_connections()
+        try:
+            close_write_duckdb_connections()
+        except NameError:
+            self.logger.warning("⚠️ close_write_duckdb_connections not available, skipping cleanup")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Failed to close DuckDB connections: {e}")
+        
+        # Enable evaluation cache to prevent DuckDB re-connections during episodes
+        try:
+            from shared.evaluation_cache import get_evaluation_cache
+        except ImportError:
+            # Fallback for different execution contexts
+            from src.shared.evaluation_cache import get_evaluation_cache
+        eval_cache = get_evaluation_cache()
+        eval_cache.enable()
+        self.logger.info("📋 Evaluation feature cache enabled - preventing DuckDB thundering herd")
 
         eval_data_duration_str = self.main_config.get('evaluation', {}).get('data_duration_for_fetch', "30 D")
         raw_eval_bars_df = self.data_agent.run(
@@ -645,6 +743,12 @@ class OrchestratorAgent:
             return None
         self.logger.info(f"EnvAgent created evaluation environment: {evaluation_environment}")
 
+        # Apply risk control wrappers (with stricter evaluation limits)
+        evaluation_environment = self._create_risk_wrapped_environment(
+            evaluation_environment, 
+            is_training=False
+        )
+
         model_name_tag = os.path.basename(model_path).replace(".zip", "").replace(".dummy", "")
         algo_name_from_config = self.model_params_config.get('algorithm_name', 'DQN')
         eval_metrics = self.evaluator_agent.run(
@@ -658,6 +762,12 @@ class OrchestratorAgent:
         else:
             self.logger.info(f"EvaluatorAgent completed. Metrics: {eval_metrics}")
 
+        # Disable evaluation cache after evaluation completes
+        cache_stats = eval_cache.get_stats()
+        self.logger.info(f"📋 Evaluation cache stats: {cache_stats['entries']} entries, {cache_stats['total_memory_mb']:.1f} MB")
+        eval_cache.disable()
+        self.logger.info("📋 Evaluation feature cache disabled and cleared")
+        
         self.logger.info(f"--- Evaluation Pipeline for {symbol} on model {model_path} COMPLETED ---")
         return eval_metrics
 
@@ -775,7 +885,12 @@ class OrchestratorAgent:
                 
                 # Close write connections between training and evaluation in walk-forward
                 self.logger.info(f"🔒 Fold {fold_number}: Closing write connections before evaluation...")
-                close_write_duckdb_connections()
+                try:
+                    close_write_duckdb_connections()
+                except NameError:
+                    self.logger.warning("⚠️ close_write_duckdb_connections not available, skipping cleanup")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Failed to close DuckDB connections: {e}")
                 
                 fold_metrics = self.run_evaluation_pipeline(
                     symbol=symbol,

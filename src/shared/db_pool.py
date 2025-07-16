@@ -30,15 +30,38 @@ try:
     from prometheus_client import Gauge
     PROMETHEUS_AVAILABLE = True
     
-    PG_POOL_SIZE = Gauge(
-        "pg_manifest_pool_connections_total",
-        "Total connections in PostgreSQL manifest pool"
-    )
+    # Use try-except to handle duplicate metric registration
+    try:
+        PG_POOL_SIZE = Gauge(
+            "pg_manifest_pool_connections_total",
+            "Total connections in PostgreSQL manifest pool"
+        )
+    except ValueError as e:
+        if "Duplicated timeseries" in str(e):
+            # Metric already exists, create a dummy one that does nothing
+            class DummyGauge:
+                def set(self, value): pass
+                def inc(self, amount=1): pass
+                def dec(self, amount=1): pass
+            PG_POOL_SIZE = DummyGauge()
+        else:
+            raise
     
-    PG_POOL_ACTIVE = Gauge(
-        "pg_manifest_pool_connections_active", 
-        "Active connections in PostgreSQL manifest pool"
-    )
+    try:
+        PG_POOL_ACTIVE = Gauge(
+            "pg_manifest_pool_connections_active", 
+            "Active connections in PostgreSQL manifest pool"
+        )
+    except ValueError as e:
+        if "Duplicated timeseries" in str(e):
+            # Metric already exists, create a dummy one that does nothing
+            class DummyGauge:
+                def set(self, value): pass
+                def inc(self, amount=1): pass
+                def dec(self, amount=1): pass
+            PG_POOL_ACTIVE = DummyGauge()
+        else:
+            raise
     
 except ImportError:
     PROMETHEUS_AVAILABLE = False

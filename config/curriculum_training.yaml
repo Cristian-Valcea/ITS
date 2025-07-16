@@ -1,0 +1,143 @@
+# Curriculum Learning Configuration
+# Progressive risk control tightening for stable RL training
+
+# Risk Control with Curriculum Learning
+risk:
+  # Base volatility penalty settings
+  vol_window: 60              # Rolling window for volatility calculation
+  penalty_lambda: 0.0         # Will be overridden by curriculum
+  
+  # Base drawdown control (will be overridden by curriculum)
+  dd_limit: 0.05              # Will be overridden by curriculum
+  eval_dd_limit: 0.02         # Strict evaluation limit
+  
+  # Risk features in observation space
+  include_risk_features: true
+  
+  # Curriculum Learning Configuration
+  curriculum:
+    enabled: true             # Enable curriculum progression
+    use_perf_trigger: true    # Use performance-based triggers
+    logic: "and"              # All conditions must be met for advancement
+    
+    stages:
+      # Stage 1: Exploration Phase
+      - name: "exploration"
+        episodes: [0, 29]       # Episodes 0-29 (30 episodes)
+        dd_limit: 0.05          # 5% drawdown limit - very relaxed
+        penalty_lambda: 0.0     # No volatility penalty initially
+        advance_conditions:
+          min_episodes: 15      # At least 15 episodes in this stage
+          min_sharpe: 0.3       # Minimum Sharpe ratio of 0.3
+      
+      # Stage 2: Stabilization Phase  
+      - name: "stabilization"
+        episodes: [30, 59]      # Episodes 30-59 (30 episodes)
+        dd_limit: 0.04          # 4% drawdown limit
+        penalty_lambda: 0.1     # Light volatility penalty
+        advance_conditions:
+          min_episodes: 15      # At least 15 episodes in this stage
+          min_sharpe: 0.6       # Improved Sharpe ratio
+          max_drawdown: 0.035   # Max drawdown in recent episodes
+      
+      # Stage 3: Risk Awareness Phase
+      - name: "risk_awareness"
+        episodes: [60, 99]      # Episodes 60-99 (40 episodes)
+        dd_limit: 0.03          # 3% drawdown limit
+        penalty_lambda: 0.2     # Moderate volatility penalty
+        advance_conditions:
+          min_episodes: 20      # At least 20 episodes in this stage
+          min_sharpe: 0.8       # Good Sharpe ratio
+          max_drawdown: 0.025   # Stricter drawdown control
+      
+      # Stage 4: Optimization Phase
+      - name: "optimization"
+        episodes: [100, 149]    # Episodes 100-149 (50 episodes)
+        dd_limit: 0.025         # 2.5% drawdown limit
+        penalty_lambda: 0.3     # Strong volatility penalty
+        advance_conditions:
+          min_episodes: 25      # At least 25 episodes in this stage
+          min_sharpe: 1.0       # High Sharpe ratio
+          max_drawdown: 0.02    # Very strict drawdown
+      
+      # Stage 5: Production Phase
+      - name: "production"
+        episodes: [150, 999]    # Episodes 150+ (unlimited)
+        dd_limit: 0.02          # 2% drawdown limit - production ready
+        penalty_lambda: 0.4     # Maximum volatility penalty
+        advance_conditions:
+          min_episodes: 50      # Long evaluation period
+          min_sharpe: 1.2       # Excellent performance required
+
+# Training Configuration (extended for curriculum)
+training:
+  algorithm: "DQN"
+  total_timesteps: 500000     # Longer training for curriculum
+  episodes: 200               # More episodes for curriculum progression
+  
+  # Curriculum-specific training settings
+  curriculum_logging:
+    enabled: true
+    log_frequency: 5          # Log curriculum metrics every 5 episodes
+    save_progress: true       # Save curriculum progress to file
+    progress_file: "logs/curriculum_progress.json"
+  
+  # Early stopping (disabled for curriculum)
+  early_stopping:
+    enabled: false            # Let curriculum run its course
+
+# Environment Configuration (curriculum-friendly)
+environment:
+  initial_capital: 100000.0
+  transaction_cost_pct: 0.001
+  reward_scaling: 1.0
+  position_sizing_pct_capital: 0.2  # Conservative position sizing
+  max_episode_steps: 1000     # Longer episodes for better learning
+
+# Evaluation Configuration
+evaluation:
+  # Use production-level risk limits during evaluation
+  use_eval_risk_limits: true
+  
+  # Curriculum-specific evaluation metrics
+  metrics:
+    - "sharpe_ratio"
+    - "max_drawdown"
+    - "volatility"
+    - "risk_adjusted_return"
+    - "volatility_penalty_ratio"
+    - "curriculum_stage_performance"
+
+# Hyperparameter Optimization for Curriculum
+hyperopt:
+  parameters:
+    # Curriculum stage parameters
+    exploration_dd_limit: [0.04, 0.05, 0.06]
+    stabilization_lambda: [0.05, 0.1, 0.15]
+    optimization_dd_limit: [0.02, 0.025, 0.03]
+    production_lambda: [0.3, 0.4, 0.5]
+    
+    # Performance thresholds
+    min_sharpe_stage2: [0.5, 0.6, 0.7]
+    min_sharpe_stage3: [0.7, 0.8, 0.9]
+    min_sharpe_stage4: [0.9, 1.0, 1.1]
+  
+  objective: "curriculum_adjusted_sharpe"
+  n_trials: 30
+
+# Logging and Monitoring
+logging:
+  level: "INFO"
+  curriculum_logs: true
+  risk_metrics_frequency: 10
+  tensorboard_curriculum_plots: true
+  
+  # Curriculum-specific log files
+  curriculum_log_file: "logs/curriculum.log"
+  stage_transitions_file: "logs/stage_transitions.csv"
+
+# Paths
+paths:
+  curriculum_logs_dir: "logs/curriculum/"
+  curriculum_plots_dir: "reports/curriculum_plots/"
+  curriculum_models_dir: "models/curriculum/"

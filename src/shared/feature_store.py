@@ -242,15 +242,17 @@ class FeatureStore:
     This ensures reproducible lineage while maximizing cache hit rates.
     """
     
-    def __init__(self, root: Optional[str] = None, logger: Optional[logging.Logger] = None):
+    def __init__(self, root: Optional[str] = None, logger: Optional[logging.Logger] = None, read_only: bool = False):
         """
         Initialize FeatureStore.
         
         Args:
             root: Root directory for feature cache. Defaults to ~/.feature_cache
             logger: Logger instance
+            read_only: If True, skip manifest table initialization (for monitoring/API use)
         """
         self.logger = logger or logging.getLogger(self.__class__.__name__)
+        self.read_only = read_only
         
         # Setup cache directory
         self.base = Path(root or os.getenv("FEATURE_STORE_PATH", "~/.feature_cache")).expanduser()
@@ -283,7 +285,8 @@ class FeatureStore:
             # Fallback to DuckDB manifest database
             self.db_path = self.base / "manifest.duckdb"
             # Don't keep persistent connection - use connection manager
-            self._initialize_manifest_table()
+            if not self.read_only:
+                self._initialize_manifest_table()
             self.logger.info(f"Using DuckDB manifest database: {self.db_path}")
         
         self.logger.info(f"FeatureStore initialized at {self.base}")
@@ -291,7 +294,8 @@ class FeatureStore:
     
     def _initialize_manifest_table(self):
         """Initialize the manifest table for tracking cached features."""
-        with get_duckdb_connection(self.db_path, mode='rw') as conn:
+        from ..utils.db import get_write_conn
+        with get_write_conn() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS manifest(
                     key TEXT PRIMARY KEY,
@@ -447,7 +451,7 @@ class FeatureStore:
         
         features_df = compute_func(raw_df, config)
         
-        if features_df is not None and not features_df.empty:
+        if features_df is not None and not features_df.empty and not self.read_only:
             self._cache_features(cache_key, features_df, symbol, start_ts, end_ts)
         
         return features_df
@@ -501,9 +505,10 @@ class FeatureStore:
         """Check if features are cached using DuckDB manifest."""
         
         try:
+            from ..utils.db import get_conn
             with MANIFEST_READ_LATENCY.labels(backend='duckdb', symbol=symbol).time():
-                # Use connection manager for thread safety
-                with get_duckdb_connection(self.db_path, mode='r') as conn:
+                # Use read-only connection for cache lookups
+                with get_conn(read_only=True) as conn:
                     result = conn.execute(
                         "SELECT path FROM manifest WHERE key = ?", 
                         [cache_key]
@@ -512,25 +517,29 @@ class FeatureStore:
                     if result:
                         path = result[0]
                         if Path(path).exists():
-                            # Update last accessed timestamp (need write connection)
-                            try:
-                                with get_duckdb_connection(self.db_path, mode='rw') as write_conn:
-                                    write_conn.execute(
-                                        "UPDATE manifest SET last_accessed_ts = CURRENT_TIMESTAMP WHERE key = ?",
-                                        [cache_key]
-                                    )
-                            except Exception as update_error:
-                                # Don't fail cache hit if timestamp update fails
-                                self.logger.debug(f"Failed to update access timestamp: {update_error}")
+                            # Update last accessed timestamp (skip in read-only mode)
+                            if not self.read_only:
+                                try:
+                                    from ..utils.db import get_write_conn
+                                    with get_write_conn() as write_conn:
+                                        write_conn.execute(
+                                            "UPDATE manifest SET last_accessed_ts = CURRENT_TIMESTAMP WHERE key = ?",
+                                            [cache_key]
+                                        )
+                                except Exception as update_error:
+                                    # Don't fail cache hit if timestamp update fails
+                                    self.logger.debug(f"Failed to update access timestamp: {update_error}")
                             return path
                         else:
-                            # File missing - clean up manifest entry (need write connection)
+                            # File missing - clean up manifest entry (skip in read-only mode)
                             self.logger.warning(f"Cached file missing: {path}")
-                            try:
-                                with get_duckdb_connection(self.db_path, mode='rw') as write_conn:
-                                    write_conn.execute("DELETE FROM manifest WHERE key = ?", [cache_key])
-                            except Exception as cleanup_error:
-                                self.logger.warning(f"Failed to cleanup missing cache entry: {cleanup_error}")
+                            if not self.read_only:
+                                try:
+                                    from ..utils.db import get_write_conn
+                                    with get_write_conn() as write_conn:
+                                        write_conn.execute("DELETE FROM manifest WHERE key = ?", [cache_key])
+                                except Exception as cleanup_error:
+                                    self.logger.warning(f"Failed to cleanup missing cache entry: {cleanup_error}")
                     
                     return None
             
@@ -659,9 +668,10 @@ class FeatureStore:
             
             file_size = cache_file.stat().st_size
             
-            # Use connection manager with retry for write conflicts
+            # Use write connection with file locking
+            from ..utils.db import get_write_conn
             with MANIFEST_INSERT_LATENCY.labels(backend='duckdb', symbol=symbol).time():
-                with get_duckdb_connection(self.db_path, mode='rw', max_retries=3) as conn:
+                with get_write_conn() as conn:
                     conn.execute("""
                         INSERT INTO manifest 
                         (key, path, symbol, start_ts, end_ts, rows, file_size_bytes) 
@@ -747,7 +757,8 @@ class FeatureStore:
     
     def _get_cache_stats_duckdb(self) -> Dict[str, Any]:
         """Get cache statistics from DuckDB manifest."""
-        with get_duckdb_connection(self.db_path, mode='r') as conn:
+        from ..utils.db import get_conn
+        with get_conn(read_only=True) as conn:
             stats = conn.execute("""
                 SELECT 
                     COUNT(*) as total_entries,
@@ -954,9 +965,20 @@ class FeatureStore:
 # Convenience function for global feature store instance
 _global_feature_store = None
 
-def get_feature_store(root: Optional[str] = None, logger: Optional[logging.Logger] = None) -> FeatureStore:
+def get_feature_store(root: Optional[str] = None, logger: Optional[logging.Logger] = None, read_only: bool = False) -> FeatureStore:
     """Get global FeatureStore instance."""
     global _global_feature_store
+    
+    # If read_only mode is requested but existing instance is not read_only, create new instance
+    if _global_feature_store is not None and read_only and not _global_feature_store.read_only:
+        _global_feature_store = None
+    
     if _global_feature_store is None:
-        _global_feature_store = FeatureStore(root=root, logger=logger)
+        _global_feature_store = FeatureStore(root=root, logger=logger, read_only=read_only)
     return _global_feature_store
+
+
+def reset_feature_store():
+    """Reset global FeatureStore instance."""
+    global _global_feature_store
+    _global_feature_store = None

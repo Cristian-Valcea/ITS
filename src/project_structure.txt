@@ -1,0 +1,963 @@
+Folder PATH listing for volume OS
+Volume serial number is 52A8-33EC
+C:.
+¦   column_names.py
+¦   main.py
+¦   project_structure.txt
+¦   
++---.pytest_cache
+¦   ¦   .gitignore
+¦   ¦   CACHEDIR.TAG
+¦   ¦   README.md
+¦   ¦   
+¦   +---v
+¦       +---cache
+¦               nodeids
+¦               stepwise
+¦               
++---agents
+¦   ¦   base_agent.py
+¦   ¦   data_agent.py
+¦   ¦   data_agent_fixed.py
+¦   ¦   enhanced_data_agent.py
+¦   ¦   env_agent.py
+¦   ¦   evaluator_agent.py
+¦   ¦   feature_agent.py
+¦   ¦   orchestrator_agent.py
+¦   ¦   risk_agent.py
+¦   ¦   trainer_agent.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---__pycache__
+¦           base_agent.cpython-310.pyc
+¦           data_agent.cpython-310.pyc
+¦           data_agent_fixed.cpython-310.pyc
+¦           enhanced_data_agent.cpython-310.pyc
+¦           env_agent.cpython-310.pyc
+¦           evaluator_agent.cpython-310.pyc
+¦           feature_agent.cpython-310.pyc
+¦           orchestrator_agent.cpython-310-pytest-8.3.5.pyc
+¦           orchestrator_agent.cpython-310.pyc
+¦           orchestrator_agent.cpython-313.pyc
+¦           risk_agent.cpython-310.pyc
+¦           trainer_agent.cpython-310.pyc
+¦           __init__.cpython-310.pyc
+¦           __init__.cpython-313.pyc
+¦           
++---ai_agents
+¦   ¦   dqn_data_agent_system.py
+¦   ¦   
+¦   +---__pycache__
+¦           dqn_data_agent_system.cpython-310.pyc
+¦           
++---api
+¦   ¦   config_models.py
+¦   ¦   fee_endpoints.py
+¦   ¦   main.py
+¦   ¦   monitoring_endpoints.py
+¦   ¦   request_models.py
+¦   ¦   response_models.py
+¦   ¦   services.py
+¦   ¦   stress_endpoints.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---templates
+¦   ¦       config_editor.html
+¦   ¦       dashboard.html
+¦   ¦       live_trading_simple.html
+¦   ¦       nvda_dqn_training.html
+¦   ¦       placeholder.placeholder
+¦   ¦       run_training.html
+¦   ¦       task_status.html
+¦   ¦       
+¦   +---__pycache__
+¦           config_models.cpython-310.pyc
+¦           data_agent.cpython-310.pyc
+¦           fee_endpoints.cpython-310.pyc
+¦           main.cpython-310.pyc
+¦           monitoring_endpoints.cpython-310.pyc
+¦           orchestrator_agent.cpython-310.pyc
+¦           request_models.cpython-310.pyc
+¦           response_models.cpython-310.pyc
+¦           services.cpython-310.pyc
+¦           stress_endpoints.cpython-310.pyc
+¦           __init__.cpython-310.pyc
+¦           
++---backtesting
+¦   ¦   bias_free_backtester.py
+¦   ¦   
+¦   +---__pycache__
+¦           bias_free_backtester.cpython-310.pyc
+¦           
++---batch
+¦   ¦   end_of_day_processor.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---__pycache__
+¦           end_of_day_processor.cpython-310.pyc
+¦           __init__.cpython-310.pyc
+¦           
++---cache_ibkr
+¦       NVDA_2024-01-01_2024-01-02_1_min_TRADES.pkl
+¦       NVDA_2024-01-01_2024-01-03_1_min_TRADES.pkl
+¦       NVDA_2024-01-01_2024-01-05_1_min_TRADES.pkl
+¦       NVDA_2024-01-01_2024-01-10_1_min_TRADES.pkl
+¦       NVDA_2024-01-01_2024-01-31_1_min_TRADES.pkl
+¦       
++---cli
+¦       model_cli.py
+¦       
++---compliance
+¦   ¦   mifid_ii_exporter.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---__pycache__
+¦           mifid_ii_exporter.cpython-310.pyc
+¦           __init__.cpython-310.pyc
+¦           
++---data
+¦   ¦   bias_aware_data_agent.py
+¦   ¦   crsp_delisting_integration.py
+¦   ¦   fx_lifecycle.py
+¦   ¦   production_survivorship_pipeline.py
+¦   ¦   survivorship_bias_handler.py
+¦   ¦   
+¦   +---processed
+¦   ¦   +---NVDA
+¦   ¦           NVDA_20240101_20240102_1min_features.csv
+¦   ¦           NVDA_20240101_20240102_1min_features.npy
+¦   ¦           NVDA_20240101_20240103_1min_features.csv
+¦   ¦           NVDA_20240101_20240103_1min_features.npy
+¦   ¦           NVDA_20240101_20240105_1min_features.csv
+¦   ¦           NVDA_20240101_20240105_1min_features.npy
+¦   ¦           NVDA_20240101_20240110_1min_features.csv
+¦   ¦           NVDA_20240101_20240110_1min_features.npy
+¦   ¦           NVDA_20240101_20240131_1min_features.csv
+¦   ¦           NVDA_20240101_20240131_1min_features.npy
+¦   ¦           
+¦   +---raw
+¦   ¦   +---NVDA
+¦   ¦           NVDA_20240101_20240102_1min.csv
+¦   ¦           NVDA_20240101_20240103_1min.csv
+¦   ¦           NVDA_20240101_20240105_1min.csv
+¦   ¦           NVDA_20240101_20240110_1min.csv
+¦   ¦           NVDA_20240101_20240131_1min.csv
+¦   ¦           
+¦   +---scalers
+¦   ¦       NVDA_feature_scaler.pkl
+¦   ¦       
+¦   +---__pycache__
+¦           bias_aware_data_agent.cpython-310.pyc
+¦           crsp_delisting_integration.cpython-310.pyc
+¦           fx_lifecycle.cpython-310.pyc
+¦           production_survivorship_pipeline.cpython-310.pyc
+¦           survivorship_bias_handler.cpython-310.pyc
+¦           
++---deployment
+¦   ¦   blue_green_rollout.py
+¦   ¦   model_deployment_service.py
+¦   ¦   
+¦   +---__pycache__
+¦           blue_green_rollout.cpython-310.pyc
+¦           model_deployment_service.cpython-310.pyc
+¦           
++---evaluation
+¦   ¦   backtest_runner.py
+¦   ¦   metrics_calculator.py
+¦   ¦   model_loader.py
+¦   ¦   performance_visualizer.py
+¦   ¦   report_generator.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---__pycache__
+¦           backtest_runner.cpython-310.pyc
+¦           metrics_calculator.cpython-310.pyc
+¦           model_loader.cpython-310.pyc
+¦           report_generator.cpython-310.pyc
+¦           __init__.cpython-310.pyc
+¦           
++---execution
+¦   ¦   execution_agent_stub.py
+¦   ¦   orchestrator_agent.py
+¦   ¦   order_throttling.py
+¦   ¦   throttled_execution_agent.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---core
+¦   ¦   ¦   execution_loop.py
+¦   ¦   ¦   high_perf_audit.py
+¦   ¦   ¦   latency_monitor.py
+¦   ¦   ¦   live_data_loader.py
+¦   ¦   ¦   order_router.py
+¦   ¦   ¦   pnl_tracker.py
+¦   ¦   ¦   risk_callbacks.py
+¦   ¦   ¦   __init__.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           execution_loop.cpython-310.pyc
+¦   ¦           high_perf_audit.cpython-310.pyc
+¦   ¦           latency_monitor.cpython-310.pyc
+¦   ¦           live_data_loader.cpython-310.pyc
+¦   ¦           order_router.cpython-310.pyc
+¦   ¦           pnl_tracker.cpython-310.pyc
+¦   ¦           risk_callbacks.cpython-310.pyc
+¦   ¦           __init__.cpython-310.pyc
+¦   ¦           
+¦   +---__pycache__
+¦           execution_agent_stub.cpython-310.pyc
+¦           execution_agent_stub.cpython-313.pyc
+¦           orchestrator_agent.cpython-310.pyc
+¦           orchestrator_agent.cpython-313.pyc
+¦           order_throttling.cpython-310.pyc
+¦           throttled_execution_agent.cpython-310.pyc
+¦           __init__.cpython-310.pyc
+¦           __init__.cpython-313.pyc
+¦           
++---features
+¦   ¦   base_calculator.py
+¦   ¦   config_validator.py
+¦   ¦   data_processor.py
+¦   ¦   ema_calculator.py
+¦   ¦   feature_manager.py
+¦   ¦   feature_registry.py
+¦   ¦   market_impact_calculator.py
+¦   ¦   performance_tracker.py
+¦   ¦   rsi_calculator.py
+¦   ¦   time_calculator.py
+¦   ¦   vwap_calculator.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---__pycache__
+¦           base_calculator.cpython-310.pyc
+¦           config_validator.cpython-310.pyc
+¦           data_processor.cpython-310.pyc
+¦           ema_calculator.cpython-310.pyc
+¦           feature_manager.cpython-310.pyc
+¦           feature_registry.cpython-310.pyc
+¦           market_impact_calculator.cpython-310.pyc
+¦           performance_tracker.cpython-310.pyc
+¦           rsi_calculator.cpython-310.pyc
+¦           time_calculator.cpython-310.pyc
+¦           vwap_calculator.cpython-310.pyc
+¦           __init__.cpython-310.pyc
+¦           
++---governance
+¦   ¦   audit_immutable.py
+¦   ¦   integration.py
+¦   ¦   model_lineage.py
+¦   ¦   release_approval.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---__pycache__
+¦           audit_immutable.cpython-310.pyc
+¦           model_lineage.cpython-310.pyc
+¦           release_approval.cpython-310.pyc
+¦           __init__.cpython-310.pyc
+¦           
++---graph_ai_agents
+¦   ¦   data_provisioning_intraday.py
+¦   ¦   orchestrator_data_provisioning.py
+¦   ¦   
+¦   +---__pycache__
+¦           data_provisioning_intraday.cpython-310.pyc
+¦           orchestrator_data_provisioning.cpython-310.pyc
+¦           
++---gym_env
+¦   ¦   intraday_trading_env.py
+¦   ¦   kyle_lambda_fill_simulator.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---__pycache__
+¦           intraday_trading_env.cpython-310.pyc
+¦           kyle_lambda_fill_simulator.cpython-310.pyc
+¦           __init__.cpython-310.pyc
+¦           
++---llm_config
+¦   ¦   config.py
+¦   ¦   
+¦   +---shared_work_dir
+¦   ¦   +---data
+¦   ¦   +---strategies
+¦   +---__pycache__
+¦           config.cpython-310.pyc
+¦           
++---logs
+¦   ¦   episode_summaries.csv
+¦   ¦   orchestrator_gpu_fixed.log
+¦   ¦   
+¦   +---audit_hiperf
+¦   ¦       audit_emergency_20250713_184941.bin
+¦   ¦       audit_emergency_20250713_185329.bin
+¦   ¦       audit_emergency_20250713_185518.bin
+¦   ¦       audit_emergency_20250713_185728.bin
+¦   ¦       audit_emergency_20250713_190119.bin
+¦   ¦       audit_emergency_20250713_193023.bin
+¦   ¦       audit_emergency_20250714_133216.bin
+¦   ¦       audit_emergency_20250714_133627.bin
+¦   ¦       audit_emergency_20250714_133851.bin
+¦   ¦       audit_emergency_20250714_134208.bin
+¦   ¦       audit_emergency_20250714_134550.bin
+¦   ¦       audit_emergency_20250714_135704.bin
+¦   ¦       audit_emergency_20250714_140852.bin
+¦   ¦       audit_emergency_20250714_141544.bin
+¦   ¦       audit_emergency_20250715_154037.bin
+¦   ¦       audit_emergency_20250715_154430.bin
+¦   ¦       audit_emergency_20250715_155058.bin
+¦   ¦       audit_emergency_20250715_163640.bin
+¦   ¦       audit_emergency_20250715_170543.bin
+¦   ¦       audit_emergency_20250715_173829.bin
+¦   ¦       audit_emergency_20250715_175756.bin
+¦   ¦       audit_emergency_20250715_183349.bin
+¦   ¦       audit_emergency_20250715_183911.bin
+¦   ¦       audit_emergency_20250715_184215.bin
+¦   ¦       audit_emergency_20250715_191007.bin
+¦   ¦       audit_emergency_20250715_195025.bin
+¦   ¦       audit_main_20250713_184941.bin
+¦   ¦       audit_main_20250713_185329.bin
+¦   ¦       audit_main_20250713_185518.bin
+¦   ¦       audit_main_20250713_185728.bin
+¦   ¦       audit_main_20250713_190119.bin
+¦   ¦       audit_main_20250713_193023.bin
+¦   ¦       audit_main_20250714_133216.bin
+¦   ¦       audit_main_20250714_133627.bin
+¦   ¦       audit_main_20250714_133851.bin
+¦   ¦       audit_main_20250714_134208.bin
+¦   ¦       audit_main_20250714_134550.bin
+¦   ¦       audit_main_20250714_135704.bin
+¦   ¦       audit_main_20250714_140852.bin
+¦   ¦       audit_main_20250714_141544.bin
+¦   ¦       audit_main_20250715_154037.bin
+¦   ¦       audit_main_20250715_154430.bin
+¦   ¦       audit_main_20250715_155058.bin
+¦   ¦       audit_main_20250715_163640.bin
+¦   ¦       audit_main_20250715_170543.bin
+¦   ¦       audit_main_20250715_173829.bin
+¦   ¦       audit_main_20250715_175756.bin
+¦   ¦       audit_main_20250715_183349.bin
+¦   ¦       audit_main_20250715_183911.bin
+¦   ¦       audit_main_20250715_184215.bin
+¦   ¦       audit_main_20250715_191007.bin
+¦   ¦       audit_main_20250715_195025.bin
+¦   ¦       
+¦   +---run_metadata
+¦   ¦       run_metadata_episode_1752491336.json
+¦   ¦       run_metadata_episode_1752491745.json
+¦   ¦       run_metadata_episode_1752583471.json
+¦   ¦       run_metadata_episode_1752583859.json
+¦   ¦       run_metadata_episode_1752586600.json
+¦   ¦       run_metadata_episode_1752588344.json
+¦   ¦       run_metadata_episode_1752590309.json
+¦   ¦       run_metadata_episode_1752591476.json
+¦   ¦       run_metadata_episode_1752593630.json
+¦   ¦       run_metadata_episode_1752593951.json
+¦   ¦       run_metadata_episode_1752594135.json
+¦   ¦       run_metadata_episode_1752598226.json
+¦   ¦       
+¦   +---tensorboard
+¦       +---DQN_2025-07-13_18-11-17_1
+¦       ¦       events.out.tfevents.1752419479.Dell-XPS-Cris.44716.0
+¦       ¦       
+¦       +---DQN_2025-07-13_18-14-38_1
+¦       ¦       events.out.tfevents.1752419680.Dell-XPS-Cris.35344.0
+¦       ¦       
+¦       +---DQN_2025-07-13_18-15-45_1
+¦       ¦       events.out.tfevents.1752419747.Dell-XPS-Cris.48000.0
+¦       ¦       
+¦       +---DQN_2025-07-13_18-34-26_1
+¦       ¦       events.out.tfevents.1752420867.Dell-XPS-Cris.3476.0
+¦       ¦       
+¦       +---DQN_2025-07-13_18-49-42_1
+¦       ¦       events.out.tfevents.1752421783.Dell-XPS-Cris.24312.0
+¦       ¦       
+¦       +---DQN_2025-07-13_18-55-19_1
+¦       ¦       events.out.tfevents.1752422121.Dell-XPS-Cris.50184.0
+¦       ¦       
+¦       +---DQN_2025-07-13_18-57-28_1
+¦       ¦       events.out.tfevents.1752422250.Dell-XPS-Cris.42236.0
+¦       ¦       
+¦       +---DQN_2025-07-13_19-01-20_1
+¦       ¦       events.out.tfevents.1752422482.Dell-XPS-Cris.17164.0
+¦       ¦       
+¦       +---DQN_2025-07-13_19-30-24_1
+¦       ¦       events.out.tfevents.1752424226.Dell-XPS-Cris.47884.0
+¦       ¦       
+¦       +---DQN_2025-07-14_13-32-16_1
+¦       ¦       events.out.tfevents.1752489147.Dell-XPS-Cris.12604.0
+¦       ¦       
+¦       +---DQN_2025-07-14_13-36-28_1
+¦       ¦       events.out.tfevents.1752489389.Dell-XPS-Cris.45996.0
+¦       ¦       
+¦       +---DQN_2025-07-14_13-42-27_1
+¦       ¦       events.out.tfevents.1752489749.Dell-XPS-Cris.30612.0
+¦       ¦       
+¦       +---DQN_2025-07-14_13-45-50_1
+¦       ¦       events.out.tfevents.1752489952.Dell-XPS-Cris.20012.0
+¦       ¦       
+¦       +---DQN_2025-07-14_13-57-11_1
+¦       ¦       events.out.tfevents.1752490632.Dell-XPS-Cris.33408.0
+¦       ¦       
+¦       +---DQN_2025-07-14_14-08-56_1
+¦       ¦       events.out.tfevents.1752491337.Dell-XPS-Cris.50048.0
+¦       ¦       
+¦       +---DQN_2025-07-14_14-15-45_1
+¦       ¦       events.out.tfevents.1752491747.Dell-XPS-Cris.29412.0
+¦       ¦       
+¦       +---DQN_2025-07-15_15-44-31_1
+¦       ¦       events.out.tfevents.1752583473.Dell-XPS-Cris.53952.0
+¦       ¦       
+¦       +---DQN_2025-07-15_15-50-59_1
+¦       ¦       events.out.tfevents.1752583861.Dell-XPS-Cris.47212.0
+¦       ¦       
+¦       +---DQN_2025-07-15_16-36-41_1
+¦       ¦       events.out.tfevents.1752586602.Dell-XPS-Cris.40192.0
+¦       ¦       
+¦       +---DQN_2025-07-15_17-05-44_1
+¦       ¦       events.out.tfevents.1752588346.Dell-XPS-Cris.21652.0
+¦       ¦       
+¦       +---DQN_2025-07-15_17-38-29_1
+¦       ¦       events.out.tfevents.1752590311.Dell-XPS-Cris.46448.0
+¦       ¦       
+¦       +---DQN_2025-07-15_17-57-56_1
+¦       ¦       events.out.tfevents.1752591479.Dell-XPS-Cris.9968.0
+¦       ¦       
+¦       +---DQN_2025-07-15_18-33-50_1
+¦       ¦       events.out.tfevents.1752593632.Dell-XPS-Cris.36268.0
+¦       ¦       
+¦       +---DQN_2025-07-15_18-39-11_1
+¦       ¦       events.out.tfevents.1752593953.Dell-XPS-Cris.51716.0
+¦       ¦       
+¦       +---DQN_2025-07-15_18-42-15_1
+¦       ¦       events.out.tfevents.1752594137.Dell-XPS-Cris.48008.0
+¦       ¦       
+¦       +---DQN_2025-07-15_19-50-26_1
+¦       ¦       events.out.tfevents.1752598228.Dell-XPS-Cris.30624.0
+¦       ¦       
+¦       +---monitor_logs
+¦               monitor_20250713_181006.csv.monitor.csv
+¦               monitor_20250713_181117.csv.monitor.csv
+¦               monitor_20250713_181438.csv.monitor.csv
+¦               monitor_20250713_181545.csv.monitor.csv
+¦               monitor_20250713_183426.csv.monitor.csv
+¦               monitor_20250713_184942.csv.monitor.csv
+¦               monitor_20250713_185519.csv.monitor.csv
+¦               monitor_20250713_185728.csv.monitor.csv
+¦               monitor_20250713_190120.csv.monitor.csv
+¦               monitor_20250713_193024.csv.monitor.csv
+¦               monitor_20250714_133216.csv.monitor.csv
+¦               monitor_20250714_133628.csv.monitor.csv
+¦               monitor_20250714_134227.csv.monitor.csv
+¦               monitor_20250714_134550.csv.monitor.csv
+¦               monitor_20250714_135711.csv.monitor.csv
+¦               monitor_20250714_140856.csv.monitor.csv
+¦               monitor_20250714_141545.csv.monitor.csv
+¦               monitor_20250715_154431.csv.monitor.csv
+¦               monitor_20250715_155059.csv.monitor.csv
+¦               monitor_20250715_163641.csv.monitor.csv
+¦               monitor_20250715_170544.csv.monitor.csv
+¦               monitor_20250715_173829.csv.monitor.csv
+¦               monitor_20250715_175756.csv.monitor.csv
+¦               monitor_20250715_183350.csv.monitor.csv
+¦               monitor_20250715_183911.csv.monitor.csv
+¦               monitor_20250715_184215.csv.monitor.csv
+¦               monitor_20250715_195026.csv.monitor.csv
+¦               
++---models
+¦   +---DQN_2025-07-13_18-10-06
+¦   +---DQN_2025-07-13_18-11-17
+¦   ¦   ¦   DQN_2025-07-13_18-11-17.zip
+¦   ¦   ¦   DQN_2025-07-13_18-11-17_metadata.json
+¦   ¦   ¦   DQN_2025-07-13_18-11-17_torchscript.pt
+¦   ¦   ¦   policy.pt
+¦   ¦   ¦   
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-13_18-14-38
+¦   ¦   ¦   DQN_2025-07-13_18-14-38.zip
+¦   ¦   ¦   DQN_2025-07-13_18-14-38_metadata.json
+¦   ¦   ¦   DQN_2025-07-13_18-14-38_torchscript.pt
+¦   ¦   ¦   policy.pt
+¦   ¦   ¦   
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-13_18-15-45
+¦   ¦   ¦   DQN_2025-07-13_18-15-45.zip
+¦   ¦   ¦   DQN_2025-07-13_18-15-45_metadata.json
+¦   ¦   ¦   DQN_2025-07-13_18-15-45_torchscript.pt
+¦   ¦   ¦   policy.pt
+¦   ¦   ¦   
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-13_18-34-26
+¦   ¦   ¦   DQN_2025-07-13_18-34-26.zip
+¦   ¦   ¦   DQN_2025-07-13_18-34-26_metadata.json
+¦   ¦   ¦   DQN_2025-07-13_18-34-26_torchscript.pt
+¦   ¦   ¦   policy.pt
+¦   ¦   ¦   
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-13_18-49-42
+¦   ¦   ¦   DQN_2025-07-13_18-49-42.zip
+¦   ¦   ¦   DQN_2025-07-13_18-49-42_metadata.json
+¦   ¦   ¦   DQN_2025-07-13_18-49-42_torchscript.pt
+¦   ¦   ¦   policy.pt
+¦   ¦   ¦   
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-13_18-55-19
+¦   ¦   ¦   DQN_2025-07-13_18-55-19.zip
+¦   ¦   ¦   DQN_2025-07-13_18-55-19_metadata.json
+¦   ¦   ¦   DQN_2025-07-13_18-55-19_torchscript.pt
+¦   ¦   ¦   policy.pt
+¦   ¦   ¦   
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-13_18-57-28
+¦   ¦   ¦   DQN_2025-07-13_18-57-28.zip
+¦   ¦   ¦   DQN_2025-07-13_18-57-28_metadata.json
+¦   ¦   ¦   DQN_2025-07-13_18-57-28_torchscript.pt
+¦   ¦   ¦   policy.pt
+¦   ¦   ¦   
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-13_19-01-20
+¦   ¦   ¦   DQN_2025-07-13_19-01-20.zip
+¦   ¦   ¦   DQN_2025-07-13_19-01-20_metadata.json
+¦   ¦   ¦   DQN_2025-07-13_19-01-20_torchscript.pt
+¦   ¦   ¦   policy.pt
+¦   ¦   ¦   
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-13_19-30-24
+¦   ¦   ¦   DQN_2025-07-13_19-30-24.zip
+¦   ¦   ¦   DQN_2025-07-13_19-30-24_metadata.json
+¦   ¦   ¦   DQN_2025-07-13_19-30-24_torchscript.pt
+¦   ¦   ¦   policy.pt
+¦   ¦   ¦   
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-14_13-32-16
+¦   ¦   ¦   DQN_2025-07-14_13-32-16.zip
+¦   ¦   ¦   DQN_2025-07-14_13-32-16_metadata.json
+¦   ¦   ¦   DQN_2025-07-14_13-32-16_torchscript.pt
+¦   ¦   ¦   policy.pt
+¦   ¦   ¦   
+¦   ¦   +---checkpoints
+¦   ¦           DQN_checkpoint_10000_steps.zip
+¦   ¦           
+¦   +---DQN_2025-07-14_13-36-28
+¦   ¦   ¦   DQN_2025-07-14_13-36-28.zip
+¦   ¦   ¦   DQN_2025-07-14_13-36-28_metadata.json
+¦   ¦   ¦   DQN_2025-07-14_13-36-28_torchscript.pt
+¦   ¦   ¦   policy.pt
+¦   ¦   ¦   
+¦   ¦   +---checkpoints
+¦   ¦           DQN_checkpoint_10000_steps.zip
+¦   ¦           
+¦   +---DQN_2025-07-14_13-42-27
+¦   ¦   ¦   DQN_2025-07-14_13-42-27.zip
+¦   ¦   ¦   DQN_2025-07-14_13-42-27_metadata.json
+¦   ¦   ¦   DQN_2025-07-14_13-42-27_torchscript.pt
+¦   ¦   ¦   policy.pt
+¦   ¦   ¦   
+¦   ¦   +---checkpoints
+¦   ¦           DQN_checkpoint_10000_steps.zip
+¦   ¦           
+¦   +---DQN_2025-07-14_13-45-50
+¦   ¦   +---checkpoints
+¦   ¦           DQN_checkpoint_10000_steps.zip
+¦   ¦           DQN_checkpoint_20000_steps.zip
+¦   ¦           DQN_checkpoint_30000_steps.zip
+¦   ¦           
+¦   +---DQN_2025-07-14_13-57-11
+¦   ¦   +---checkpoints
+¦   ¦           DQN_checkpoint_10000_steps.zip
+¦   ¦           DQN_checkpoint_20000_steps.zip
+¦   ¦           DQN_checkpoint_30000_steps.zip
+¦   ¦           DQN_checkpoint_40000_steps.zip
+¦   ¦           DQN_checkpoint_50000_steps.zip
+¦   ¦           
+¦   +---DQN_2025-07-14_14-08-56
+¦   ¦   ¦   DQN_2025-07-14_14-08-56.zip
+¦   ¦   ¦   DQN_2025-07-14_14-08-56_metadata.json
+¦   ¦   ¦   DQN_2025-07-14_14-08-56_torchscript.pt
+¦   ¦   ¦   policy.pt
+¦   ¦   ¦   
+¦   ¦   +---checkpoints
+¦   ¦           DQN_checkpoint_10000_steps.zip
+¦   ¦           DQN_checkpoint_20000_steps.zip
+¦   ¦           DQN_checkpoint_30000_steps.zip
+¦   ¦           DQN_checkpoint_40000_steps.zip
+¦   ¦           
+¦   +---DQN_2025-07-14_14-15-45
+¦   ¦   ¦   DQN_2025-07-14_14-15-45.zip
+¦   ¦   ¦   DQN_2025-07-14_14-15-45_metadata.json
+¦   ¦   ¦   DQN_2025-07-14_14-15-45_torchscript.pt
+¦   ¦   ¦   policy.pt
+¦   ¦   ¦   
+¦   ¦   +---checkpoints
+¦   ¦           DQN_checkpoint_100000_steps.zip
+¦   ¦           DQN_checkpoint_10000_steps.zip
+¦   ¦           DQN_checkpoint_110000_steps.zip
+¦   ¦           DQN_checkpoint_120000_steps.zip
+¦   ¦           DQN_checkpoint_130000_steps.zip
+¦   ¦           DQN_checkpoint_140000_steps.zip
+¦   ¦           DQN_checkpoint_150000_steps.zip
+¦   ¦           DQN_checkpoint_160000_steps.zip
+¦   ¦           DQN_checkpoint_170000_steps.zip
+¦   ¦           DQN_checkpoint_180000_steps.zip
+¦   ¦           DQN_checkpoint_190000_steps.zip
+¦   ¦           DQN_checkpoint_200000_steps.zip
+¦   ¦           DQN_checkpoint_20000_steps.zip
+¦   ¦           DQN_checkpoint_210000_steps.zip
+¦   ¦           DQN_checkpoint_220000_steps.zip
+¦   ¦           DQN_checkpoint_230000_steps.zip
+¦   ¦           DQN_checkpoint_240000_steps.zip
+¦   ¦           DQN_checkpoint_250000_steps.zip
+¦   ¦           DQN_checkpoint_260000_steps.zip
+¦   ¦           DQN_checkpoint_270000_steps.zip
+¦   ¦           DQN_checkpoint_280000_steps.zip
+¦   ¦           DQN_checkpoint_290000_steps.zip
+¦   ¦           DQN_checkpoint_300000_steps.zip
+¦   ¦           DQN_checkpoint_30000_steps.zip
+¦   ¦           DQN_checkpoint_310000_steps.zip
+¦   ¦           DQN_checkpoint_320000_steps.zip
+¦   ¦           DQN_checkpoint_330000_steps.zip
+¦   ¦           DQN_checkpoint_340000_steps.zip
+¦   ¦           DQN_checkpoint_350000_steps.zip
+¦   ¦           DQN_checkpoint_360000_steps.zip
+¦   ¦           DQN_checkpoint_370000_steps.zip
+¦   ¦           DQN_checkpoint_380000_steps.zip
+¦   ¦           DQN_checkpoint_390000_steps.zip
+¦   ¦           DQN_checkpoint_400000_steps.zip
+¦   ¦           DQN_checkpoint_40000_steps.zip
+¦   ¦           DQN_checkpoint_410000_steps.zip
+¦   ¦           DQN_checkpoint_50000_steps.zip
+¦   ¦           DQN_checkpoint_60000_steps.zip
+¦   ¦           DQN_checkpoint_70000_steps.zip
+¦   ¦           DQN_checkpoint_80000_steps.zip
+¦   ¦           DQN_checkpoint_90000_steps.zip
+¦   ¦           
+¦   +---DQN_2025-07-15_15-44-31
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-15_15-50-59
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-15_16-36-41
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-15_17-05-44
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-15_17-38-29
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-15_17-57-56
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-15_18-33-50
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-15_18-39-11
+¦   ¦   +---checkpoints
+¦   +---DQN_2025-07-15_18-42-15
+¦   ¦   ¦   DQN_2025-07-15_18-42-15.zip
+¦   ¦   ¦   DQN_2025-07-15_18-42-15_metadata.json
+¦   ¦   ¦   DQN_2025-07-15_18-42-15_torchscript.pt
+¦   ¦   ¦   policy.pt
+¦   ¦   ¦   
+¦   ¦   +---checkpoints
+¦   ¦           DQN_checkpoint_100000_steps.zip
+¦   ¦           DQN_checkpoint_10000_steps.zip
+¦   ¦           DQN_checkpoint_20000_steps.zip
+¦   ¦           DQN_checkpoint_30000_steps.zip
+¦   ¦           DQN_checkpoint_40000_steps.zip
+¦   ¦           DQN_checkpoint_50000_steps.zip
+¦   ¦           DQN_checkpoint_60000_steps.zip
+¦   ¦           DQN_checkpoint_70000_steps.zip
+¦   ¦           DQN_checkpoint_80000_steps.zip
+¦   ¦           DQN_checkpoint_90000_steps.zip
+¦   ¦           
+¦   +---DQN_2025-07-15_19-50-26
+¦       ¦   DQN_2025-07-15_19-50-26.zip
+¦       ¦   DQN_2025-07-15_19-50-26_metadata.json
+¦       ¦   DQN_2025-07-15_19-50-26_torchscript.pt
+¦       ¦   policy.pt
+¦       ¦   
+¦       +---checkpoints
+¦               DQN_checkpoint_100000_steps.zip
+¦               DQN_checkpoint_10000_steps.zip
+¦               DQN_checkpoint_20000_steps.zip
+¦               DQN_checkpoint_30000_steps.zip
+¦               DQN_checkpoint_40000_steps.zip
+¦               DQN_checkpoint_50000_steps.zip
+¦               DQN_checkpoint_60000_steps.zip
+¦               DQN_checkpoint_70000_steps.zip
+¦               DQN_checkpoint_80000_steps.zip
+¦               DQN_checkpoint_90000_steps.zip
+¦               
++---monitoring
+¦   +---alerting
+¦       ¦   alert_manager.py
+¦       ¦   
+¦       +---__pycache__
+¦               alert_manager.cpython-310.pyc
+¦               
++---reports
+¦       eval_NVDA_DQN_2025-07-13_18-11-17_20250713_181121_summary.txt
+¦       eval_NVDA_DQN_2025-07-13_18-14-38_20250713_181442_summary.txt
+¦       eval_NVDA_DQN_2025-07-13_18-15-45_20250713_181549_summary.txt
+¦       eval_NVDA_DQN_2025-07-13_18-15-45_20250713_181549_trades.csv
+¦       eval_NVDA_DQN_2025-07-13_18-34-26_20250713_183739_summary.txt
+¦       eval_NVDA_DQN_2025-07-13_18-34-26_20250713_183739_trades.csv
+¦       eval_NVDA_DQN_2025-07-13_18-49-42_20250713_185342_summary.txt
+¦       eval_NVDA_DQN_2025-07-13_18-49-42_20250713_185342_trades.csv
+¦       eval_NVDA_DQN_2025-07-14_13-42-27_20250714_134235_summary.txt
+¦       eval_NVDA_DQN_2025-07-14_13-42-27_20250714_134235_trades.csv
+¦       eval_NVDA_DQN_2025-07-14_14-08-56_20250714_141039_summary.txt
+¦       eval_NVDA_DQN_2025-07-14_14-08-56_20250714_141039_trades.csv
+¦       
++---risk
+¦   ¦   event_bus.py
+¦   ¦   event_types.py
+¦   ¦   risk_agent_adapter.py
+¦   ¦   risk_agent_v2.py
+¦   ¦   rules_engine.py
+¦   ¦   stress_runner.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---audit
+¦   ¦   ¦   audit_logger.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           audit_logger.cpython-310.pyc
+¦   ¦           
+¦   +---calculators
+¦   ¦   ¦   adv_participation_calculator.py
+¦   ¦   ¦   base_calculator.py
+¦   ¦   ¦   concentration_calculator.py
+¦   ¦   ¦   depth_shock_calculator.py
+¦   ¦   ¦   drawdown_calculator.py
+¦   ¦   ¦   drawdown_velocity_calculator.py
+¦   ¦   ¦   expected_shortfall_calculator.py
+¦   ¦   ¦   feed_staleness_calculator.py
+¦   ¦   ¦   greeks_calculator.py
+¦   ¦   ¦   kyle_lambda_calculator.py
+¦   ¦   ¦   latency_drift_calculator.py
+¦   ¦   ¦   market_impact_calculator.py
+¦   ¦   ¦   stress_test_calculator.py
+¦   ¦   ¦   turnover_calculator.py
+¦   ¦   ¦   ulcer_index_calculator.py
+¦   ¦   ¦   var_calculator.py
+¦   ¦   ¦   volatility_calculator.py
+¦   ¦   ¦   __init__.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           adv_participation_calculator.cpython-310.pyc
+¦   ¦           base_calculator.cpython-310.pyc
+¦   ¦           concentration_calculator.cpython-310.pyc
+¦   ¦           depth_shock_calculator.cpython-310.pyc
+¦   ¦           drawdown_calculator.cpython-310.pyc
+¦   ¦           drawdown_velocity_calculator.cpython-310.pyc
+¦   ¦           expected_shortfall_calculator.cpython-310.pyc
+¦   ¦           feed_staleness_calculator.cpython-310.pyc
+¦   ¦           greeks_calculator.cpython-310.pyc
+¦   ¦           kyle_lambda_calculator.cpython-310.pyc
+¦   ¦           latency_drift_calculator.cpython-310.pyc
+¦   ¦           stress_test_calculator.cpython-310.pyc
+¦   ¦           turnover_calculator.cpython-310.pyc
+¦   ¦           ulcer_index_calculator.cpython-310.pyc
+¦   ¦           var_calculator.cpython-310.pyc
+¦   ¦           volatility_calculator.cpython-310.pyc
+¦   ¦           __init__.cpython-310.pyc
+¦   ¦           
+¦   +---config
+¦   ¦   ¦   risk_config_hot_reload.py
+¦   ¦   ¦   risk_config_manager.py
+¦   ¦   ¦   risk_config_validator.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           risk_config_hot_reload.cpython-310.pyc
+¦   ¦           risk_config_manager.cpython-310.pyc
+¦   ¦           risk_config_validator.cpython-310.pyc
+¦   ¦           
+¦   +---enforcement
+¦   ¦   ¦   var_stress_enforcer.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           var_stress_enforcer.cpython-310.pyc
+¦   ¦           
+¦   +---metrics
+¦   ¦   ¦   prometheus_metrics.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           prometheus_metrics.cpython-310.pyc
+¦   ¦           
+¦   +---obs
+¦   ¦   ¦   audit_sink.py
+¦   ¦   ¦   enhanced_audit_sink.py
+¦   ¦   ¦   __init__.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           audit_sink.cpython-310.pyc
+¦   ¦           enhanced_audit_sink.cpython-310.pyc
+¦   ¦           __init__.cpython-310.pyc
+¦   ¦           
+¦   +---sensors
+¦   ¦   ¦   base_sensor.py
+¦   ¦   ¦   counterparty.py
+¦   ¦   ¦   failure_mode_detector.py
+¦   ¦   ¦   funding_margin.py
+¦   ¦   ¦   liquidity_execution.py
+¦   ¦   ¦   operational_tech.py
+¦   ¦   ¦   path_fragility.py
+¦   ¦   ¦   sensor_pipeline.py
+¦   ¦   ¦   sensor_registry.py
+¦   ¦   ¦   tail_regime.py
+¦   ¦   ¦   var_stress_sensors.py
+¦   ¦   ¦   __init__.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           base_sensor.cpython-310.pyc
+¦   ¦           counterparty.cpython-310.pyc
+¦   ¦           failure_mode_detector.cpython-310.pyc
+¦   ¦           funding_margin.cpython-310.pyc
+¦   ¦           liquidity_execution.cpython-310.pyc
+¦   ¦           operational_tech.cpython-310.pyc
+¦   ¦           path_fragility.cpython-310.pyc
+¦   ¦           sensor_pipeline.cpython-310.pyc
+¦   ¦           sensor_registry.cpython-310.pyc
+¦   ¦           tail_regime.cpython-310.pyc
+¦   ¦           var_stress_sensors.cpython-310.pyc
+¦   ¦           __init__.cpython-310.pyc
+¦   ¦           
+¦   +---__pycache__
+¦           event_bus.cpython-310.pyc
+¦           event_types.cpython-310.pyc
+¦           risk_agent_adapter.cpython-310.pyc
+¦           risk_agent_v2.cpython-310.pyc
+¦           rules_engine.cpython-310.pyc
+¦           stress_runner.cpython-310.pyc
+¦           __init__.cpython-310.pyc
+¦           
++---security
+¦   ¦   secrets_manager.py
+¦   ¦   
+¦   +---__pycache__
+¦           secrets_manager.cpython-310.pyc
+¦           
++---shared
+¦   ¦   constants.py
+¦   ¦   db_locker.py
+¦   ¦   db_pool.py
+¦   ¦   deprecation.py
+¦   ¦   disk_gc_service.py
+¦   ¦   dto.py
+¦   ¦   duckdb_manager.py
+¦   ¦   evaluation_cache.py
+¦   ¦   featurestore_monitoring.py
+¦   ¦   feature_store.py
+¦   ¦   feature_store_optimized.py
+¦   ¦   fee_schedule.py
+¦   ¦   manifest_schema.py
+¦   ¦   market_impact.py
+¦   ¦   risk_utils.py
+¦   ¦   version.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---__pycache__
+¦           constants.cpython-310.pyc
+¦           constants.cpython-313.pyc
+¦           db_locker.cpython-310.pyc
+¦           db_pool.cpython-310.pyc
+¦           deprecation.cpython-310.pyc
+¦           disk_gc_service.cpython-310.pyc
+¦           duckdb_manager.cpython-310.pyc
+¦           duckdb_manager.cpython-313.pyc
+¦           evaluation_cache.cpython-310.pyc
+¦           evaluation_cache.cpython-313.pyc
+¦           featurestore_monitoring.cpython-310.pyc
+¦           feature_store.cpython-310.pyc
+¦           feature_store.cpython-313.pyc
+¦           feature_store_optimized.cpython-310.pyc
+¦           fee_schedule.cpython-310.pyc
+¦           manifest_schema.cpython-310.pyc
+¦           market_impact.cpython-310.pyc
+¦           version.cpython-310.pyc
+¦           __init__.cpython-310.pyc
+¦           __init__.cpython-313.pyc
+¦           
++---storage
+¦   ¦   audit_storage_manager.py
+¦   ¦   s3_audit_replication.py
+¦   ¦   
+¦   +---__pycache__
+¦           audit_storage_manager.cpython-310.pyc
+¦           s3_audit_replication.cpython-310.pyc
+¦           
++---tools
+¦   ¦   GetIBKRData.py
+¦   ¦   ibkr_tools.py
+¦   ¦   
+¦   +---__pycache__
+¦           GetIBKRData.cpython-310.pyc
+¦           ibkr_tools.cpython-310.pyc
+¦           
++---training
+¦   ¦   enhanced_trainer_agent.py
+¦   ¦   experiment_registry.py
+¦   ¦   hyperparameter_search.py
+¦   ¦   reward_audit_integration.py
+¦   ¦   reward_pnl_audit.py
+¦   ¦   trainer_agent.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---callbacks
+¦   ¦   ¦   enhanced_risk_callback.py
+¦   ¦   ¦   __init__.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           enhanced_risk_callback.cpython-310.pyc
+¦   ¦           __init__.cpython-310.pyc
+¦   ¦           
+¦   +---core
+¦   ¦   ¦   early_stopping_callback.py
+¦   ¦   ¦   env_builder.py
+¦   ¦   ¦   hyperparam_search.py
+¦   ¦   ¦   policy_export.py
+¦   ¦   ¦   risk_callbacks.py
+¦   ¦   ¦   trainer_core.py
+¦   ¦   ¦   __init__.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           early_stopping_callback.cpython-310.pyc
+¦   ¦           env_builder.cpython-310.pyc
+¦   ¦           hyperparam_search.cpython-310.pyc
+¦   ¦           policy_export.cpython-310.pyc
+¦   ¦           risk_callbacks.cpython-310.pyc
+¦   ¦           trainer_core.cpython-310.pyc
+¦   ¦           __init__.cpython-310.pyc
+¦   ¦           
+¦   +---interfaces
+¦   ¦   ¦   risk_advisor.py
+¦   ¦   ¦   rl_policy.py
+¦   ¦   ¦   __init__.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           risk_advisor.cpython-310.pyc
+¦   ¦           rl_policy.cpython-310.pyc
+¦   ¦           __init__.cpython-310.pyc
+¦   ¦           
+¦   +---policies
+¦   ¦   ¦   sb3_policy.py
+¦   ¦   ¦   __init__.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           sb3_policy.cpython-310.pyc
+¦   ¦           __init__.cpython-310.pyc
+¦   ¦           
+¦   +---__pycache__
+¦           experiment_registry.cpython-310.pyc
+¦           reward_audit_integration.cpython-310.pyc
+¦           reward_pnl_audit.cpython-310.pyc
+¦           trainer_agent.cpython-310.pyc
+¦           __init__.cpython-310.pyc
+¦           
++---utils
+¦   ¦   db.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---__pycache__
+¦           db.cpython-310.pyc
+¦           db.cpython-313.pyc
+¦           __init__.cpython-310.pyc
+¦           __init__.cpython-313.pyc
+¦           
++---__pycache__
+        column_names.cpython-310.pyc
+        main.cpython-310.pyc
+        

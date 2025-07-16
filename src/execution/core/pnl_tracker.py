@@ -22,12 +22,30 @@ try:
     from ...shared.fee_schedule import get_cme_fee_schedule, FeeSchedule
     FEE_ENGINE_AVAILABLE = True
 except ImportError:
-    FEE_ENGINE_AVAILABLE = False
+    # Fallback for direct execution
+    try:
+        from src.shared.fee_schedule import get_cme_fee_schedule, FeeSchedule
+        FEE_ENGINE_AVAILABLE = True
+    except ImportError:
+        FEE_ENGINE_AVAILABLE = False
 
 # Prometheus metrics for fee tracking
 try:
-    from prometheus_client import Counter, Histogram
+    from prometheus_client import Counter, Histogram, REGISTRY
     PROMETHEUS_AVAILABLE = True
+    
+    # Clear any existing metrics with the same name to prevent duplicates
+    try:
+        collectors_to_remove = []
+        for collector in list(REGISTRY._collector_to_names.keys()):
+            if hasattr(collector, '_name'):
+                if collector._name in ["trading_fees_total_usd", "trading_fee_per_contract_usd"]:
+                    collectors_to_remove.append(collector)
+        
+        for collector in collectors_to_remove:
+            REGISTRY.unregister(collector)
+    except:
+        pass  # Ignore errors if metrics don't exist
     
     FEES_TOTAL = Counter(
         'trading_fees_total_usd',

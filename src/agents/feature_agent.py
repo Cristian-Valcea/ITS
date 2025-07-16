@@ -8,6 +8,7 @@ from collections import deque
 from src.column_names import COL_CLOSE
 from src.features import FeatureManager, DataProcessor
 from src.shared import FeatureStore, get_feature_store
+from src.shared.evaluation_cache import get_evaluation_cache
 from .base_agent import BaseAgent
 
 
@@ -22,8 +23,9 @@ class FeatureAgent(BaseAgent):
     4. Provide clean interface for batch and live processing
     """
     
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, read_only: bool = False):
         super().__init__(agent_name="FeatureAgent", config=config)
+        self.read_only = read_only
         
         # Initialize directories
         self.processed_data_dir = self.config.get('data_dir_processed', 'data/processed')
@@ -41,7 +43,7 @@ class FeatureAgent(BaseAgent):
         
         # Initialize FeatureStore for high-performance caching
         feature_store_root = self.config.get('feature_store_root', None)
-        self.feature_store = get_feature_store(root=feature_store_root, logger=self.logger)
+        self.feature_store = get_feature_store(root=feature_store_root, logger=self.logger, read_only=self.read_only)
         self.use_feature_cache = self.config.get('use_feature_cache', True)
         
         # Live trading attributes
@@ -159,6 +161,22 @@ class FeatureAgent(BaseAgent):
             self.logger.error("Raw data is empty")
             return None, None, None
 
+        # Check evaluation cache first (prevents DuckDB re-connections during evaluation)
+        eval_cache = get_evaluation_cache()
+        if self.read_only:  # Only use evaluation cache in read-only mode
+            feature_config = {
+                'active_calculators': self.feature_manager.list_active_calculators(),
+                'feature_config': self.feature_manager.feature_config,
+                'max_lookback': self.feature_manager.get_max_lookback(),
+                'fit_scaler': fit_scaler
+            }
+            
+            cached_result = eval_cache.get(symbol, start_date_str, end_date_str, interval_str, feature_config)
+            if cached_result is not None:
+                self.logger.info(f"📋 Using cached features for {symbol} - avoiding DuckDB connection")
+                # Cached result is a tuple: (features_df, feature_sequences, price_data_for_env)
+                return cached_result
+
         # 1. Compute features (with caching)
         features_df = self.compute_features(raw_data_df, symbol=symbol)
         if features_df is None:
@@ -201,6 +219,17 @@ class FeatureAgent(BaseAgent):
                 normalized_features_df, feature_sequences, symbol,
                 start_date_str, end_date_str, interval_str
             )
+
+        # Cache result for evaluation mode (prevents future DuckDB connections)
+        if self.read_only:
+            feature_config = {
+                'active_calculators': self.feature_manager.list_active_calculators(),
+                'feature_config': self.feature_manager.feature_config,
+                'max_lookback': self.feature_manager.get_max_lookback(),
+                'fit_scaler': fit_scaler
+            }
+            result_tuple = (normalized_features_df, feature_sequences, price_data_for_env)
+            eval_cache.put(symbol, start_date_str, end_date_str, interval_str, feature_config, result_tuple)
 
         self.logger.info(f"FeatureAgent processing completed for {symbol}")
         return normalized_features_df, feature_sequences, price_data_for_env

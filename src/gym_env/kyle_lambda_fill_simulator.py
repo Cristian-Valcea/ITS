@@ -207,17 +207,11 @@ class KyleLambdaFillSimulator:
             'fill_count': self.fill_count
         })
         
-        # 🔍 ENHANCED LOGGING: Show market impact in action
-        if total_impact_bps > 1.0:  # Log significant impacts
-            self.logger.info(
-                f"🔍 KYLE LAMBDA IMPACT: Mid=${mid_price:.4f} → Fill=${fill_price:.4f} "
-                f"(Impact: {total_impact_bps:.2f}bps, Size: {abs_trade_size:.0f} shares, Side: {side})"
-            )
-        else:
-            self.logger.debug(
-                f"Fill calculated: mid={mid_price:.4f}, fill={fill_price:.4f}, "
-                f"impact={total_impact_bps:.2f}bps, size={abs_trade_size:.0f}"
-            )
+        # 🔍 ENHANCED LOGGING: Show market impact in action (moved to DEBUG to reduce console noise)
+        self.logger.debug(
+            f"🔍 KYLE LAMBDA IMPACT: Mid=${mid_price:.4f} → Fill=${fill_price:.4f} "
+            f"(Impact: {total_impact_bps:.2f}bps, Size: {abs_trade_size:.0f} shares, Side: {side})"
+        )
         
         return fill_price, impact_info
     

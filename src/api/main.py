@@ -24,6 +24,8 @@ import uuid
 from datetime import datetime, timedelta
 
 from src.execution.orchestrator_agent import OrchestratorAgent
+from src.shared.duckdb_manager import close_all_duckdb_connections
+from src.shared.feature_store import reset_feature_store
 
 # Prometheus metrics endpoint support
 try:
@@ -32,10 +34,19 @@ try:
 except ImportError:
     PROMETHEUS_AVAILABLE = False
 
-# FeatureStore monitoring endpoints
+# FeatureStore monitoring endpoints - disable during training to avoid DuckDB conflicts
 try:
-    from .monitoring_endpoints import monitoring_router
-    MONITORING_AVAILABLE = True
+    # Check environment variable to disable monitoring during training
+    import os
+    disable_monitoring = os.getenv("DISABLE_FEATURESTORE_MONITORING", "false").lower() == "true"
+    
+    if disable_monitoring:
+        # Monitoring disabled via environment variable
+        MONITORING_AVAILABLE = False
+        print("⚠️  FeatureStore monitoring endpoints disabled via DISABLE_FEATURESTORE_MONITORING=true")
+    else:
+        from .monitoring_endpoints import monitoring_router
+        MONITORING_AVAILABLE = True
 except ImportError:
     MONITORING_AVAILABLE = False
 
@@ -69,6 +80,10 @@ router = APIRouter()
 # --- OrchestratorAgent instance (singleton for demo) ---
 def get_orchestrator(use_training_config: bool = False):
     """Get or create orchestrator instance"""
+    # Clean up any existing connections and feature store instances
+    close_all_duckdb_connections()
+    reset_feature_store()
+    
     risk_limits_path = "config/risk_limits_training.yaml" if use_training_config else "config/risk_limits_orchestrator_test.yaml"
     
     logger = logging.getLogger("API.OrchestratorFactory")
@@ -78,7 +93,8 @@ def get_orchestrator(use_training_config: bool = False):
     return OrchestratorAgent(
         main_config_path="config/main_config_orchestrator_test.yaml",
         model_params_path="config/model_params_orchestrator_test.yaml",
-        risk_limits_path=risk_limits_path
+        risk_limits_path=risk_limits_path,
+        read_only=True  # API should only read from feature store
     )
 
 # Default orchestrator for non-training operations
@@ -245,7 +261,31 @@ def list_tasks():
 
 @app.get("/health")
 def health_check():
+    """Basic health check endpoint."""
     return {"status": "ok"}
+
+@app.get("/health/db")
+def db_health_check():
+    """Database health check endpoint."""
+    try:
+        from src.utils.db import health_check, get_db_info
+        
+        if health_check():
+            db_info = get_db_info()
+            return {
+                "status": "healthy",
+                "database": db_info
+            }
+        else:
+            return {
+                "status": "unhealthy",
+                "error": "Database not accessible"
+            }
+    except Exception as e:
+        return {
+            "status": "error", 
+            "error": str(e)
+        }
 
 @app.get("/metrics")
 def metrics_endpoint():
@@ -580,6 +620,29 @@ else:
     print("⚠️  Stress testing endpoints not available")
 # --- Example FastAPI run (for local testing) ---
 if __name__ == "__main__":
+    import sys
     import uvicorn
+    
+    # Check for --dry-run flag
+    if "--dry-run" in sys.argv:
+        print("🔍 Running API server in dry-run mode...")
+        try:
+            from src.utils.db import health_check, get_db_info
+            
+            print("📊 Performing database health check...")
+            if health_check():
+                db_info = get_db_info()
+                print(f"✅ Database accessible: {db_info['db_path']}")
+                print(f"📈 Database size: {db_info['db_size_bytes']} bytes")
+                print(f"📋 Tables: {db_info['table_count']}")
+                print("🎯 Dry-run completed successfully!")
+                sys.exit(0)
+            else:
+                print("❌ Database health check failed!")
+                sys.exit(1)
+        except Exception as e:
+            print(f"💥 Dry-run failed: {e}")
+            sys.exit(1)
+    
     uvicorn.run("src.api.main:app", host="127.0.0.1", port=8000, reload=True)
      

@@ -11,10 +11,8 @@ import sys
 # If you run `python main.py` from root, and main.py is in root, then `from src.agents...` works.
 # Assuming main.py is in src/, and we run from project root (`python -m src.main`) or `python src/main.py`.
 try:
-    from agents.orchestrator_agent import OrchestratorAgent
-    # If running from project root as `python src/main.py`, this might fail.
-    # `PYTHONPATH=. python src/main.py` or `python -m src.main` is better.
-    # Or, adjust sys.path:
+    from execution.orchestrator_agent import OrchestratorAgent
+    # Updated import path - OrchestratorAgent moved to execution module
 except ImportError:
     # This adjustment is often needed if you run `python src/main.py` from the project root directory.
     # It adds the project root to sys.path, so `from src.agents...` would work.
@@ -75,22 +73,34 @@ DEFAULT_RISK_LIMITS_PATH = "../config/risk_limits.yaml"
 # --- Logging Setup ---
 # Basic logging can be configured here. Orchestrator and other agents will use this.
 # More advanced logging (e.g., file rotation, specific formatting) can be in a util.
-def setup_logging(level=logging.INFO):
+def setup_logging(level=logging.INFO, config=None):
+    """Setup logging with console and optional file output."""
+    handlers = [logging.StreamHandler(sys.stdout)]  # Always log to console
+    
+    # Add file handler if configured
+    if config and config.get('logging', {}).get('log_to_file', False):
+        log_file_path = config.get('logging', {}).get('log_file_path', 'logs/app.log')
+        
+        # Ensure log directory exists
+        log_dir = os.path.dirname(log_file_path)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+        
+        file_handler = logging.FileHandler(log_file_path, encoding='utf-8')
+        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        handlers.append(file_handler)
+    
     logging.basicConfig(
         level=level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[logging.StreamHandler(sys.stdout)] # Log to console
+        handlers=handlers,
+        force=True  # Override any existing configuration
     )
-    # TODO: Add FileHandler to log to app.log as per directory structure
-    # log_dir = main_config.get('paths', {}).get('log_dir', 'logs') # Need config first for this
-    # app_log_file = os.path.join(log_dir, "app.log")
-    # file_handler = logging.FileHandler(app_log_file)
-    # file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    # logging.getLogger().addHandler(file_handler) # Add to root logger
 
 
 def main():
-    setup_logging(logging.INFO) # Default log level
+    # Initial basic logging setup
+    setup_logging(logging.INFO)
     logger = logging.getLogger("RLTradingPlatform.Main")
 
     parser = argparse.ArgumentParser(description="RL Intraday Trading Platform Orchestrator")
@@ -124,6 +134,20 @@ def main():
 
     args = parser.parse_args()
 
+    # Load main config to setup file logging if configured
+    try:
+        import yaml
+        with open(args.main_config, 'r') as f:
+            main_config = yaml.safe_load(f)
+        
+        # Reconfigure logging with file output if enabled
+        setup_logging(logging.INFO, main_config)
+        logger = logging.getLogger("RLTradingPlatform.Main")  # Get logger again after reconfiguration
+        
+    except Exception as e:
+        logger.warning(f"Could not load main config for logging setup: {e}. Using console logging only.")
+        main_config = {}
+
     logger.info(f"Starting application in '{args.mode}' mode.")
     logger.info(f"Main config: {args.main_config}")
     logger.info(f"Model params config: {args.model_params}")
@@ -133,10 +157,13 @@ def main():
     # Ensure config paths are correct relative to the project root if main.py is in src/
     # If main.py is in src/, paths like "../config/" are correct.
     try:
+        # Use read-only mode for evaluation to prevent DuckDB write locks
+        read_only_mode = (args.mode == 'evaluate')
         orchestrator = OrchestratorAgent(
             main_config_path=args.main_config,
             model_params_path=args.model_params,
-            risk_limits_path=args.risk_limits
+            risk_limits_path=args.risk_limits,
+            read_only=read_only_mode
         )
     except ValueError as e:
         logger.error(f"Failed to initialize OrchestratorAgent: {e}. Exiting.")
