@@ -42,10 +42,11 @@ from stable_baselines3.common.vec_env import VecEnv
 
 # Advanced algorithms from sb3-contrib
 try:
-    from sb3_contrib import QRDQN
+    from sb3_contrib import QRDQN, RecurrentPPO
     SB3_CONTRIB_AVAILABLE = True
 except ImportError:
     QRDQN = None
+    RecurrentPPO = None
     SB3_CONTRIB_AVAILABLE = False
 
 # Internal imports

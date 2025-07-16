@@ -37,8 +37,9 @@ try:
     
     # Import advanced algorithms from sb3-contrib
     try:
-        from sb3_contrib import QRDQN
+        from sb3_contrib import QRDQN, RecurrentPPO
         SB3_ALGORITHMS["QR-DQN"] = QRDQN
+        SB3_ALGORITHMS["RecurrentPPO"] = RecurrentPPO
         SB3_CONTRIB_AVAILABLE = True
     except ImportError:
         SB3_CONTRIB_AVAILABLE = False

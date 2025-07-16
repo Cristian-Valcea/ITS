@@ -154,9 +154,19 @@ def _make_single_env(
             # Create environment instance
             env = IntradayTradingEnv(**env_params)
             
-            # Add flattening wrapper to fix SB3 observation shape warning
+            # Add wrappers based on algorithm type
             if gym is not None:
-                env = gym.wrappers.FlattenObservation(env)
+                # Check if using LSTM policy (RecurrentPPO or similar)
+                algorithm = config.get('training', {}).get('algorithm', '')
+                use_lstm = 'Recurrent' in algorithm or 'LSTM' in algorithm
+                
+                if not use_lstm:
+                    # Add flattening wrapper for non-LSTM algorithms
+                    env = gym.wrappers.FlattenObservation(env)
+                    logger.info("Applied FlattenObservation wrapper for non-LSTM algorithm")
+                else:
+                    logger.info("Skipping FlattenObservation wrapper for LSTM-based algorithm")
+                
                 # Add episode statistics recording (VecMonitor will pick this up)
                 env = gym.wrappers.RecordEpisodeStatistics(env)
             

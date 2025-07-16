@@ -87,30 +87,77 @@ evaluation:
   - turnover_ratio_period
   - win_rate_pct
 feature_engineering:
-  ema:
-    windows:
-    - 10
-    - 20
-  feature_cols_to_scale:
-  - rsi_14
-  - ema_10
-  - ema_20
-  - vwap
-  - hour_sin
-  - hour_cos
+  # EXTENDED LOOKBACK for temporal pattern recognition with LSTM
+  lookback_window: 15  # Extended from 3 to 15 for better temporal patterns
+  
+  # ENHANCED FEATURE SET with microstructural features
   features:
   - RSI
   - EMA
   - VWAP
   - Time
-  lookback_window: 3
+  - ATR                    # NEW: Average True Range volatility features
+  - VWAPRatio             # NEW: Intraday VWAP ratio features  
+  - MicroPriceImbalance   # NEW: Micro-price imbalance features
+  
+  # EXPANDED OBSERVATION FEATURES for LSTM policy
   observation_feature_cols:
+  # Traditional technical indicators
   - rsi_14
   - ema_10
   - ema_20
   - vwap
   - hour_sin
   - hour_cos
+  # NEW: ATR volatility features
+  - atr_14
+  - atr_14_normalized
+  - atr_regime
+  - atr_efficiency
+  # NEW: VWAP ratio microstructural features
+  - price_vwap_ratio_20
+  - vwap_deviation_20
+  - vwap_efficiency
+  - vwap_reversion_strength
+  - vwap_volume_pressure
+  # NEW: Micro-price imbalance features
+  - order_flow_imbalance_10
+  - price_pressure_10
+  - volume_adjusted_momentum_10
+  - liquidity_proxy
+  - market_impact_efficiency
+  
+  # FEATURE SCALING - expanded for new features
+  feature_cols_to_scale:
+  # Traditional features
+  - rsi_14
+  - ema_10
+  - ema_20
+  - vwap
+  - hour_sin
+  - hour_cos
+  # ATR features
+  - atr_14
+  - atr_14_normalized
+  - atr_efficiency
+  # VWAP ratio features
+  - price_vwap_ratio_20
+  - vwap_deviation_20
+  - vwap_efficiency
+  - vwap_reversion_strength
+  - vwap_volume_pressure
+  # Micro-price imbalance features
+  - order_flow_imbalance_10
+  - price_pressure_10
+  - volume_adjusted_momentum_10
+  - liquidity_proxy
+  - market_impact_efficiency
+  
+  # FEATURE-SPECIFIC CONFIGURATIONS
+  ema:
+    windows:
+    - 10
+    - 20
   rsi:
     window: 14
   time_features:
@@ -121,6 +168,22 @@ feature_engineering:
     include_quarter: false
     include_year: false
     use_cyclical_encoding: true
+  
+  # NEW: ATR configuration
+  atr:
+    windows: [14, 21]           # Multiple ATR periods
+    smoothing_method: ema       # Exponential smoothing (Wilder's method)
+  
+  # NEW: VWAP ratio configuration  
+  vwap_ratio:
+    windows: [20, 60, 120]      # Multiple VWAP timeframes
+    deviation_bands: [1.0, 2.0] # Standard deviation bands
+  
+  # NEW: Micro-price imbalance configuration
+  micro_price_imbalance:
+    windows: [5, 10, 20]        # Short-term imbalance windows
+    volume_windows: [10, 30]    # Volume analysis windows
+    price_impact_window: 5      # Price impact calculation window
 logging:
   level: INFO
   log_to_file: true
@@ -229,50 +292,62 @@ risk_management:
   turnover_exponential_penalty_factor: 0.15  # Quadratic penalty factor
   turnover_termination_penalty_pct: 0.08     # 8% portfolio penalty on termination
 training:
-  algorithm: QR-DQN  # UPGRADED: Quantile Regression DQN (Distributional RL)
-  # Advanced DQN Configuration - Rainbow DQN Components
-  # 1. Double DQN: Built into SB3 (target network reduces overestimation bias)
-  # 2. Distributional RL: Learn full return distribution instead of expected value
-  # 3. Enhanced Architecture: Larger network capacity for complex learning
-  policy: MultiInputPolicy    # Base policy for multi-input observations
-  policy_kwargs:             # Enhanced network architecture for distributional learning
-    net_arch: [512, 512, 256]  # Larger network for complex feature learning
-    activation_fn: ReLU      # Activation function
-    n_quantiles: 200         # DISTRIBUTIONAL: Number of quantiles for return distribution
+  algorithm: RecurrentPPO  # UPGRADED: Recurrent PPO with LSTM for temporal pattern recognition
   
-  # Enhanced exploration with epsilon-greedy (optimized for distributional learning)
-  exploration_fraction: 0.3   # FASTER DECAY: Distributional RL learns faster
-  exploration_final_eps: 0.02 # LOWER FINAL: More exploitation with better value estimates
-  exploration_initial_eps: 0.8 # HIGHER START: More exploration for distributional learning
-  # GPU-Optimized hyperparameters with improved learning
-  buffer_size: 500000  # Increased for GPU memory (was 200k)
-  batch_size: 512      # Larger batches for GPU efficiency (was 256)
-  exploration_fraction: 0.4   # SLOWER DECAY: Extended exploration period for conservative learning
-  exploration_final_eps: 0.05  # MODERATE FINAL: Balanced exploration/exploitation
-  exploration_initial_eps: 0.5 # TAMED START: Start with moderate exploration (was 1.0)
-  gamma: 0.99
-  gradient_steps: 1
-  learning_rate: 0.0001
-  learning_starts: 1000
-  target_update_interval: 1000
-  train_freq: 4
-  # Extended training for GPU with better convergence
-  total_timesteps: 500000  # Increased from 300k for GPU power
-  max_episodes: 200  # Allow many episodes for meaningful training
-  max_training_time_minutes: 15  # At least 15 minutes of real training time
-  # Improved early stopping for learning - step-based checking
+  # LSTM POLICY CONFIGURATION for temporal sequence modeling
+  policy: MultiInputLstmPolicy    # LSTM policy for sequence modeling
+  policy_kwargs:                  # Enhanced LSTM architecture for temporal learning
+    net_arch: [512, 512]          # Actor-Critic network architecture
+    activation_fn: ReLU           # Activation function
+    lstm_hidden_size: 256         # LSTM hidden state size for temporal memory
+    n_lstm_layers: 2              # Number of LSTM layers for deep temporal modeling
+    shared_lstm: False            # Separate LSTM for actor and critic
+    enable_critic_lstm: True      # Enable LSTM in critic network
+    lstm_kwargs:                  # LSTM-specific parameters
+      dropout: 0.1                # Dropout for regularization
+      batch_first: True           # Batch dimension first
+  
+  # PPO HYPERPARAMETERS optimized for LSTM and microstructural features
+  learning_rate: 0.0003           # Higher learning rate for PPO
+  n_steps: 2048                   # Steps per environment per update
+  batch_size: 256                 # Batch size for training
+  n_epochs: 10                    # Number of epochs per update
+  gamma: 0.99                     # Discount factor
+  gae_lambda: 0.95                # GAE lambda for advantage estimation
+  clip_range: 0.2                 # PPO clipping parameter
+  clip_range_vf: null             # Value function clipping (None = same as clip_range)
+  normalize_advantage: True       # Normalize advantages
+  ent_coef: 0.01                  # Entropy coefficient for exploration
+  vf_coef: 0.5                    # Value function coefficient
+  max_grad_norm: 0.5              # Gradient clipping
+  use_sde: False                  # State-dependent exploration
+  sde_sample_freq: -1             # SDE sampling frequency
+  target_kl: null                 # Target KL divergence
+  
+  # EXTENDED TRAINING for temporal pattern learning
+  total_timesteps: 1000000        # Extended training for LSTM convergence
+  max_episodes: 300               # More episodes for temporal learning
+  max_training_time_minutes: 30   # Extended training time for LSTM
+  
+  # LSTM-SPECIFIC TRAINING PARAMETERS
+  lstm_states_saving: True        # Save LSTM states for evaluation
+  sequence_length: 15             # Match lookback_window for temporal consistency
+  
+  # EARLY STOPPING adapted for PPO
   early_stopping:
-    patience: 100  # Much more patience for learning convergence (episodes)
-    min_improvement: 0.01  # Require meaningful improvement
-    check_freq: 10000  # Check every 10k steps for stability
+    patience: 50                  # Episodes patience for PPO
+    min_improvement: 0.02         # Minimum improvement threshold
+    check_freq: 5000              # Check every 5k steps
     verbose: true
-    min_episodes_before_stopping: 50  # Minimum episodes before early stopping kicks in
-  # Model saving
-  save_freq: 10000
-  save_replay_buffer: false
-  tensorboard_log: logs/tensorboard_gpu_rainbow_qrdqn
+    min_episodes_before_stopping: 30  # Minimum episodes before early stopping
+  
+  # MODEL SAVING
+  save_freq: 20000                # Save every 20k steps
+  save_replay_buffer: false       # PPO doesn't use replay buffer
+  tensorboard_log: logs/tensorboard_gpu_recurrent_ppo_microstructural
   verbose: 1
-  # GPU-specific settings
-  device: auto  # Will auto-detect GPU
-  gpu_memory_fraction: 0.8  # Use 80% of GPU memory
-  mixed_precision: true  # Enable mixed precision for faster training
+  
+  # GPU-SPECIFIC SETTINGS
+  device: auto                    # Auto-detect GPU
+  gpu_memory_fraction: 0.8        # Use 80% of GPU memory
+  mixed_precision: true           # Enable mixed precision for faster training

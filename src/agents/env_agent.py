@@ -142,10 +142,17 @@ class EnvAgent(BaseAgent):
             env = IntradayTradingEnv(**env_constructor_params)
             self.logger.info("IntradayTradingEnv created successfully.")
             
-            # Apply FlattenObservation wrapper to fix SB3 observation shape warnings
+            # Apply wrappers based on algorithm type
             if GYM_AVAILABLE:
-                env = gym.wrappers.FlattenObservation(env)
-                self.logger.info("Applied FlattenObservation wrapper to fix SB3 compatibility.")
+                # Check if using LSTM policy
+                algorithm = self.config.get('training', {}).get('algorithm', '')
+                use_lstm = 'Recurrent' in algorithm or 'LSTM' in algorithm
+                
+                if not use_lstm:
+                    env = gym.wrappers.FlattenObservation(env)
+                    self.logger.info("Applied FlattenObservation wrapper for non-LSTM algorithm.")
+                else:
+                    self.logger.info("Skipping FlattenObservation wrapper for LSTM-based algorithm.")
             else:
                 self.logger.warning("Gym not available - observation shape warnings may occur with SB3.")
             

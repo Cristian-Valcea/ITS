@@ -9,6 +9,9 @@ from .ema_calculator import EMACalculator
 from .vwap_calculator import VWAPCalculator
 from .time_calculator import TimeFeatureCalculator
 from .market_impact_calculator import MarketImpactCalculator
+from .atr_calculator import ATRCalculator
+from .vwap_ratio_calculator import VWAPRatioCalculator
+from .micro_price_imbalance_calculator import MicroPriceImbalanceCalculator
 from .feature_registry import FeatureRegistry, get_global_registry
 from .performance_tracker import PerformanceTracker, TimingContext
 
@@ -60,6 +63,9 @@ class FeatureManager:
             'VWAP': (VWAPCalculator, {'description': 'Volume Weighted Average Price', 'category': 'volume'}),
             'Time': (TimeFeatureCalculator, {'description': 'Time-based features', 'category': 'temporal'}),
             'MarketImpact': (MarketImpactCalculator, {'description': 'Market microstructure features', 'category': 'microstructure'}),
+            'ATR': (ATRCalculator, {'description': 'Average True Range volatility features', 'category': 'volatility'}),
+            'VWAPRatio': (VWAPRatioCalculator, {'description': 'VWAP ratio and microstructural features', 'category': 'microstructure'}),
+            'MicroPriceImbalance': (MicroPriceImbalanceCalculator, {'description': 'Micro-price imbalance and order flow features', 'category': 'microstructure'}),
         }
         
         for name, (calc_class, metadata) in default_calculators.items():
