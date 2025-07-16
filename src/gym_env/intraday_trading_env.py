@@ -1173,6 +1173,34 @@ class IntradayTradingEnv(gym.Env):
             return pd.Series(self.portfolio_history[:dates_len], index=self.dates)
 
 
+    def update_risk_constraints(self, constraints: Dict[str, Any]):
+        """
+        Update risk constraints dynamically during training (for curriculum learning).
+        
+        Args:
+            constraints: Dictionary with new constraint values
+        """
+        if 'drawdown_cap' in constraints:
+            self.max_daily_drawdown_pct = constraints['drawdown_cap']
+            self.logger.info(f"🎓 Updated drawdown cap: {self.max_daily_drawdown_pct:.1%}")
+        
+        if 'lambda_penalty' in constraints:
+            # Update penalty lambda if using basic risk management
+            if hasattr(self, 'penalty_lambda'):
+                self.penalty_lambda = constraints['lambda_penalty']
+                self.logger.info(f"🎓 Updated penalty lambda: {self.penalty_lambda}")
+            
+            # Update advanced reward shaping if enabled
+            if self.advanced_reward_shaper:
+                # Update Lagrangian constraint lambda
+                if hasattr(self.advanced_reward_shaper.lagrangian_manager, 'lambda_value'):
+                    # Scale the curriculum lambda for advanced reward shaping
+                    new_lambda = constraints['lambda_penalty'] * 0.1  # Scale appropriately
+                    self.advanced_reward_shaper.lagrangian_manager.lambda_value = new_lambda
+                    self.logger.info(f"🎓 Updated advanced reward shaping lambda: {new_lambda:.3f}")
+        
+        self.logger.debug(f"🎓 Risk constraints updated: {constraints}")
+
     def close(self):
         self.logger.info("IntradayTradingEnv closed.")
         pass

@@ -417,6 +417,7 @@ class TrainerCore:
         
         # Early stopping callback to prevent infinite loops
         from .early_stopping_callback import EarlyStoppingCallback
+        from .curriculum_callback import CurriculumLearningCallback
         max_episodes = self.training_params.get("max_episodes", 200)  # Allow more episodes for meaningful training
         max_training_time = self.training_params.get("max_training_time_minutes", 15)  # At least 15 minutes
         
@@ -438,6 +439,17 @@ class TrainerCore:
             verbose=verbose
         )
         callbacks.append(early_stopping)
+        
+        # Curriculum learning callback
+        curriculum_config = self.risk_config.get("curriculum", {})
+        if curriculum_config.get("enabled", False):
+            curriculum_callback = CurriculumLearningCallback(
+                curriculum_config=curriculum_config,
+                risk_config=self.risk_config,
+                verbose=self.training_params.get("verbose", 1)
+            )
+            callbacks.append(curriculum_callback)
+            self.logger.info("🎓 Curriculum Learning callback added")
         
         # Checkpoint callback
         checkpoint_freq = self.training_params.get("checkpoint_freq", 10000)

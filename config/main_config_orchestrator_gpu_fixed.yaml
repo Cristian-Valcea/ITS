@@ -179,24 +179,46 @@ risk:
       tail_penalty_factor: 2.0         # Additional penalty for extreme losses
       quantile_smoothing: 0.1          # Smoothing parameter for quantile estimation
       min_samples_cvar: 50             # Minimum samples before CVaR calculation
-  # Curriculum learning - ENABLED for progressive risk tightening
+  # ADVANCED CURRICULUM LEARNING - Episode-based progression with performance gates
   curriculum:
-    enabled: true                      # ENABLE curriculum learning
-    logic: and                         # Logic for curriculum triggers
-    use_perf_trigger: false           # Don't use performance triggers
+    enabled: true                      # ENABLE advanced curriculum learning
+    gate_check_window: 10              # Episodes to average for gate evaluation
+    gate_check_frequency: 5            # Check gates every N episodes
+    
+    # CURRICULUM STAGES with Performance Gates (AND logic)
+    # Stage progression requires BOTH: avg_drawdown < cap*0.75 AND avg_sharpe > -0.5
     stages:
-      - steps: 0
-        dd_limit: 0.04
-        lambda: 0.5
-      - steps: 50000
-        dd_limit: 0.03
-        lambda: 1.0
-      - steps: 150000
-        dd_limit: 0.025
-        lambda: 1.5
-      - steps: 300000
-        dd_limit: 0.02
-        lambda: 2.0
+      # Stage 1: Warm-up (Episodes 0-30)
+      warm_up:
+        episode_start: 0
+        episode_end: 30
+        drawdown_cap: 0.04             # 4% drawdown cap
+        lambda_penalty: 0.5            # Moderate volatility penalty
+        min_episodes_in_stage: 10      # Minimum episodes before gate check
+        
+      # Stage 2: Stabilise (Episodes 31-80)  
+      stabilise:
+        episode_start: 31
+        episode_end: 80
+        drawdown_cap: 0.03             # 3% drawdown cap
+        lambda_penalty: 1.0            # Increased volatility penalty
+        min_episodes_in_stage: 15      # More episodes for stability
+        
+      # Stage 3: Tighten (Episodes 81-130)
+      tighten:
+        episode_start: 81
+        episode_end: 130
+        drawdown_cap: 0.025            # 2.5% drawdown cap
+        lambda_penalty: 1.5            # Higher volatility penalty
+        min_episodes_in_stage: 15      # Maintain stability requirement
+        
+      # Stage 4: Final (Episodes 131+)
+      final:
+        episode_start: 131
+        episode_end: null              # Open-ended final stage
+        drawdown_cap: 0.02             # 2% drawdown cap (final target)
+        lambda_penalty: 2.0            # Maximum volatility penalty
+        min_episodes_in_stage: 20      # Extended stability for final stage
 risk_management:
   max_daily_drawdown_pct: 0.05
   hourly_turnover_cap: 3.0
