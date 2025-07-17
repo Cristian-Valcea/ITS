@@ -1,9 +1,9 @@
 # src/column_names.py
 
-COL_OPEN = 'Open'
-COL_HIGH = 'High'
-COL_LOW = 'Low'
-COL_CLOSE = 'Close'
-COL_VOLUME = 'Volume'
+COL_OPEN = 'open'
+COL_HIGH = 'high'
+COL_LOW = 'low'
+COL_CLOSE = 'close'
+COL_VOLUME = 'volume'
 COL_DATETIME = 'datetime'
 # Add more as needed

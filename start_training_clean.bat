@@ -95,11 +95,11 @@ if exist "%USERPROFILE%\.feature_cache\*.lock" (
 )
 
 echo [6/6] Cleaning old log files...
-if exist "logs\orchestrator_gpu_fixed.log" (
+if exist "logs\orchestrator_gpu_fixed_rainbow_qrdqn.log" (
     echo   - Archiving previous log file...
     for /f "tokens=2-4 delims=/ " %%a in ('date /t') do set mydate=%%c%%a%%b
     for /f "tokens=1-2 delims=: " %%a in ('time /t') do set mytime=%%a%%b
-    move "logs\orchestrator_gpu_fixed.log" "logs\orchestrator_gpu_fixed_!mydate!_!mytime!.log" >nul 2>&1
+    move "logs\orchestrator_gpu_fixed_rainbow_qrdqn.log" "logs\orchestrator_gpu_fixed_rainbow_qrdqn_!mydate!_!mytime!.log" >nul 2>&1
 )
 
 echo.
@@ -122,10 +122,19 @@ echo Virtual environment activated successfully
 
 REM Create logs directory if it doesn't exist
 if not exist "logs" mkdir "logs"
-if not exist "logs\tensorboard_gpu_fixed" mkdir "logs\tensorboard_gpu_fixed"
+if not exist "logs\tensorboard_gpu_recurrent_ppo_microstructural" mkdir "logs\tensorboard_gpu_recurrent_ppo_microstructural"
+
+REM Create required data directories
+if not exist "data" mkdir "data"
+if not exist "data\raw_orch_gpu_rainbow_qrdqn" mkdir "data\raw_orch_gpu_rainbow_qrdqn"
+if not exist "data\processed_orch_gpu_rainbow_qrdqn" mkdir "data\processed_orch_gpu_rainbow_qrdqn"
+if not exist "models" mkdir "models"
+if not exist "models\orch_gpu_rainbow_qrdqn" mkdir "models\orch_gpu_rainbow_qrdqn"
+if not exist "reports" mkdir "reports"
+if not exist "reports\orch_gpu_rainbow_qrdqn" mkdir "reports\orch_gpu_rainbow_qrdqn"
 
 REM Create placeholder log file for tail monitoring
-echo [%date% %time%] Log monitoring started... > "logs\orchestrator_gpu_fixed.log"
+echo [%date% %time%] Log monitoring started... > "logs\orchestrator_gpu_fixed_rainbow_qrdqn.log"
 echo Log directories prepared...
 echo.
 
@@ -134,7 +143,7 @@ REM Launch monitoring tools (each in separate window, inheriting venv)
 REM ========================================================================
 
 echo Starting TensorBoard on http://localhost:6006...
-start "TensorBoard" cmd /k "tensorboard --logdir logs\tensorboard_gpu_fixed --port 6006 --host localhost"
+start "TensorBoard" cmd /k "tensorboard --logdir logs\tensorboard_gpu_recurrent_ppo_microstructural --port 6006 --host localhost"
 timeout /t 2 /nobreak >nul
 
 echo Starting log monitor...
@@ -158,8 +167,14 @@ timeout /t 10 /nobreak >nul
 
 echo.
 echo ========================================================================
-echo Starting Main Training Process
+echo Starting Main Training Process with Rolling Window Backtest
 echo ========================================================================
+echo.
+echo 🔄 ROLLING WINDOW BACKTEST ENABLED:
+echo    - 3-month training windows
+echo    - 1-month evaluation periods  
+echo    - Comprehensive robustness validation
+echo    - Automated deployment recommendations
 echo.
 
 REM Final system readiness check
@@ -179,6 +194,16 @@ if not exist "config\main_config_orchestrator_gpu_fixed.yaml" (
     pause
     exit /b 1
 )
+if not exist "config\model_params.yaml" (
+    echo ERROR: Model parameters configuration not found!
+    pause
+    exit /b 1
+)
+if not exist "config\risk_limits.yaml" (
+    echo ERROR: Risk limits configuration not found!
+    pause
+    exit /b 1
+)
 echo [FINAL CHECK] System ready - launching training...
 echo.
 
@@ -192,29 +217,38 @@ cd ..
 REM Wait for training to start creating logs, then start log tail
 timeout /t 20 /nobreak >nul
 echo Starting log tail now that training has begun...
-start "Log-Tail" cmd /k "powershell -Command \"Get-Content -Path 'logs\orchestrator_gpu_fixed.log' -Wait -Tail 20 -ErrorAction SilentlyContinue\""
+start "Log-Tail" cmd /k "powershell -Command \"Get-Content -Path 'logs\orchestrator_gpu_fixed_rainbow_qrdqn.log' -Wait -Tail 20 -ErrorAction SilentlyContinue\""
 
 REM ========================================================================
 REM Show status
 REM ========================================================================
 echo.
 echo ========================================================================
-echo 📊 MONITORING DASHBOARD
+echo 📊 MONITORING DASHBOARD - Enhanced with Rolling Window Backtest
 echo ========================================================================
 echo 🔗 TensorBoard:     http://localhost:6006
 echo 🔗 API Monitoring:  http://localhost:8000/docs
+echo 🔗 API Status:      http://localhost:8000/api/v1/status
 echo ========================================================================
 echo.
 echo LAUNCHED WINDOWS:
-echo   1. TensorBoard
-echo   2. Log Monitor  
-echo   3. API Server
-echo   4. Visualizer
-echo   5. MAIN TRAINING
-echo   6. Log Tail (started after training begins)
+echo   1. TensorBoard      - Training metrics and visualizations
+echo   2. Log Monitor      - Real-time log analysis
+echo   3. API Server       - REST API for monitoring and control
+echo   4. Visualizer       - Post-training analysis tools
+echo   5. MAIN TRAINING    - Core training process
+echo   6. Log Tail         - Live log streaming (started after training begins)
 echo.
-echo ✅ All tools launched! Training is starting...
+echo 🔄 NEW FEATURES ENABLED:
+echo   ✅ 3-Month Rolling Window Walk-Forward Backtest
+echo   ✅ Automated Robustness Validation
+echo   ✅ Market Regime Analysis
+echo   ✅ Deployment Recommendations
+echo   ✅ Enhanced Risk Management
+echo.
+echo ✅ All tools launched! Training with robustness validation is starting...
 echo 💡 Keep this window open as control panel
+echo 💡 Rolling window backtest will run automatically after training
 echo.
 
 pause

@@ -190,7 +190,7 @@ class RiskAgentV2(EventHandler):
         
         # Drawdown metrics
         metrics['drawdown_pct'] = abs(flat_data.get('daily_drawdown', 0.0))
-        metrics['drawdown_velocity'] = abs(flat_data.get('drawdown_velocity', 0.0))
+        metrics['drawdown_velocity'] = abs(flat_data.get('velocity', 0.0))  # DrawdownVelocityCalculator uses 'velocity' key
         
         # VaR and risk metrics
         metrics['var_breach_severity'] = max(0.0, flat_data.get('var_breach', 0.0))
@@ -268,6 +268,57 @@ class RiskAgentV2(EventHandler):
             'breach_severity': 0.0,
             'penalty': 0.0,
         }
+    
+    def _enhance_data_with_state(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Enhance event data with internal state for calculator consumption.
+        
+        Args:
+            event_data: Raw event data
+            
+        Returns:
+            Enhanced data dictionary with state information
+        """
+        enhanced_data = event_data.copy()
+        
+        # Add portfolio value tracking
+        if 'portfolio_value' in event_data:
+            self.last_portfolio_value = event_data['portfolio_value']
+        
+        # Ensure we have portfolio values history for drawdown calculations
+        if 'portfolio_values' not in enhanced_data and hasattr(self, 'portfolio_history'):
+            enhanced_data['portfolio_values'] = self.portfolio_history
+        elif 'portfolio_values' not in enhanced_data:
+            # Create minimal history from current value
+            current_value = enhanced_data.get('portfolio_value', self.last_portfolio_value or 100000.0)
+            enhanced_data['portfolio_values'] = [current_value]
+        
+        # Ensure we have timestamps (as numeric values for calculators)
+        if 'timestamps' not in enhanced_data:
+            import pandas as pd
+            portfolio_values = enhanced_data.get('portfolio_values', [])
+            if len(portfolio_values) > 0:
+                # Create timestamps for each portfolio value (as numeric timestamps)
+                base_time = pd.Timestamp.now()
+                timestamps = [
+                    base_time - pd.Timedelta(minutes=len(portfolio_values) - i - 1)
+                    for i in range(len(portfolio_values))
+                ]
+                # Convert to numeric timestamps (seconds since epoch)
+                enhanced_data['timestamps'] = [ts.timestamp() for ts in timestamps]
+            else:
+                enhanced_data['timestamps'] = [pd.Timestamp.now().timestamp()]
+        else:
+            # Convert existing timestamps to numeric if they're pandas Timestamps
+            timestamps = enhanced_data['timestamps']
+            if timestamps and hasattr(timestamps[0], 'timestamp'):
+                enhanced_data['timestamps'] = [ts.timestamp() for ts in timestamps]
+        
+        # Add other state information
+        enhanced_data['start_of_day_value'] = self.start_of_day_value or enhanced_data.get('portfolio_value', 100000.0)
+        enhanced_data['trade_history'] = self.trade_history
+        
+        return enhanced_data
     
     def _update_state_from_event(self, event: RiskEvent) -> None:
         """Update internal state from incoming event."""

@@ -13,7 +13,10 @@ from typing import Optional, Tuple, Any
 import pandas as pd
 import numpy as np
 
-from src.gym_env.intraday_trading_env import IntradayTradingEnv
+try:
+    from ..gym_env.intraday_trading_env import IntradayTradingEnv
+except ImportError:
+    from gym_env.intraday_trading_env import IntradayTradingEnv
 
 
 class BacktestRunner:

@@ -112,7 +112,7 @@ class RiskPenaltyCallback(BaseCallback):
             risk = self.advisor.evaluate(obs_dict)
             
             # Calculate penalty based on drawdown velocity
-            penalty = self.lam * risk.get('drawdown_vel', 0)
+            penalty = self.lam * risk.get('drawdown_velocity', 0)
             
             if penalty > 0:
                 # Apply penalty to the training environment reward
@@ -854,6 +854,19 @@ class TrainerAgent(BaseAgent):
                 )
                 callbacks.append(risk_callback)
                 self.logger.info("Basic risk monitoring callback enabled")
+
+        # Monitoring & Debugging callbacks
+        try:
+            from .core.tensorboard_monitoring import create_monitoring_callbacks
+            
+            monitoring_callbacks = create_monitoring_callbacks(self.config)
+            callbacks.extend(monitoring_callbacks)
+            self.logger.info(f"Added {len(monitoring_callbacks)} monitoring callbacks")
+            self.logger.info("TensorBoard custom scalars: vol_penalty, drawdown_pct, Q_variance, lambda")
+            self.logger.info("Replay buffer audit: every 50k steps, sample 1k transitions")
+            
+        except ImportError as e:
+            self.logger.warning(f"Monitoring callbacks not available: {e}")
 
         # Evaluation callback (optional)
         if self.training_params.get("use_eval_callback", False):

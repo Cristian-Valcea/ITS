@@ -40,6 +40,7 @@ try:
         from sb3_contrib import QRDQN, RecurrentPPO
         SB3_ALGORITHMS["QR-DQN"] = QRDQN
         SB3_ALGORITHMS["RecurrentPPO"] = RecurrentPPO
+        SB3_ALGORITHMS["RECURRENTPPO"] = RecurrentPPO  # Add uppercase version for compatibility
         SB3_CONTRIB_AVAILABLE = True
     except ImportError:
         SB3_CONTRIB_AVAILABLE = False

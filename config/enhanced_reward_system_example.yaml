@@ -1,0 +1,119 @@
+# config/enhanced_reward_system_example.yaml
+# Configuration that enables the Enhanced Reward System to address high-frequency reward noise
+
+# Training configuration
+training:
+  algorithm: RECURRENTPPO
+  total_timesteps: 50000
+  max_episodes: 20
+  max_training_time_minutes: 15
+  learning_rate: 0.0001
+  n_steps: 256
+  batch_size: 32
+  n_epochs: 4
+  verbose: 1
+
+# Environment configuration
+environment:
+  initial_capital: 100000.0
+  lookback_window: 15
+  max_daily_drawdown_pct: 0.02
+  hourly_turnover_cap: 5.0
+  transaction_cost_pct: 0.001
+  reward_scaling: 1.0
+  enable_kyle_lambda_fills: true
+  
+  # 🚀 ENHANCED REWARD SYSTEM CONFIGURATION
+  advanced_reward_config:
+    enabled: true
+    
+    # Enhanced Reward System - Addresses high-frequency reward noise
+    enhanced_reward_system:
+      enabled: true  # ✅ Enable enhanced reward system
+      
+      # Core reward weights
+      realized_pnl_weight: 1.0        # Weight for actual P&L (traditional component)
+      directional_weight: 0.3         # Weight for directional signal rewards
+      behavioral_weight: 0.2          # Weight for behavioral shaping rewards
+      
+      # Directional signal parameters (Option A Enhanced)
+      directional_scaling: 0.001      # Scale factor for directional rewards
+      min_price_change_bps: 0.5       # Minimum price change to reward (0.5 bps)
+      
+      # Behavioral shaping parameters (Option B Enhanced)
+      flip_flop_penalty: 0.001        # Penalty for position changes
+      holding_bonus: 0.0001           # Small bonus for maintaining position
+      correct_direction_bonus: 0.1    # Bonus for correct directional trades
+      wrong_direction_penalty: 0.1    # Penalty for wrong directional trades
+      
+      # Multi-timeframe aggregation
+      enable_multi_timeframe: true    # Enable multi-timeframe rewards
+      short_window: 5                 # Short-term window (5 minutes)
+      medium_window: 15               # Medium-term window (15 minutes)
+      long_window: 60                 # Long-term window (1 hour)
+      
+      # Adaptive scaling
+      enable_adaptive_scaling: true   # Enable adaptive reward scaling
+      target_reward_magnitude: 0.01   # Target reward magnitude
+      scaling_window: 100             # Window for scaling calculation
+      min_scaling_factor: 0.1         # Minimum scaling factor
+      max_scaling_factor: 10.0        # Maximum scaling factor
+
+# Risk configuration with functional reward shaping
+risk:
+  include_risk_features: true
+  vol_window: 60
+  penalty_lambda: 1.5
+  target_sigma: 0.0
+  dd_limit: 0.03
+  eval_dd_limit: 0.02
+  
+  # Functional reward shaping
+  reward_shaping:
+    enabled: true
+    penalty_weight: 0.1
+  
+  # Risk policy configuration
+  policy_yaml: config/risk_limits.yaml
+  penalty_weight: 0.1
+  early_stop_threshold: 0.8
+
+# Model configuration
+model:
+  policy: MlpLstmPolicy
+  net_arch:
+  - 256
+  - 256
+  activation_fn: ReLU
+  lstm_hidden_size: 64
+  n_lstm_layers: 1
+
+# Features configuration
+features:
+  calculators:
+  - RSI
+  - EMA
+  - VWAP
+  - Time
+  - ATR
+  lookback_window: 15
+  max_indicator_lookback: 170
+
+# Data configuration
+data:
+  symbol: NVDA
+  start_date: '2024-01-01'
+  end_date: '2024-01-05'
+  interval: 1min
+
+# Logging configuration
+logging:
+  level: INFO
+  tensorboard_dir: logs/tensorboard
+  model_save_dir: models
+
+# GPU configuration
+gpu:
+  enabled: true
+  memory_fraction: 0.8
+  mixed_precision: true

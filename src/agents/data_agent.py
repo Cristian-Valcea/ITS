@@ -369,38 +369,62 @@ class DataAgent(BaseAgent):
         return bars_df
 
 
-    def validate_data(self, df: pd.DataFrame, symbol: str) -> bool:
+    def standardize_column_names(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Performs basic validation on the fetched data.
+        Standardize column names to lowercase for consistent processing.
+        
+        Args:
+            df (pd.DataFrame): DataFrame with potentially mixed-case column names
+            
+        Returns:
+            pd.DataFrame: DataFrame with standardized lowercase column names
+        """
+        column_mapping = {}
+        for col in df.columns:
+            if col.lower() in ['open', 'high', 'low', 'close', 'volume']:
+                column_mapping[col] = col.lower()
+        
+        if column_mapping:
+            df = df.rename(columns=column_mapping)
+            self.logger.debug(f"Standardized column names: {column_mapping}")
+        
+        return df
+
+    def validate_data(self, df: pd.DataFrame, symbol: str) -> tuple[bool, pd.DataFrame]:
+        """
+        Performs basic validation on the fetched data and standardizes column names.
 
         Args:
             df (pd.DataFrame): DataFrame to validate.
             symbol (str): Symbol for logging purposes.
 
         Returns:
-            bool: True if data is valid, False otherwise.
+            tuple[bool, pd.DataFrame]: (validation_success, standardized_dataframe)
         """
         if df is None or df.empty:
             self.logger.warning(f"Data validation failed for {symbol}: DataFrame is empty.")
-            return False
+            return False, df
+
+        # Standardize column names before validation
+        df = self.standardize_column_names(df)
 
         # Check for required columns (adjust based on actual IBKR output)
         # Typical columns: open, high, low, close, volume
         required_cols = [COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME]
         if not all(col in df.columns for col in required_cols):
             self.logger.warning(f"Data validation failed for {symbol}: Missing one or more required columns {required_cols}.")
-            return False
+            return False, df
 
         # Check for NaNs
         if df.isnull().values.any():
             self.logger.warning(f"Data validation failed for {symbol}: DataFrame contains NaN values.")
             # TODO: Add more sophisticated NaN handling (e.g., fill or drop based on strategy)
-            return False
+            return False, df
 
         # Check if index is a DatetimeIndex
         if not isinstance(df.index, pd.DatetimeIndex):
             self.logger.warning(f"Data validation failed for {symbol}: Index is not a DatetimeIndex.")
-            return False
+            return False, df
         
         # Check for chronological order
         if not df.index.is_monotonic_increasing:
@@ -413,7 +437,7 @@ class DataAgent(BaseAgent):
         # - Volume checks (e.g., non-negative volume)
 
         self.logger.info(f"Data validation passed for {symbol} with {len(df)} rows.")
-        return True
+        return True, df
 
     def run(self, symbol: str, start_date: str, end_date: str, interval: str = "1min", **kwargs) -> pd.DataFrame | None:
         """
@@ -505,13 +529,14 @@ class DataAgent(BaseAgent):
                 self.logger.error(f"Error caching data to {cache_filepath}: {e}")
 
         if bars_df is not None:
-            if self.validate_data(bars_df, symbol):
+            is_valid, standardized_df = self.validate_data(bars_df, symbol)
+            if is_valid:
                 self.logger.info(f"Successfully fetched and validated data for {symbol}.")
                 # The path where data was actually saved is determined within fetch_ibkr_bars
                 # based on its parameters. If you need the exact path here, fetch_ibkr_bars
                 # should return it or it should be reconstructed identically.
-                # For now, we just return the DataFrame.
-                return bars_df
+                # For now, we just return the standardized DataFrame.
+                return standardized_df
             else:
                 self.logger.error(f"Data validation failed for {symbol}. No data returned.")
                 return None

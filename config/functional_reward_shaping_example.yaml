@@ -1,0 +1,47 @@
+data:
+  end_date: '2024-01-05'
+  interval: 1min
+  start_date: '2024-01-01'
+  symbol: NVDA
+environment:
+  enable_kyle_lambda_fills: true
+  hourly_turnover_cap: 5.0
+  initial_capital: 100000.0
+  lookback_window: 15
+  max_daily_drawdown_pct: 0.02
+  reward_scaling: 1.0
+  transaction_cost_pct: 0.001
+features:
+  calculators:
+  - RSI
+  - EMA
+  - VWAP
+  - Time
+  - ATR
+  lookback_window: 15
+  max_indicator_lookback: 170
+model:
+  activation_fn: ReLU
+  lstm_hidden_size: 64
+  n_lstm_layers: 1
+  net_arch:
+  - 256
+  - 256
+  policy: MlpLstmPolicy
+risk:
+  early_stop_threshold: 0.8
+  penalty_weight: 0.1
+  policy_yaml: config/risk_policy.yaml
+  reward_shaping:
+    enabled: true
+    penalty_weight: 0.1
+training:
+  algorithm: RECURRENTPPO
+  batch_size: 32
+  learning_rate: 0.0001
+  max_episodes: 20
+  max_training_time_minutes: 15
+  n_epochs: 4
+  n_steps: 256
+  total_timesteps: 50000
+  verbose: 1

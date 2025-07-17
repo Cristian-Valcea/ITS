@@ -104,6 +104,26 @@ def make_env(
         # Create environment
         env = IntradayTradingEnv(**env_params)
         
+        # Apply reward shaping if configured
+        risk_shaping_config = config.get('risk_shaping', {})
+        if risk_shaping_config.get('enabled', False):
+            try:
+                from .reward_shaping_integration import wrap_environment_with_risk_shaping
+                
+                # Get risk advisor (would need to be passed in or created)
+                risk_advisor = risk_shaping_config.get('risk_advisor')
+                penalty_weight = risk_shaping_config.get('penalty_weight', 0.1)
+                
+                if risk_advisor is not None:
+                    env = wrap_environment_with_risk_shaping(
+                        env, risk_advisor, penalty_weight
+                    )
+                    logger.info(f"Applied risk-based reward shaping (weight: {penalty_weight})")
+                else:
+                    logger.warning("Risk shaping enabled but no risk_advisor provided")
+            except ImportError as e:
+                logger.warning(f"Could not import reward shaping: {e}")
+        
         logger.info(f"Trading environment created successfully")
         logger.info(f"  - Observation features: {len(env_params['observation_feature_cols'])}")
         logger.info(f"  - Action type: {env_params['action_type']}")
@@ -153,6 +173,23 @@ def _make_single_env(
             
             # Create environment instance
             env = IntradayTradingEnv(**env_params)
+            
+            # Apply reward shaping if configured
+            risk_shaping_config = config.get('risk_shaping', {})
+            if risk_shaping_config.get('enabled', False):
+                try:
+                    from .reward_shaping_integration import wrap_environment_with_risk_shaping
+                    
+                    # Get risk advisor (would need to be passed in or created)
+                    risk_advisor = risk_shaping_config.get('risk_advisor')
+                    penalty_weight = risk_shaping_config.get('penalty_weight', 0.1)
+                    
+                    if risk_advisor is not None:
+                        env = wrap_environment_with_risk_shaping(
+                            env, risk_advisor, penalty_weight, enable_logging=False
+                        )
+                except ImportError:
+                    pass  # Skip reward shaping if not available
             
             # Add wrappers based on algorithm type
             if gym is not None:

@@ -305,7 +305,9 @@ class TrainerCore:
                 self.logger.info(f"   Policy: {policy_name}")
                 self.logger.info(f"   Network Architecture: {policy_kwargs.get('net_arch', 'default')}")
                 self.logger.info(f"   Quantiles: {policy_kwargs.get('n_quantiles', 200)}")
-                self.logger.info(f"   Buffer Size: {self.algo_params.get('buffer_size', 'default'):,}")
+                buffer_size = self.algo_params.get('buffer_size', 'default')
+                buffer_size_str = f"{buffer_size:,}" if isinstance(buffer_size, int) else str(buffer_size)
+                self.logger.info(f"   Buffer Size: {buffer_size_str}")
                 self.logger.info(f"   Batch Size: {self.algo_params.get('batch_size', 'default')}")
                 self.logger.info("   🎯 Benefits: Full return distribution learning + reduced overestimation bias")
             elif policy_kwargs:
@@ -314,7 +316,9 @@ class TrainerCore:
                 self.logger.info(f"   Policy: {policy_name}")
                 self.logger.info(f"   Network Architecture: {policy_kwargs.get('net_arch', 'default')}")
                 self.logger.info(f"   Activation Function: {policy_kwargs.get('activation_fn', 'ReLU')}")
-                self.logger.info(f"   Buffer Size: {self.algo_params.get('buffer_size', 'default'):,}")
+                buffer_size = self.algo_params.get('buffer_size', 'default')
+                buffer_size_str = f"{buffer_size:,}" if isinstance(buffer_size, int) else str(buffer_size)
+                self.logger.info(f"   Buffer Size: {buffer_size_str}")
                 self.logger.info(f"   Batch Size: {self.algo_params.get('batch_size', 'default')}")
                 self.logger.info("   🎯 Benefits: Target network reduces overestimation bias + enhanced capacity")
             else:
@@ -477,14 +481,29 @@ class TrainerCore:
         
         # Risk-aware callbacks
         if self.risk_advisor:
-            from .risk_callbacks import RiskAwareCallback
-            risk_callback = RiskAwareCallback(
-                risk_advisor=self.risk_advisor,
-                penalty_weight=self.risk_config.get("penalty_weight", 0.1),
-                early_stop_threshold=self.risk_config.get("early_stop_threshold", 0.8),
-                log_freq=self.training_params.get("log_interval", 100)
-            )
-            callbacks.append(risk_callback)
+            # Check if we're using functional reward shaping
+            reward_shaping_config = self.risk_config.get("reward_shaping", {})
+            if reward_shaping_config.get("enabled", False):
+                # Use the FIXED RiskPenaltyCallback that actually applies penalties
+                from .risk_callbacks import RiskPenaltyCallback
+                risk_callback = RiskPenaltyCallback(
+                    advisor=self.risk_advisor,
+                    lam=reward_shaping_config.get("penalty_weight", 0.1),
+                    verbose=self.training_params.get("verbose", 1)
+                )
+                callbacks.append(risk_callback)
+                self.logger.info("✅ Added FUNCTIONAL RiskPenaltyCallback (applies penalties to rewards)")
+            else:
+                # Use the old RiskAwareCallback for monitoring only
+                from .risk_callbacks import RiskAwareCallback
+                risk_callback = RiskAwareCallback(
+                    risk_advisor=self.risk_advisor,
+                    penalty_weight=self.risk_config.get("penalty_weight", 0.1),
+                    early_stop_threshold=self.risk_config.get("early_stop_threshold", 0.8),
+                    log_freq=self.training_params.get("log_interval", 100)
+                )
+                callbacks.append(risk_callback)
+                self.logger.info("⚠️  Added RiskAwareCallback (monitoring only, no reward modification)")
         
         return callbacks
     
@@ -542,6 +561,25 @@ class TrainerCore:
             env: Either a single IntradayTradingEnv or a VecEnv
         """
         try:
+            # Apply reward shaping if configured and risk advisor is available
+            if self.risk_advisor and self.risk_config.get("reward_shaping", {}).get("enabled", False):
+                try:
+                    from .reward_shaping_integration import wrap_environment_with_risk_shaping
+                    penalty_weight = self.risk_config.get("reward_shaping", {}).get("penalty_weight", 0.1)
+                    
+                    # Only wrap if it's not already a VecEnv (VecEnv wrapping is more complex)
+                    if not isinstance(env, VecEnv):
+                        env = wrap_environment_with_risk_shaping(
+                            env, self.risk_advisor, penalty_weight
+                        )
+                        self.logger.info(f"✅ Applied functional reward shaping (weight: {penalty_weight})")
+                    else:
+                        self.logger.warning("⚠️  Reward shaping not applied to VecEnv (not yet supported)")
+                except ImportError as e:
+                    self.logger.warning(f"Could not import reward shaping: {e}")
+                except Exception as e:
+                    self.logger.error(f"Failed to apply reward shaping: {e}")
+            
             if isinstance(env, VecEnv):
                 # Vectorized environment - already has monitoring via VecMonitor
                 self.training_env_monitor = env

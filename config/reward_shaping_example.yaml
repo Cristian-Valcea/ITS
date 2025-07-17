@@ -1,0 +1,129 @@
+# config/reward_shaping_example.yaml
+# Example configuration showing how to enable functional reward shaping
+
+# Training configuration
+training:
+  algorithm: "RECURRENTPPO"
+  total_timesteps: 50000
+  max_episodes: 20
+  max_training_time_minutes: 15
+  
+  # PPO hyperparameters
+  learning_rate: 0.0001
+  n_steps: 256
+  batch_size: 32
+  n_epochs: 4
+
+# Environment configuration
+environment:
+  initial_capital: 100000.0
+  lookback_window: 15
+  max_daily_drawdown_pct: 0.02
+  hourly_turnover_cap: 5.0
+  transaction_cost_pct: 0.001
+  reward_scaling: 1.0
+  
+  # Kyle Lambda fill simulation
+  enable_kyle_lambda_fills: true
+  fill_simulator_config:
+    lookback_period: 50
+    min_periods: 10
+    impact_decay: 0.7
+    bid_ask_spread_bps: 5.0
+    min_impact_bps: 0.5
+    max_impact_bps: 100.0
+
+# 🔧 FIXED REWARD SHAPING CONFIGURATION
+risk_shaping:
+  enabled: true
+  penalty_weight: 0.1  # Weight for risk penalties
+  
+  # Risk advisor configuration (would be created by trainer)
+  risk_advisor_config:
+    drawdown_threshold: 0.02
+    velocity_threshold: 0.01
+    position_risk_multiplier: 0.05
+  
+  # Advanced reward shaping options
+  advanced_shaping:
+    enabled: true
+    sharpe_reward_weight: 0.05
+    cvar_penalty_weight: 0.1
+    lagrangian_penalty_weight: 0.2
+
+# Callback configuration
+callbacks:
+  # Early stopping
+  early_stopping:
+    enabled: true
+    patience: 10
+    min_delta: 0.001
+    
+  # TensorBoard monitoring
+  tensorboard:
+    enabled: true
+    log_frequency: 100
+    custom_scalars: true
+    
+  # 🔧 FUNCTIONAL RISK CALLBACK (replaces broken RiskPenaltyCallback)
+  functional_risk_penalty:
+    enabled: true
+    penalty_weight: 0.1  # Should match risk_shaping.penalty_weight
+    evaluation_frequency: 10  # Steps between evaluations
+    verbose: 1
+    
+  # Reward-P&L audit (unchanged)
+  reward_pnl_audit:
+    enabled: true
+    min_correlation_threshold: 0.5
+    alert_episodes: 5
+    fail_fast: false
+
+# Model configuration
+model:
+  policy: "MlpLstmPolicy"
+  net_arch:
+    - 256
+    - 256
+  activation_fn: "ReLU"
+  lstm_hidden_size: 64
+  n_lstm_layers: 1
+
+# Feature configuration
+features:
+  calculators:
+    - RSI
+    - EMA
+    - VWAP
+    - Time
+    - ATR
+    - VWAPRatio
+    - MicroPriceImbalance
+  
+  lookback_window: 15
+  max_indicator_lookback: 170
+
+# Risk management
+risk_limits:
+  max_daily_drawdown_pct: 0.02
+  max_hourly_turnover: 5.0
+  max_position_size_pct: 0.25
+
+# Logging
+logging:
+  level: INFO
+  tensorboard_dir: "logs/tensorboard"
+  model_save_dir: "models"
+  
+# Data configuration
+data:
+  symbol: "NVDA"
+  start_date: "2024-01-01"
+  end_date: "2024-01-05"
+  interval: "1min"
+  
+# GPU configuration
+gpu:
+  enabled: true
+  memory_fraction: 0.8
+  mixed_precision: true

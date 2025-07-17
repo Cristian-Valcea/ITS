@@ -356,9 +356,11 @@ class AdvancedRewardShaper:
         shaping_info = {}
         
         # 1. Apply Lagrangian constraint penalty
+        volatility_penalty = 0.0  # Track total volatility penalty for monitoring
         if self.config.lagrangian_enabled:
             lagrangian_penalty = self.lagrangian_manager.get_constraint_penalty(volatility, drawdown)
             shaped_reward -= lagrangian_penalty
+            volatility_penalty += lagrangian_penalty  # Track for monitoring
             shaping_info['lagrangian_penalty'] = lagrangian_penalty
             shaping_info.update(self.lagrangian_manager.get_stats())
         
@@ -380,6 +382,7 @@ class AdvancedRewardShaper:
         shaping_info['base_reward'] = base_reward
         shaping_info['shaped_reward'] = shaped_reward
         shaping_info['total_shaping'] = shaped_reward - base_reward
+        shaping_info['volatility_penalty'] = volatility_penalty  # For monitoring
         
         return shaped_reward, shaping_info
     

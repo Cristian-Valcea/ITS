@@ -170,7 +170,7 @@ class MicroPriceImbalanceCalculator(BaseFeatureCalculator):
             # Volume-price correlation
             result[f'volume_price_corr_{vol_window}'] = (
                 result['volume'].rolling(window=vol_window)
-                .corr(result['price_return'].rolling(window=vol_window))
+                .corr(result['price_return'])
             )
             
             # Volume acceleration

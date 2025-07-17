@@ -3,23 +3,22 @@
 # TrainerAgent will use this.
 
 # --- Algorithm Selection ---
-algorithm_name: "DQN"  # Options: "DQN", "C51" (if available), "PPO", "A2C", etc.
-                       # Ensure the chosen algorithm is compatible with Stable-Baselines3
-                       # and the environment's action space (Discrete for this setup).
+algorithm_name: "RecurrentPPO"  # Options: "DQN", "C51" (if available), "PPO", "A2C", "RecurrentPPO", etc.
+                                 # Ensure the chosen algorithm is compatible with Stable-Baselines3
+                                 # and the environment's action space (Discrete for this setup).
 
 # --- Common Algorithm Parameters (for SB3 models like DQN, PPO, A2C) ---
 # These are general parameters; some might not apply to all algorithms.
 # Refer to Stable-Baselines3 documentation for specific algorithm parameters.
 algorithm_params:
-  policy: "MlpPolicy"   # Policy network type. Examples:
-                        # "MlpPolicy" (for flat/vector features)
-                        # "CnnPolicy" (for image-like features, if features are shaped like images)
-                        # Custom policies can also be specified.
-                        # For sequential data (lookback_window > 1), MlpPolicy might still be used if data is flattened,
-                        # or specific recurrent policies like "MlpLstmPolicy" if available and appropriate.
+  policy: "MlpLstmPolicy"          # Policy network type for RecurrentPPO. Examples:
+                                   # "MlpPolicy" (for flat/vector features)
+                                   # "MlpLstmPolicy" (for sequential/temporal data with LSTM)
+                                   # "MultiInputLstmPolicy" (for Dict observation spaces with LSTM)
+                                   # "CnnPolicy" (for image-like features, if features are shaped like images)
+                                   # Custom policies can also be specified.
   
-  learning_rate: 0.0001 # Learning rate for the optimizer. Can be a float or a schedule function.
-                        # Example schedule: `linear_schedule(initial_value)`
+  learning_rate: 0.0003 # Learning rate for the optimizer (higher for PPO)
   
   gamma: 0.99           # Discount factor for future rewards.
   
@@ -28,100 +27,23 @@ algorithm_params:
   seed: null            # Seed for the pseudo random generators to ensure reproducibility.
                         # If null, uses global_seed from main_config or a random one.
 
-  # --- Parameters specific to DQN/C51-like algorithms (Off-Policy) ---
-  buffer_size: 100000   # Size of the replay buffer.
-  learning_starts: 10000 # How many steps of random actions before learning starts.
-                         # Allows buffer to fill with diverse experiences.
-  batch_size: 64        # Minibatch size for each gradient update.
+  # --- Parameters specific to PPO/RecurrentPPO (On-Policy) ---
+  n_steps: 2048         # Number of steps to run for each environment per update
+  batch_size: 256       # Minibatch size for each gradient update
+  n_epochs: 10          # Number of epochs when optimizing the surrogate loss
+  gae_lambda: 0.95      # Factor for trade-off of bias vs variance for Generalized Advantage Estimator
+  clip_range: 0.2       # Clipping parameter for PPO
+  ent_coef: 0.01        # Entropy coefficient for the loss calculation
+  vf_coef: 0.5          # Value function coefficient for the loss calculation
+  max_grad_norm: 0.5    # Maximum value for the gradient clipping
   
-  tau: 1.0              # Polyak averaging coefficient for updating the target network (soft update).
-                        # If 1.0, it's a hard update (copy weights).
-  
-  train_freq: 4         # Update the model every `train_freq` steps.
-                        # Can be an int (steps) or a tuple (e.g., (1, 'episode')).
-  
-  gradient_steps: 1     # How many gradient steps to do after each rollout (DQN) or batch collection.
-  
-  target_update_interval: 1000 # Update the target network every `target_update_interval` environment steps.
-                               # Used if tau=1.0 (hard update).
-
-  # Exploration strategy for DQN-like algorithms (epsilon-greedy)
-  exploration_fraction: 0.1   # Fraction of entire training period over which epsilon decreases.
-  exploration_initial_eps: 1.0 # Initial value of epsilon.
-  exploration_final_eps: 0.05 # Final value of epsilon.
-
-  # Prioritized Experience Replay (PER) for DQN/C51 - if use_per is true in c51_features
-  # These are SB3 DQN's PER parameters. C51 might have its own if it's a separate class.
-  # prioritized_replay_alpha: 0.6      # Alpha parameter for PER (how much prioritization to use).
-  # prioritized_replay_beta: 0.4       # Beta parameter for PER (controls importance sampling).
-  # prioritized_replay_eps: 0.00001    # Epsilon to add to priorities for stability.
-  # replay_buffer_class: null # Set to PrioritizedReplayBuffer if PER is used and not default.
-  # replay_buffer_kwargs: {}  # Arguments for the replay buffer class.
-
-  # Policy network architecture (specific to MlpPolicy, CnnPolicy, etc.)
-  # This defines the layers of the neural network.
+  # LSTM-specific parameters for RecurrentPPO
   policy_kwargs:
-    # net_arch: [64, 64] # Example: For MlpPolicy, a list of hidden layer sizes.
-                        # For policies with separate actor/critic or Q/Value networks:
-                        # net_arch: dict(pi=[64, 64], vf=[64, 64]) # For PPO/A2C actor-critic
-                        # net_arch: dict(qf=[128, 64], vf=[128,64]) # For Dueling DQN (Q-function and Value-function streams)
-                        # The exact structure depends on the chosen policy and algorithm.
-    
-    # activation_fn: "ReLU" # Example: "ReLU", "Tanh". Needs to be Python class like `th.nn.ReLU`.
-    # features_extractor_class: null # For custom feature extraction from observation.
-    # features_extractor_kwargs: {}
+    net_arch: [512, 512]          # Actor-Critic network architecture
+    activation_fn: ReLU           # Activation function
+    lstm_hidden_size: 256         # LSTM hidden state size for temporal memory
+    n_lstm_layers: 2              # Number of LSTM layers for deep temporal modeling
+    shared_lstm: False            # Separate LSTM for actor and critic
+    enable_critic_lstm: True      # Enable LSTM in critic network
 
-    # For Dueling DQN, if using a policy that supports it via kwargs (SB3 varies on this)
-    # dueling: true # This is conceptual; SB3 DQN's MlpPolicy doesn't have a simple 'dueling' flag.
-                   # Dueling architecture is often implied by `net_arch` structure or a specific DuelingPolicy.
 
-    # For Noisy Nets, if supported by the policy via kwargs
-    # noisy_net: true # Conceptual for SB3 DQN's MlpPolicy. Some policies might have this.
-    
-    # optimizer_class: "Adam" # `torch.optim.Adam`
-    # optimizer_kwargs: {}    # e.g., dict(eps=1e-5)
-
-# --- C51 Specific Features / Advanced DQN Extensions ---
-# These flags control features often associated with "Rainbow DQN" or specifically C51.
-# TrainerAgent will use these to configure the model if applicable.
-c51_features:
-  # Dueling Networks: Handled by `policy_kwargs.net_arch` if using a standard DQN
-  # or if the C51 implementation has a specific way to enable it.
-  dueling_nets: true # If true, TrainerAgent will try to configure policy_kwargs for dueling.
-
-  # Prioritized Experience Replay (PER)
-  use_per: true      # If true, TrainerAgent will try to enable PER for DQN/C51.
-                     # Actual parameters for PER are in `algorithm_params` (e.g., prioritized_replay_alpha).
-
-  # N-step Returns
-  # For DQN, this might mean adjusting how Bellman updates are calculated, or if the algo directly supports n-step.
-  # Some algorithms might have a direct `n_steps` parameter.
-  n_step_returns: 3  # Number of steps for n-step bootstrapping (e.g., 1, 3, 5).
-                     # If 1, it's standard 1-step TD learning.
-
-  # Noisy Nets (for exploration, replaces epsilon-greedy)
-  use_noisy_nets: false # If true, TrainerAgent will try to configure policy_kwargs for Noisy Nets.
-                       # This often means exploration_fraction/eps params become irrelevant.
-
-  # Distributional RL (Core of C51)
-  # If using a dedicated C51 model from SB3 or sb3_contrib, these params would be crucial.
-  # If building C51 on top of DQN, these would define the categorical distribution.
-  distributional_rl_params: # Only relevant if algorithm_name is "C51" or similar
-    num_atoms: 51       # Number of atoms in the discrete distribution for Q-values.
-    v_min: -10          # Minimum value of the Q-value distribution's support. (Needs tuning based on reward scale)
-    v_max: 10           # Maximum value of the Q-value distribution's support. (Needs tuning based on reward scale)
-
-# --- Hyperparameter Tuning with Optuna (Conceptual) ---
-# If using Optuna for HPO, this section could define search spaces.
-# optuna_hpo:
-#   enabled: false
-#   n_trials: 100 # Number of Optuna trials to run
-#   timeout_per_trial_seconds: 600
-#   sampler: "TPESampler" # "TPESampler", "RandomSampler", etc.
-#   pruner: "MedianPruner" # "MedianPruner", "SuccessiveHalvingPruner", etc.
-#   hyperparameter_space:
-#     learning_rate: {type: "loguniform", low: 0.00001, high: 0.001}
-#     gamma: {type: "uniform", low: 0.9, high: 0.9999}
-#     net_arch_depth: {type: "int", low: 1, high: 3} # For number of layers
-#     net_arch_width: {type: "int", low: 32, high: 256, step: 32} # For neurons per layer
-    # ... other parameters to tune

@@ -214,7 +214,9 @@ class OrchestratorAgent:
                 # Enhanced Kyle Lambda fill simulation
                 'enable_kyle_lambda_fills': env_cfg.get('kyle_lambda_fills', {}).get('enable_kyle_lambda_fills', True),
                 'fill_simulator_config': env_cfg.get('kyle_lambda_fills', {}).get('fill_simulator_config', {})
-            }
+            },
+            # Add training configuration for algorithm detection
+            'training': self.main_config.get('training', {})
         })
         # Use new TrainerAgent factory function (bounded context)
         risk_limits_path="config/risk_limits_orchestrator_test.yaml"
@@ -473,8 +475,13 @@ class OrchestratorAgent:
         
         # 1. Add risk features to observation space (if enabled)
         if risk_config.get('include_risk_features', True):
-            wrapped_env = RiskObsWrapper(wrapped_env, risk_manager)
-            self.logger.info(f"✅ Applied RiskObsWrapper - extended observation space")
+            # Check if using LSTM algorithm to preserve sequential structure
+            training_config = self.main_config.get('training', {})
+            algorithm = training_config.get('algorithm', '')
+            preserve_sequence = 'Recurrent' in algorithm or 'LSTM' in algorithm
+            
+            wrapped_env = RiskObsWrapper(wrapped_env, risk_manager, preserve_sequence=preserve_sequence)
+            self.logger.info(f"✅ Applied RiskObsWrapper - extended observation space (preserve_sequence={preserve_sequence})")
         
         # 2. Add volatility penalty to rewards
         wrapped_env = VolatilityPenaltyReward(wrapped_env, risk_manager)
@@ -669,6 +676,30 @@ class OrchestratorAgent:
                 use_cached_data=use_cached_data
             )
             self._trigger_hook('after_evaluation', eval_results=eval_results)
+            
+            # Run rolling window backtest if enabled
+            rolling_backtest_config = self.main_config.get('evaluation', {}).get('rolling_backtest', {})
+            if rolling_backtest_config.get('enabled', False):
+                self.logger.info("🔄 Starting Rolling Window Walk-Forward Backtest...")
+                try:
+                    backtest_results = self.run_rolling_window_backtest(
+                        model_path=trained_model_path,
+                        symbol=symbol,
+                        data_start_date=rolling_backtest_config.get('data_start_date', '2023-01-01'),
+                        data_end_date=rolling_backtest_config.get('data_end_date', '2024-01-01'),
+                        training_window_months=rolling_backtest_config.get('training_window_months', 3),
+                        evaluation_window_months=rolling_backtest_config.get('evaluation_window_months', 1),
+                        step_size_months=rolling_backtest_config.get('step_size_months', 1)
+                    )
+                    
+                    if backtest_results:
+                        self._log_deployment_recommendation(backtest_results)
+                        self._trigger_hook('after_rolling_backtest', backtest_results=backtest_results)
+                    else:
+                        self.logger.warning("⚠️ Rolling window backtest failed")
+                        
+                except Exception as e:
+                    self.logger.error(f"❌ Rolling window backtest error: {e}", exc_info=True)
 
         # Final cleanup of all DuckDB connections after training pipeline
         self.logger.info("🧹 Cleaning up all DuckDB connections after training...")
@@ -774,6 +805,141 @@ class OrchestratorAgent:
         
         self.logger.info(f"--- Evaluation Pipeline for {symbol} on model {model_path} COMPLETED ---")
         return eval_metrics
+    
+    def run_rolling_window_backtest(
+        self,
+        model_path: str,
+        symbol: str,
+        data_start_date: str,
+        data_end_date: str,
+        training_window_months: int = 3,
+        evaluation_window_months: int = 1,
+        step_size_months: int = 1
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run a comprehensive rolling window walk-forward backtest for robustness validation.
+        
+        Args:
+            model_path: Path to the trained model
+            symbol: Trading symbol
+            data_start_date: Start date for historical data (YYYY-MM-DD)
+            data_end_date: End date for historical data (YYYY-MM-DD)
+            training_window_months: Training window size in months
+            evaluation_window_months: Evaluation window size in months
+            step_size_months: Step size for walk-forward in months
+            
+        Returns:
+            Dictionary containing comprehensive robustness analysis results
+        """
+        self.logger.info("🔄 Starting Rolling Window Walk-Forward Backtest")
+        self.logger.info(f"Model: {model_path}")
+        self.logger.info(f"Symbol: {symbol}")
+        self.logger.info(f"Date Range: {data_start_date} to {data_end_date}")
+        self.logger.info(f"Windows: {training_window_months}M train, {evaluation_window_months}M eval, {step_size_months}M step")
+        
+        try:
+            # Use the evaluator agent to run the rolling window backtest
+            results = self.evaluator_agent.run_rolling_window_backtest(
+                model_path=model_path,
+                data_start_date=data_start_date,
+                data_end_date=data_end_date,
+                symbol=symbol,
+                training_window_months=training_window_months,
+                evaluation_window_months=evaluation_window_months,
+                step_size_months=step_size_months
+            )
+            
+            if results:
+                self.logger.info("✅ Rolling window backtest completed successfully")
+                return results
+            else:
+                self.logger.error("❌ Rolling window backtest failed")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"❌ Rolling window backtest error: {e}", exc_info=True)
+            return None
+    
+    def _log_deployment_recommendation(self, backtest_results: Dict[str, Any]) -> None:
+        """Log deployment recommendation from rolling window backtest results."""
+        
+        if not backtest_results or 'robustness_stats' not in backtest_results:
+            self.logger.warning("No robustness stats available for deployment recommendation")
+            return
+        
+        self.logger.info("=" * 80)
+        self.logger.info("🚀 DEPLOYMENT RECOMMENDATION ANALYSIS")
+        self.logger.info("=" * 80)
+        
+        # Extract key metrics
+        robustness_stats = backtest_results['robustness_stats']
+        
+        if 'summary' in robustness_stats:
+            summary = robustness_stats['summary']
+            
+            self.logger.info(f"📊 Performance Summary:")
+            self.logger.info(f"   • Total Windows Tested: {summary.get('total_windows', 0)}")
+            self.logger.info(f"   • Profitable Windows: {summary.get('profitable_windows', 0)}/{summary.get('total_windows', 0)} ({summary.get('profitable_percentage', 0):.1f}%)")
+            self.logger.info(f"   • Average Return: {summary.get('avg_return', 0):.2f}%")
+            self.logger.info(f"   • Average Sharpe Ratio: {summary.get('avg_sharpe', 0):.2f}")
+            self.logger.info(f"   • Worst Drawdown: {summary.get('max_drawdown_worst', 0):.2f}%")
+            self.logger.info(f"   • Consistency Rating: {summary.get('consistency_rating', 'UNKNOWN')}")
+        
+        # Robustness scores
+        if 'robustness_scores' in robustness_stats:
+            scores = robustness_stats['robustness_scores']
+            self.logger.info(f"🛡️  Robustness Analysis:")
+            self.logger.info(f"   • Overall Robustness Score: {scores.get('overall_robustness', 0):.3f}")
+            self.logger.info(f"   • Return Consistency: {scores.get('return_consistency', 0):.3f}")
+            self.logger.info(f"   • Sharpe Consistency: {scores.get('sharpe_consistency', 0):.3f}")
+            self.logger.info(f"   • Drawdown Control: {scores.get('drawdown_control', 0):.3f}")
+            self.logger.info(f"   • Win Rate Stability: {scores.get('win_rate_stability', 0):.3f}")
+        
+        # Deployment recommendation
+        if 'executive_summary' in robustness_stats:
+            exec_summary = robustness_stats['executive_summary']
+            if 'overall_assessment' in exec_summary:
+                assessment = exec_summary['overall_assessment']
+                recommendation = assessment.get('recommendation', 'UNKNOWN')
+                
+                self.logger.info(f"")
+                self.logger.info(f"🎯 DEPLOYMENT RECOMMENDATION: {recommendation}")
+                
+                # Recommendation explanations with actionable guidance
+                rec_explanations = {
+                    'DEPLOY_FULL_CAPITAL': {
+                        'emoji': '✅',
+                        'message': 'Model shows EXCELLENT robustness - ready for full deployment',
+                        'action': 'Deploy with full position sizing as configured'
+                    },
+                    'DEPLOY_REDUCED_CAPITAL': {
+                        'emoji': '⚠️',
+                        'message': 'Model shows GOOD robustness - deploy with reduced position sizing',
+                        'action': 'Deploy with 50-75% of normal position sizing'
+                    },
+                    'PAPER_TRADE_FIRST': {
+                        'emoji': '📝',
+                        'message': 'Model shows FAIR robustness - paper trade before live deployment',
+                        'action': 'Run paper trading for 2-4 weeks before going live'
+                    },
+                    'REQUIRES_IMPROVEMENT': {
+                        'emoji': '❌',
+                        'message': 'Model needs IMPROVEMENT before deployment',
+                        'action': 'Retrain with different parameters or more data'
+                    }
+                }
+                
+                if recommendation in rec_explanations:
+                    rec_info = rec_explanations[recommendation]
+                    self.logger.info(f"   {rec_info['emoji']} {rec_info['message']}")
+                    self.logger.info(f"   📋 Recommended Action: {rec_info['action']}")
+        
+        # Report location
+        if 'report_path' in backtest_results:
+            self.logger.info(f"")
+            self.logger.info(f"📄 Detailed Report: {backtest_results['report_path']}")
+        
+        self.logger.info("=" * 80)
 
     def run_walk_forward_evaluation(self, symbol: str) -> Optional[List[Dict[str, Any]]]:
         """

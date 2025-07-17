@@ -6,6 +6,7 @@ import pandas as pd
 from .base_agent import BaseAgent
 from src.gym_env.intraday_trading_env import IntradayTradingEnv
 from src.evaluation import MetricsCalculator, ModelLoader, BacktestRunner, ReportGenerator
+from src.evaluation.rolling_window_backtest import RollingWindowBacktest, create_rolling_backtest_config
 
 class EvaluatorAgent(BaseAgent):
     """
@@ -217,6 +218,111 @@ class EvaluatorAgent(BaseAgent):
         except Exception as e:
             self.logger.error(f"Exception during evaluation run: {e}", exc_info=True)
             return None
+    
+    def run_rolling_window_backtest(
+        self,
+        model_path: str,
+        data_start_date: str,
+        data_end_date: str,
+        symbol: str = "SPY",
+        training_window_months: int = 3,
+        evaluation_window_months: int = 1,
+        step_size_months: int = 1
+    ) -> Dict[str, Any]:
+        """
+        Run a comprehensive rolling window walk-forward backtest for robustness validation.
+        
+        Args:
+            model_path: Path to the trained model
+            data_start_date: Start date for historical data (YYYY-MM-DD)
+            data_end_date: End date for historical data (YYYY-MM-DD)
+            symbol: Trading symbol
+            training_window_months: Training window size in months
+            evaluation_window_months: Evaluation window size in months
+            step_size_months: Step size for walk-forward in months
+            
+        Returns:
+            Dictionary containing comprehensive robustness analysis results
+        """
+        self.logger.info("🚀 Starting Rolling Window Walk-Forward Backtest")
+        self.logger.info(f"Model: {model_path}")
+        self.logger.info(f"Date Range: {data_start_date} to {data_end_date}")
+        self.logger.info(f"Symbol: {symbol}")
+        self.logger.info(f"Windows: {training_window_months}M train, {evaluation_window_months}M eval, {step_size_months}M step")
+        
+        try:
+            # Create rolling backtest configuration
+            rolling_config = create_rolling_backtest_config(self.config)
+            
+            # Override with method parameters
+            rolling_config['rolling_backtest'].update({
+                'training_window_months': training_window_months,
+                'evaluation_window_months': evaluation_window_months,
+                'step_size_months': step_size_months
+            })
+            
+            # Initialize rolling backtest system
+            backtest_system = RollingWindowBacktest(rolling_config)
+            
+            # Run the backtest
+            results = backtest_system.run_rolling_backtest(
+                model_path=model_path,
+                data_start_date=data_start_date,
+                data_end_date=data_end_date,
+                symbol=symbol
+            )
+            
+            # Log summary
+            self._log_rolling_backtest_summary(results)
+            
+            self.logger.info("✅ Rolling window backtest completed successfully")
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"❌ Rolling window backtest failed: {e}", exc_info=True)
+            return None
+    
+    def _log_rolling_backtest_summary(self, results: Dict[str, Any]) -> None:
+        """Log a summary of rolling backtest results."""
+        
+        if not results or 'robustness_stats' not in results:
+            self.logger.warning("No robustness stats available in results")
+            return
+        
+        self.logger.info("=" * 60)
+        self.logger.info("📊 ROLLING WINDOW BACKTEST SUMMARY")
+        self.logger.info("=" * 60)
+        
+        # Basic stats
+        num_windows = results.get('num_windows', 0)
+        self.logger.info(f"Total Windows Processed: {num_windows}")
+        
+        if 'summary' in results['robustness_stats']:
+            summary = results['robustness_stats']['summary']
+            
+            self.logger.info(f"Average Return: {summary.get('avg_return', 0):.2f}%")
+            self.logger.info(f"Average Sharpe Ratio: {summary.get('avg_sharpe', 0):.2f}")
+            self.logger.info(f"Worst Drawdown: {summary.get('max_drawdown_worst', 0):.2f}%")
+            self.logger.info(f"Profitable Windows: {summary.get('profitable_windows', 0)}/{num_windows} ({summary.get('profitable_percentage', 0):.1f}%)")
+            self.logger.info(f"Consistency Rating: {summary.get('consistency_rating', 'UNKNOWN')}")
+            
+            # Robustness scores
+            if 'robustness_scores' in results['robustness_stats']:
+                scores = results['robustness_stats']['robustness_scores']
+                self.logger.info(f"Overall Robustness Score: {scores.get('overall_robustness', 0):.3f}")
+            
+            # Deployment recommendation
+            if 'executive_summary' in results['robustness_stats']:
+                exec_summary = results['robustness_stats']['executive_summary']
+                if 'overall_assessment' in exec_summary:
+                    recommendation = exec_summary['overall_assessment'].get('recommendation', 'UNKNOWN')
+                    self.logger.info(f"🚀 DEPLOYMENT RECOMMENDATION: {recommendation}")
+        
+        # Report location
+        if 'report_path' in results:
+            self.logger.info(f"Detailed Report: {results['report_path']}")
+        
+        self.logger.info("=" * 60)
     
     def get_component_status(self) -> Dict[str, Any]:
         """

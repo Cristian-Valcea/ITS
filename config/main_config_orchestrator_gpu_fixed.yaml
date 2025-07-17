@@ -47,6 +47,38 @@ environment:
   advanced_reward_config:
     enabled: true                      # Enable advanced reward shaping
     
+    # 🚀 ENHANCED REWARD SYSTEM - Addresses high-frequency reward noise
+    enhanced_reward_system:
+      enabled: true                    # ✅ Enable enhanced reward system
+      
+      # Core reward weights
+      realized_pnl_weight: 1.0         # Weight for actual P&L (traditional component)
+      directional_weight: 0.3          # Weight for directional signal rewards
+      behavioral_weight: 0.2           # Weight for behavioral shaping rewards
+      
+      # Directional signal parameters (Option A Enhanced)
+      directional_scaling: 0.001       # Scale factor for directional rewards
+      min_price_change_bps: 0.5        # Minimum price change to reward (0.5 bps)
+      
+      # Behavioral shaping parameters (Option B Enhanced)
+      flip_flop_penalty: 0.001         # Penalty for position changes
+      holding_bonus: 0.0001            # Small bonus for maintaining position
+      correct_direction_bonus: 0.1     # Bonus for correct directional trades
+      wrong_direction_penalty: 0.1     # Penalty for wrong directional trades
+      
+      # Multi-timeframe aggregation
+      enable_multi_timeframe: true     # Enable multi-timeframe rewards
+      short_window: 5                  # Short-term window (5 minutes)
+      medium_window: 15                # Medium-term window (15 minutes)
+      long_window: 60                  # Long-term window (1 hour)
+      
+      # Adaptive scaling
+      enable_adaptive_scaling: true    # Enable adaptive reward scaling
+      target_reward_magnitude: 0.01    # Target reward magnitude
+      scaling_window: 100              # Window for scaling calculation
+      min_scaling_factor: 0.1          # Minimum scaling factor
+      max_scaling_factor: 10.0         # Maximum scaling factor
+    
     # 1. LAGRANGIAN CONSTRAINT - Learnable multiplier for volatility-based drawdown punishment
     lagrangian_constraint:
       enabled: true                    # Enable Lagrangian constraint learning
@@ -86,6 +118,28 @@ evaluation:
   - num_trades
   - turnover_ratio_period
   - win_rate_pct
+  
+  # Rolling Window Walk-Forward Backtest Configuration
+  rolling_backtest:
+    enabled: true                    # Enable rolling window backtest
+    training_window_months: 3        # 3-month training windows
+    evaluation_window_months: 1      # 1-month evaluation periods
+    step_size_months: 1              # Walk forward by 1 month
+    min_trading_days: 20             # Minimum trading days per window
+    enable_regime_analysis: true     # Analyze performance across market regimes
+    save_detailed_results: true      # Save detailed CSV results
+    
+    # Data range for robustness validation (adjust based on available data)
+    data_start_date: "2023-01-01"   # Start date for rolling backtest
+    data_end_date: "2024-01-01"     # End date for rolling backtest
+    
+    # Robustness thresholds for deployment recommendations
+    deployment_thresholds:
+      excellent_robustness: 0.8      # Threshold for full capital deployment
+      good_robustness: 0.6           # Threshold for reduced capital deployment
+      fair_robustness: 0.4           # Threshold for paper trading first
+      profitable_window_pct: 70      # Minimum % of profitable windows
+      max_acceptable_drawdown: 15    # Maximum acceptable drawdown %
 feature_engineering:
   # EXTENDED LOOKBACK for temporal pattern recognition with LSTM
   lookback_window: 15  # Extended from 3 to 15 for better temporal patterns
@@ -190,6 +244,21 @@ logging:
   log_file_path: logs/orchestrator_gpu_fixed_rainbow_qrdqn.log  # Updated for Rainbow QR-DQN
   max_file_size_mb: 50
   backup_count: 5
+monitoring:
+  # TensorBoard custom scalars configuration
+  tensorboard_frequency: 100        # Log custom scalars every N steps
+  enable_custom_scalars: true       # Enable vol_penalty, drawdown_pct, Q_variance, lambda tracking
+  
+  # Replay buffer audit configuration  
+  audit_frequency: 50000           # Audit replay buffer every 50k steps
+  audit_sample_size: 1000          # Sample 1k transitions for reward magnitude analysis
+  weak_reward_threshold: 0.001     # Threshold for detecting weak reward shaping
+  
+  # Advanced monitoring features
+  track_q_variance: true           # Track Q_max - Q_min spread
+  track_lagrangian_lambda: true    # Track Lagrangian multiplier evolution
+  track_reward_components: true    # Track individual reward shaping components
+  buffer_size: 1000               # Size of metric buffers for smoothing
 orchestrator:
   data_dir: data/raw_orch_gpu_rainbow_qrdqn
   feature_dir: data/processed_orch_gpu_rainbow_qrdqn
@@ -207,6 +276,16 @@ risk:
   target_sigma: 0.0                    # Target volatility threshold - only penalize excess volatility
   dd_limit: 0.03                       # RELAXED: Training drawdown limit (3% vs 2%)
   eval_dd_limit: 0.02                  # STRICT: Evaluation drawdown limit (2%)
+  
+  # 🔧 FUNCTIONAL REWARD SHAPING - Makes penalties actually apply to rewards!
+  reward_shaping:
+    enabled: true                      # ✅ Enable functional reward shaping
+    penalty_weight: 0.1                # Weight for risk penalties (applied to learning signal)
+  
+  # Risk policy configuration for reward shaping
+  policy_yaml: config/risk_limits.yaml  # Use existing risk limits file
+  penalty_weight: 0.1                   # Base penalty weight
+  early_stop_threshold: 0.8             # Early stopping threshold
   
   # ADVANCED REWARD & RISK SHAPING - Cutting-edge techniques
   advanced_reward_shaping:
@@ -295,23 +374,18 @@ training:
   algorithm: RecurrentPPO  # UPGRADED: Recurrent PPO with LSTM for temporal pattern recognition
   
   # LSTM POLICY CONFIGURATION for temporal sequence modeling
-  policy: MultiInputLstmPolicy    # LSTM policy for sequence modeling
-  policy_kwargs:                  # Enhanced LSTM architecture for temporal learning
-    net_arch: [512, 512]          # Actor-Critic network architecture
+  policy: MlpLstmPolicy           # LSTM policy for Box observation spaces
+  policy_kwargs:                  # Simplified LSTM architecture for stability
+    net_arch: [256, 256]          # Smaller Actor-Critic network architecture
     activation_fn: ReLU           # Activation function
-    lstm_hidden_size: 256         # LSTM hidden state size for temporal memory
-    n_lstm_layers: 2              # Number of LSTM layers for deep temporal modeling
-    shared_lstm: False            # Separate LSTM for actor and critic
-    enable_critic_lstm: True      # Enable LSTM in critic network
-    lstm_kwargs:                  # LSTM-specific parameters
-      dropout: 0.1                # Dropout for regularization
-      batch_first: True           # Batch dimension first
+    lstm_hidden_size: 64          # Smaller LSTM hidden state size
+    n_lstm_layers: 1              # Single LSTM layer
   
-  # PPO HYPERPARAMETERS optimized for LSTM and microstructural features
-  learning_rate: 0.0003           # Higher learning rate for PPO
-  n_steps: 2048                   # Steps per environment per update
-  batch_size: 256                 # Batch size for training
-  n_epochs: 10                    # Number of epochs per update
+  # PPO HYPERPARAMETERS optimized for stability
+  learning_rate: 0.0001           # Lower learning rate for stability
+  n_steps: 256                    # Smaller steps for faster updates
+  batch_size: 32                  # Smaller batch size for memory efficiency
+  n_epochs: 4                     # Fewer epochs to reduce training time
   gamma: 0.99                     # Discount factor
   gae_lambda: 0.95                # GAE lambda for advantage estimation
   clip_range: 0.2                 # PPO clipping parameter
@@ -325,9 +399,9 @@ training:
   target_kl: null                 # Target KL divergence
   
   # EXTENDED TRAINING for temporal pattern learning
-  total_timesteps: 1000000        # Extended training for LSTM convergence
-  max_episodes: 300               # More episodes for temporal learning
-  max_training_time_minutes: 30   # Extended training time for LSTM
+  total_timesteps: 50000          # Moderate training for TensorBoard data
+  max_episodes: 20                # Fewer episodes but longer training
+  max_training_time_minutes: 15   # Longer training time for TensorBoard data
   
   # LSTM-SPECIFIC TRAINING PARAMETERS
   lstm_states_saving: True        # Save LSTM states for evaluation

@@ -20,32 +20,43 @@ class RiskObsWrapper(gym.ObservationWrapper):
     
     Adds normalized risk metrics (volatility, drawdown, position size)
     to the observation vector for risk-aware decision making.
+    
+    For LSTM algorithms, preserves sequential structure (timesteps, features).
+    For non-LSTM algorithms, flattens to 1D vector.
     """
     
-    def __init__(self, env: gym.Env, risk_manager: RiskManager):
+    def __init__(self, env: gym.Env, risk_manager: RiskManager, preserve_sequence: bool = False):
         """
         Initialize risk observation wrapper.
         
         Args:
             env: Base trading environment
             risk_manager: RiskManager instance for risk feature extraction
+            preserve_sequence: If True, preserve sequential structure for LSTM algorithms
         """
         super().__init__(env)
         self.risk_manager = risk_manager
+        self.preserve_sequence = preserve_sequence
         self.logger = logging.getLogger("RiskObsWrapper")
         
         # Extend observation space to include risk features
         # Original observation space + 5 risk features (volatility, drawdown, position_fraction, notional_exposure, position_size)
         original_shape = env.observation_space.shape
         
-        # Handle both 1D (flattened) and 2D observation spaces
-        if len(original_shape) == 1:
+        if self.preserve_sequence and len(original_shape) == 2:
+            # For LSTM: (timesteps, features) → (timesteps, features + 5)
+            # Add risk features to each timestep
+            new_shape = (original_shape[0], original_shape[1] + 5)
+            self.logger.info(f"Extended observation space (LSTM): {original_shape} → {new_shape} (added 5 risk features per timestep)")
+        elif len(original_shape) == 1:
             # Already flattened - just add 5 features
             new_shape = (original_shape[0] + 5,)
+            self.logger.info(f"Extended observation space: {original_shape} → {new_shape} (added 5 risk features: volatility, drawdown, position_fraction, notional_exposure, position_size)")
         else:
             # Multi-dimensional - flatten first, then add 5 features
             flattened_size = np.prod(original_shape)
             new_shape = (flattened_size + 5,)
+            self.logger.info(f"Extended observation space: {original_shape} → {new_shape} (added 5 risk features: volatility, drawdown, position_fraction, notional_exposure, position_size)")
         
         self.observation_space = spaces.Box(
             low=-np.inf,
@@ -53,8 +64,6 @@ class RiskObsWrapper(gym.ObservationWrapper):
             shape=new_shape,
             dtype=np.float32
         )
-        
-        self.logger.info(f"Extended observation space: {original_shape} → {new_shape} (added 5 risk features: volatility, drawdown, position_fraction, notional_exposure, position_size)")
     
     def observation(self, obs: np.ndarray) -> np.ndarray:
         """
@@ -88,14 +97,21 @@ class RiskObsWrapper(gym.ObservationWrapper):
             float(current_position)           # Raw position size (for network to learn scaling)
         ], dtype=np.float32)
         
-        # Flatten observation if needed (to handle multi-dimensional obs)
-        if obs.ndim > 1:
-            obs_flat = obs.flatten()
+        if self.preserve_sequence and obs.ndim == 2:
+            # For LSTM: (timesteps, features) → (timesteps, features + 5)
+            # Broadcast risk features to all timesteps
+            timesteps, features = obs.shape
+            risk_matrix = np.tile(risk_vector, (timesteps, 1))  # Shape: (timesteps, 5)
+            extended_obs = np.concatenate([obs, risk_matrix], axis=1)  # Shape: (timesteps, features + 5)
         else:
-            obs_flat = obs
-        
-        # Concatenate flattened observation with risk features
-        extended_obs = np.concatenate([obs_flat, risk_vector])
+            # Flatten observation if needed (to handle multi-dimensional obs)
+            if obs.ndim > 1:
+                obs_flat = obs.flatten()
+            else:
+                obs_flat = obs
+            
+            # Concatenate flattened observation with risk features
+            extended_obs = np.concatenate([obs_flat, risk_vector])
         
         return extended_obs
 

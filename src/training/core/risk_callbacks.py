@@ -87,15 +87,41 @@ class RiskPenaltyCallback(BaseCallback):
             risk = self.advisor.evaluate(obs_dict)
             
             # Calculate penalty based on drawdown velocity
-            penalty = self.lam * risk.get('drawdown_vel', 0)
+            penalty = self.lam * risk.get('drawdown_velocity', 0)
             
             if penalty > 0:
+                # 🔧 FIXED: Actually apply the penalty to the reward
+                # Check if environment has RewardShapingWrapper
+                if hasattr(self.training_env, 'add_step_penalty'):
+                    # Direct wrapper case
+                    self.training_env.add_step_penalty('risk_penalty', penalty)
+                elif hasattr(self.training_env, 'get_attr'):
+                    # VecEnv case - try to access wrapper
+                    try:
+                        wrapper_list = self.training_env.get_attr('add_step_penalty')
+                        if wrapper_list and callable(wrapper_list[0]):
+                            wrapper_list[0]('risk_penalty', penalty)
+                    except:
+                        # Fallback: modify rewards directly in locals (SB3 specific)
+                        rewards = self.locals.get('rewards', [])
+                        if len(rewards) > 0:
+                            # Apply penalty to all environments
+                            for i in range(len(rewards)):
+                                rewards[i] -= penalty
+                            self._logger.debug(f"Applied risk penalty directly to rewards: -{penalty:.6f}")
+                else:
+                    # Last resort: try to modify rewards in locals
+                    rewards = self.locals.get('rewards', [])
+                    if len(rewards) > 0:
+                        rewards[0] -= penalty
+                        self._logger.debug(f"Applied risk penalty to reward: -{penalty:.6f}")
+                
                 # Track penalties for logging
                 self.total_penalties += penalty
                 self.penalty_count += 1
                 
                 if self.verbose > 1:
-                    self._logger.debug(f"Risk penalty calculated: {penalty:.4f}")
+                    self._logger.debug(f"Risk penalty applied: {penalty:.4f}")
                 
                 if self.verbose > 0 and self.penalty_count % 100 == 0:
                     avg_penalty = self.total_penalties / self.penalty_count

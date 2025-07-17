@@ -14,12 +14,14 @@ from typing import Optional, Dict, Any, Tuple, List
 try:
     from .kyle_lambda_fill_simulator import KyleLambdaFillSimulator, FillPriceSimulatorFactory
     from ..risk.advanced_reward_shaping import AdvancedRewardShaper
+    from .enhanced_reward_system import EnhancedRewardCalculator
 except ImportError:
     # Fallback for direct execution
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent))
     from kyle_lambda_fill_simulator import KyleLambdaFillSimulator, FillPriceSimulatorFactory
+    from enhanced_reward_system import EnhancedRewardCalculator
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from risk.advanced_reward_shaping import AdvancedRewardShaper
 
@@ -166,6 +168,15 @@ class IntradayTradingEnv(gym.Env):
         else:
             self.advanced_reward_shaper = None
             self.logger.info("Advanced Reward Shaping disabled")
+        
+        # Initialize Enhanced Reward Calculator
+        enhanced_reward_config = advanced_reward_config.get('enhanced_reward_system', {}) if advanced_reward_config else {}
+        if enhanced_reward_config.get('enabled', False):
+            self.enhanced_reward_calculator = EnhancedRewardCalculator(enhanced_reward_config)
+            self.logger.info("🚀 Enhanced Reward System enabled - addresses high-frequency reward noise")
+        else:
+            self.enhanced_reward_calculator = None
+            self.logger.info("Enhanced Reward System disabled - using traditional P&L rewards")
 
         if not (0.01 <= self.position_sizing_pct_capital <= 1.0):
             self.logger.warning(f"position_sizing_pct_capital ({self.position_sizing_pct_capital}) is outside the recommended range [0.01, 1.0]. Clamping to 0.25.")
@@ -451,6 +462,10 @@ class IntradayTradingEnv(gym.Env):
             self.returns_history = []
             self.portfolio_values_history = [self.initial_capital]
             self.volatility_history = []
+        
+        # Reset enhanced reward calculator
+        if self.enhanced_reward_calculator:
+            self.enhanced_reward_calculator.reset()
 
         self._handle_new_day() 
         
@@ -693,10 +708,43 @@ class IntradayTradingEnv(gym.Env):
         # Update portfolio value after any transactions
         self._update_portfolio_value()
         
-        # REWARD SHAPING: Use net P&L after fees per step
+        # REWARD CALCULATION: Enhanced system addresses high-frequency noise issues
         gross_pnl_change = (self.portfolio_value - portfolio_value_before_action)
         self.net_pnl_this_step = gross_pnl_change  # Net P&L already includes fees (they reduce portfolio value)
-        reward = self.net_pnl_this_step
+        
+        # Use Enhanced Reward System if enabled (addresses high-frequency reward noise)
+        if self.enhanced_reward_calculator:
+            reward, reward_breakdown = self.enhanced_reward_calculator.calculate_reward(
+                realized_pnl=realized_pnl_this_step,
+                transaction_cost=self.total_fees_this_step,
+                current_position=self.current_position,
+                current_price=current_price,
+                portfolio_value=self.portfolio_value,
+                step_info={'step': self.current_step, 'timestamp': timestamp}
+            )
+            
+            # Store reward breakdown for monitoring
+            self._last_reward_breakdown = reward_breakdown
+            
+            self.logger.debug(
+                f"🚀 ENHANCED REWARD: Total={reward:.6f} "
+                f"(Core P&L: {reward_breakdown.get('core_pnl', 0):.6f}, "
+                f"Directional: {reward_breakdown.get('directional', 0):.6f}, "
+                f"Behavioral: {reward_breakdown.get('behavioral', 0):.6f})"
+            )
+        else:
+            # Traditional reward system (net P&L only)
+            reward = self.net_pnl_this_step
+            self._last_reward_breakdown = {
+                'core_pnl': reward,
+                'directional': 0.0,
+                'behavioral': 0.0,
+                'multi_timeframe': 0.0,
+                'total_reward': reward,
+                'raw_pnl': realized_pnl_this_step,
+                'transaction_cost': self.total_fees_this_step,
+                'net_pnl': self.net_pnl_this_step
+            }
         
         # ADVANCED REWARD SHAPING: Apply cutting-edge risk-aware reward modifications
         if self.advanced_reward_shaper:
@@ -736,6 +784,9 @@ class IntradayTradingEnv(gym.Env):
             
             # Update reward with shaped version
             reward = shaped_reward
+            
+            # Store volatility penalty for monitoring
+            self._last_vol_penalty = shaping_info.get('volatility_penalty', 0.0)
             
             # Log advanced reward shaping details (debug level)
             if shaping_info.get('total_shaping', 0) != 0:
@@ -872,6 +923,9 @@ class IntradayTradingEnv(gym.Env):
                      observation = np.zeros((self.num_market_features + 1,), dtype=np.float32)
             else: 
                  observation = self._get_observation() # Get last valid observation
+        
+        # Store observation for monitoring (Q-value tracking)
+        self.last_observation = observation
 
         info = self._get_info()
         info['portfolio_value'] = self.portfolio_value # Ensure latest is passed
@@ -886,6 +940,45 @@ class IntradayTradingEnv(gym.Env):
         info['scaled_reward'] = reward * self.reward_scaling  # After scaling
         info['cumulative_realized_pnl'] = self.daily_pnl  # Running total
         info['cumulative_portfolio_pnl'] = self.portfolio_value - self.initial_capital
+        
+        # 🚀 ENHANCED REWARD BREAKDOWN: Detailed reward component analysis
+        if hasattr(self, '_last_reward_breakdown'):
+            info['reward_breakdown'] = self._last_reward_breakdown
+            
+            # Enhanced reward statistics for monitoring
+            if self.enhanced_reward_calculator:
+                reward_stats = self.enhanced_reward_calculator.get_statistics()
+                info['enhanced_reward_stats'] = reward_stats
+        
+        # MONITORING METRICS for TensorBoard custom scalars
+        # Store metrics for monitoring callback access
+        self.last_reward = reward * self.reward_scaling  # Store scaled reward
+        self.last_vol_penalty = getattr(self, '_last_vol_penalty', 0.0)  # Volatility penalty from advanced reward shaping
+        
+        # Calculate current drawdown percentage
+        if not hasattr(self, 'peak_portfolio_value'):
+            self.peak_portfolio_value = self.initial_capital
+        
+        if self.portfolio_value > self.peak_portfolio_value:
+            self.peak_portfolio_value = self.portfolio_value
+        
+        current_drawdown_pct = (self.peak_portfolio_value - self.portfolio_value) / self.peak_portfolio_value * 100
+        self.current_drawdown_pct = max(0.0, current_drawdown_pct)  # Ensure non-negative
+        
+        # Store Lagrangian lambda if available
+        if self.advanced_reward_shaper and hasattr(self.advanced_reward_shaper, 'lagrangian_manager'):
+            self.lagrangian_lambda = getattr(self.advanced_reward_shaper.lagrangian_manager, 'lambda_value', 0.0)
+        else:
+            self.lagrangian_lambda = 0.0
+        
+        # Add monitoring info to step info
+        info['monitoring'] = {
+            'vol_penalty': self.last_vol_penalty,
+            'drawdown_pct': self.current_drawdown_pct,
+            'lagrangian_lambda': self.lagrangian_lambda,
+            'reward_magnitude': abs(self.last_reward),
+            'peak_portfolio_value': self.peak_portfolio_value
+        }
         
         if transaction_executed:
             info['last_trade_details'] = self.trade_log[-1] if hasattr(self, 'trade_log') and self.trade_log else {}

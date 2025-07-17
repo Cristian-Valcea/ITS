@@ -127,6 +127,17 @@ class FeatureManager:
             return None
             
         df = raw_data_df.copy()
+        
+        # Standardize column names to lowercase for consistent feature calculation
+        column_mapping = {}
+        for col in df.columns:
+            if col.lower() in ['open', 'high', 'low', 'close', 'volume']:
+                column_mapping[col] = col.lower()
+        
+        if column_mapping:
+            df = df.rename(columns=column_mapping)
+            self.logger.debug(f"Standardized column names: {column_mapping}")
+        
         data_size = len(df)
         
         # Apply each calculator in sequence with performance tracking
