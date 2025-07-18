@@ -435,12 +435,13 @@ class IntradayTradingEnv(gym.Env):
     def _calculate_turnover_reward(self, realized_pnl: float, transaction_cost: float, 
                                  position_changed: bool) -> float:
         """
-        🎯 TURNOVER-BASED REWARD SYSTEM: Combines P&L with normalized turnover penalty
+        🎯 TURNOVER-BASED REWARD SYSTEM + HOLD BONUS
         
         This replaces the emergency fix with a more sophisticated approach:
         1. Core P&L reward (after transaction costs)
         2. Smooth turnover penalty based on normalized trading frequency
-        3. Proper scaling and logging
+        3. 🎁 HOLD BONUS: Reward staying flat (0.2% daily bonus)
+        4. Proper scaling and logging
         
         Args:
             realized_pnl (float): Realized P&L from position changes
@@ -448,7 +449,7 @@ class IntradayTradingEnv(gym.Env):
             position_changed (bool): Whether position changed this step
             
         Returns:
-            float: Total reward including turnover penalty
+            float: Total reward including turnover penalty and hold bonus
         """
         # Core reward: P&L after transaction costs
         core_reward = realized_pnl - transaction_cost
@@ -456,8 +457,14 @@ class IntradayTradingEnv(gym.Env):
         # Turnover penalty: smooth, normalized penalty
         turnover_penalty = self._calculate_turnover_penalty()
         
+        # 🎁 HOLD BONUS: Reward for staying flat (not changing position)
+        hold_bonus = 0.0
+        if not position_changed and hasattr(self, '_last_action') and self._last_action == 1:  # Action 1 = HOLD
+            # 0.2% daily bonus = 0.002 * NAV / 390 steps per day
+            hold_bonus = 0.002 * self.portfolio_value / 390
+        
         # Total reward
-        total_reward = core_reward + turnover_penalty
+        total_reward = core_reward + turnover_penalty + hold_bonus
         
         # Scale to reasonable magnitude (convert to cents)
         scaled_reward = total_reward * 100
@@ -468,6 +475,7 @@ class IntradayTradingEnv(gym.Env):
                 f"🎯 TURNOVER REWARD: Step {self.current_step}, "
                 f"P&L: ${realized_pnl:.4f}, Cost: ${transaction_cost:.4f}, "
                 f"Core: ${core_reward:.4f}, Turnover Penalty: ${turnover_penalty:.4f}, "
+                f"Hold Bonus: ${hold_bonus:.4f}, "
                 f"Total: ${total_reward:.4f}, Scaled: {scaled_reward:.4f}"
             )
         
@@ -721,8 +729,9 @@ class IntradayTradingEnv(gym.Env):
             action = int(action)
         assert isinstance(action, (int, np.integer)), f"Action must be int, got {type(action)}"
         
-        # Track action for diagnostics
+        # Track action for diagnostics and hold bonus
         self.action_counter[action] += 1
+        self._last_action = action  # Track for HOLD bonus calculation
         
         desired_position_signal = self._action_map[action] # -1 (Sell), 0 (Hold), 1 (Buy)
         current_price = self._get_current_price()

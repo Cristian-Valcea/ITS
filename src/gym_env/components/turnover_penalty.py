@@ -80,6 +80,11 @@ class TurnoverPenaltyCalculator:
         self.penalty_history = []
         self.normalized_turnover_history = []
         
+        # 🎯 DYNAMIC CURRICULUM LEARNING
+        self.base_weight_factor = weight_factor  # Store original weight
+        self.turnover_history_1d = []  # Track recent turnover for curriculum
+        self.curriculum_window = 20  # Episodes to average for curriculum decision
+        
         self.logger.debug(
             f"🎯 TurnoverPenaltyCalculator initialized: "
             f"target_ratio={self.target_ratio:.3f}, weight_factor={self.weight_factor:.3f}, "
@@ -111,6 +116,58 @@ class TurnoverPenaltyCalculator:
         if self.curve_sharpness <= 0:
             raise ValueError(f"Curve sharpness must be positive, got {self.curve_sharpness}")
     
+    def _update_dynamic_curriculum(self, turnover_ratio: float) -> float:
+        """
+        🎯 DYNAMIC CURRICULUM LEARNING
+        
+        Adjusts penalty weight based on recent overtrading behavior:
+        - Start mild (α = base_weight_factor)
+        - Escalate if avg_turnover > 2x target (α = 3x base)
+        - Severe if avg_turnover > 10x target (α = 7x base)
+        
+        Args:
+            turnover_ratio (float): Current episode's turnover ratio
+            
+        Returns:
+            float: Adjusted weight factor for this episode
+        """
+        # Track recent turnover ratios
+        self.turnover_history_1d.append(turnover_ratio)
+        
+        # Keep only recent history for curriculum decision
+        if len(self.turnover_history_1d) > self.curriculum_window:
+            self.turnover_history_1d.pop(0)
+        
+        # Calculate average recent turnover
+        if len(self.turnover_history_1d) < 5:  # Need some history
+            return self.base_weight_factor  # Start mild
+        
+        avg_turnover = sum(self.turnover_history_1d) / len(self.turnover_history_1d)
+        
+        # 🎯 DYNAMIC CURRICULUM ESCALATION
+        if avg_turnover > 10 * self.target_ratio:
+            # Severe overtrading: 7x penalty weight
+            adjusted_weight = self.base_weight_factor * 7.0
+            curriculum_level = "SEVERE"
+        elif avg_turnover > 2 * self.target_ratio:
+            # Moderate overtrading: 3x penalty weight  
+            adjusted_weight = self.base_weight_factor * 3.0
+            curriculum_level = "MODERATE"
+        else:
+            # Good behavior: base penalty weight
+            adjusted_weight = self.base_weight_factor
+            curriculum_level = "MILD"
+        
+        # Log curriculum adjustments
+        if len(self.turnover_history_1d) % 10 == 0:  # Log every 10 episodes
+            self.logger.info(
+                f"🎯 CURRICULUM: {curriculum_level} | "
+                f"Avg Turnover: {avg_turnover:.3f} | Target: {self.target_ratio:.3f} | "
+                f"Weight: {adjusted_weight:.3f} ({adjusted_weight/self.base_weight_factor:.1f}x base)"
+            )
+        
+        return adjusted_weight
+    
     def compute_penalty(self, total_turnover: float) -> float:
         """
         Compute the turnover penalty for the given daily turnover.
@@ -137,8 +194,9 @@ class TurnoverPenaltyCalculator:
         # Step 2: Calculate turnover ratio (dimensionless, ≤1 for 1× capital)
         turnover_ratio = total_turnover / (current_portfolio_value + 1e-6)
         
-        # Step 3: Calculate penalty weight (scales with NAV)
-        penalty_weight = self.weight_factor * current_portfolio_value
+        # Step 3: 🎯 DYNAMIC CURRICULUM - Adjust penalty weight based on behavior
+        dynamic_weight_factor = self._update_dynamic_curriculum(turnover_ratio)
+        penalty_weight = dynamic_weight_factor * current_portfolio_value
         
         # Step 4: Calculate penalty using different curve types
         if self.curve == "sigmoid":
@@ -152,15 +210,16 @@ class TurnoverPenaltyCalculator:
             penalty = -penalty_weight * penalty_factor.item()
             
         elif self.curve == "quadratic":
-            # Quadratic penalty: -weight * (ratio / target)^2
+            # Quadratic penalty: -weight * ((ratio - target) / target)^2
             # More aggressive for high turnover, gentler near target
             if turnover_ratio <= self.target_ratio:
                 # Below target: minimal penalty (optional)
                 penalty = -penalty_weight * 0.1 * (turnover_ratio / (self.target_ratio + 1e-6)) ** 2
             else:
-                # Above target: quadratic growth
-                excess_ratio = turnover_ratio / (self.target_ratio + 1e-6)
-                penalty = -penalty_weight * (excess_ratio ** 2)
+                # Above target: quadratic growth based on EXCESS over target
+                excess_over_target = turnover_ratio - self.target_ratio
+                normalized_excess = excess_over_target / (self.target_ratio + 1e-6)
+                penalty = -penalty_weight * (normalized_excess ** 2)
                 
         elif self.curve == "steep_softplus":
             # Steep softplus with high β for aggressive penalty growth

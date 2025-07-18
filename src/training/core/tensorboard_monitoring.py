@@ -223,6 +223,26 @@ class TensorBoardMonitoringCallback(BaseCallback):
                     penalty_pct_nav = abs(turnover_penalty) / (portfolio_value + 1e-6)
                     self.tb_writer.add_scalar('turnover/penalty_pct_nav', penalty_pct_nav, self.step_count)
                     
+                    # 🎯 DYNAMIC CURRICULUM MONITORING
+                    if hasattr(base_env, 'turnover_penalty_calculator'):
+                        calc = base_env.turnover_penalty_calculator
+                        if hasattr(calc, 'turnover_history_1d') and len(calc.turnover_history_1d) > 0:
+                            avg_recent_turnover = sum(calc.turnover_history_1d) / len(calc.turnover_history_1d)
+                            curriculum_multiplier = 1.0
+                            if avg_recent_turnover > 10 * calc.target_ratio:
+                                curriculum_multiplier = 7.0
+                            elif avg_recent_turnover > 2 * calc.target_ratio:
+                                curriculum_multiplier = 3.0
+                            
+                            self.tb_writer.add_scalar('curriculum/avg_recent_turnover', avg_recent_turnover, self.step_count)
+                            self.tb_writer.add_scalar('curriculum/penalty_multiplier', curriculum_multiplier, self.step_count)
+                            self.tb_writer.add_scalar('curriculum/overtrading_factor', avg_recent_turnover / calc.target_ratio, self.step_count)
+                    
+                    # 🎁 HOLD BONUS MONITORING
+                    if hasattr(base_env, '_last_action'):
+                        is_hold_action = float(base_env._last_action == 1)  # Action 1 = HOLD
+                        self.tb_writer.add_scalar('actions/hold_frequency', is_hold_action, self.step_count)
+                    
                     # Log daily turnover reset events
                     daily_reset = getattr(base_env, 'daily_turnover_reset', False)
                     self.tb_writer.add_scalar('turnover/daily_reset_event', float(daily_reset), self.step_count)
