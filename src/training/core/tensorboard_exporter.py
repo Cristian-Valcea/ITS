@@ -19,8 +19,9 @@ Usage:
     exporter.log_episode_metrics(
         episode=100,
         total_reward=1250.0,
-        turnover_penalty=-45.2,
-        normalized_turnover=0.025,
+        turnover_penalty=-520.0,  # Fixed: penalty scales with NAV
+        turnover_ratio=0.025,     # Fixed: dimensionless ratio
+        turnover_target=0.02,     # 2% target
         portfolio_value=52000.0
     )
     
@@ -209,7 +210,7 @@ class TensorBoardExporter:
         episode_length: Optional[int] = None,
         portfolio_value: Optional[float] = None,
         turnover_penalty: Optional[float] = None,
-        normalized_turnover: Optional[float] = None,
+        turnover_ratio: Optional[float] = None,
         turnover_target: Optional[float] = None,
         win: Optional[bool] = None,
         **kwargs
@@ -223,7 +224,7 @@ class TensorBoardExporter:
             episode_length: Number of steps in episode
             portfolio_value: Final portfolio value
             turnover_penalty: Turnover penalty applied
-            normalized_turnover: Normalized turnover ratio
+            turnover_ratio: Turnover ratio (dimensionless, ≤1 for 1× capital)
             turnover_target: Target turnover ratio
             win: Whether episode was profitable
             **kwargs: Additional episode metrics
@@ -239,21 +240,22 @@ class TensorBoardExporter:
             self.writer.add_scalar('episode/portfolio_value', portfolio_value, episode)
             self.portfolio_buffer.append(portfolio_value)
         
-        # Turnover penalty metrics
+        # Fixed turnover penalty metrics
         if turnover_penalty is not None:
-            self.writer.add_scalar('turnover/penalty', turnover_penalty, episode)
+            self.writer.add_scalar('turnover/penalty_current', turnover_penalty, episode)
         
-        if normalized_turnover is not None:
-            self.writer.add_scalar('turnover/normalized', normalized_turnover, episode)
+        if turnover_ratio is not None:
+            # Turnover ratio (dimensionless, ≤1 for 1× capital)
+            self.writer.add_scalar('turnover/ratio_current', turnover_ratio, episode)
         
         if turnover_target is not None:
             self.writer.add_scalar('turnover/target', turnover_target, episode)
             
-            if normalized_turnover is not None:
-                excess = normalized_turnover - turnover_target
+            if turnover_ratio is not None:
+                excess = turnover_ratio - turnover_target
                 relative_excess = excess / turnover_target if turnover_target > 0 else excess
-                self.writer.add_scalar('turnover/excess', excess, episode)
-                self.writer.add_scalar('turnover/relative_excess', relative_excess, episode)
+                self.writer.add_scalar('turnover/excess_current', excess, episode)
+                self.writer.add_scalar('turnover/relative_excess_current', relative_excess, episode)
         
         # Win tracking
         if win is not None:

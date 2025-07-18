@@ -95,8 +95,14 @@ if exist "%USERPROFILE%\.feature_cache\*.lock" (
 )
 
 echo [6/6] Cleaning old log files...
+if exist "logs\turnover_penalty_orchestrator_gpu.log" (
+    echo   - Archiving previous turnover penalty log file...
+    for /f "tokens=2-4 delims=/ " %%a in ('date /t') do set mydate=%%c%%a%%b
+    for /f "tokens=1-2 delims=: " %%a in ('time /t') do set mytime=%%a%%b
+    move "logs\turnover_penalty_orchestrator_gpu.log" "logs\turnover_penalty_orchestrator_gpu_!mydate!_!mytime!.log" >nul 2>&1
+)
 if exist "logs\emergency_fix_orchestrator_gpu.log" (
-    echo   - Archiving previous log file...
+    echo   - Archiving previous emergency fix log file...
     for /f "tokens=2-4 delims=/ " %%a in ('date /t') do set mydate=%%c%%a%%b
     for /f "tokens=1-2 delims=: " %%a in ('time /t') do set mytime=%%a%%b
     move "logs\emergency_fix_orchestrator_gpu.log" "logs\emergency_fix_orchestrator_gpu_!mydate!_!mytime!.log" >nul 2>&1
@@ -134,7 +140,13 @@ if not exist "reports" mkdir "reports"
 if not exist "reports\emergency_fix" mkdir "reports\emergency_fix"
 
 REM Create placeholder log file for tail monitoring
-echo [%date% %time%] Log monitoring started... > "logs\emergency_fix_orchestrator_gpu.log"
+if "%CONFIG_FILE%"=="turnover_penalty_orchestrator_gpu.yaml" (
+    echo [%date% %time%] Turnover Penalty Training Log Started... > "logs\turnover_penalty_orchestrator_gpu.log"
+    set LOG_FILE=turnover_penalty_orchestrator_gpu.log
+) else (
+    echo [%date% %time%] Emergency Fix Training Log Started... > "logs\emergency_fix_orchestrator_gpu.log"
+    set LOG_FILE=emergency_fix_orchestrator_gpu.log
+)
 echo Log directories prepared...
 echo.
 
@@ -143,11 +155,21 @@ REM Launch monitoring tools (each in separate window, inheriting venv)
 REM ========================================================================
 
 echo Starting TensorBoard on http://localhost:6006...
-start "TensorBoard" cmd /k "tensorboard --logdir logs\tensorboard_emergency_fix --port 6006 --host localhost"
+if "%CONFIG_FILE%"=="turnover_penalty_orchestrator_gpu.yaml" (
+    echo   📊 Using turnover penalty TensorBoard logs
+    start "TensorBoard" cmd /k "tensorboard --logdir logs\tensorboard_turnover_penalty --port 6006 --host localhost --reload_interval 30"
+) else (
+    echo   📊 Using emergency fix TensorBoard logs
+    start "TensorBoard" cmd /k "tensorboard --logdir logs\tensorboard_emergency_fix --port 6006 --host localhost"
+)
+timeout /t 2 /nobreak >nul
+
+echo Starting enhanced TensorBoard launcher...
+start "TensorBoard-Enhanced" cmd /k "python launch_tensorboard.py --port 6007 --logdir runs"
 timeout /t 2 /nobreak >nul
 
 echo Starting log monitor...
-start "Log-Monitor" cmd /k "python monitor_live_logs.py logs\emergency_fix_orchestrator_gpu.log"
+start "Log-Monitor" cmd /k "python monitor_live_logs.py logs\%LOG_FILE%"
 timeout /t 1 /nobreak >nul
 
 echo Starting API server on http://localhost:8000...
@@ -189,10 +211,18 @@ if not exist "src\main.py" (
     pause
     exit /b 1
 )
-if not exist "config\emergency_fix_orchestrator_gpu.yaml" (
-    echo ERROR: Training configuration not found!
-    pause
-    exit /b 1
+if not exist "config\turnover_penalty_orchestrator_gpu.yaml" (
+    echo ERROR: Turnover penalty configuration not found!
+    echo Falling back to emergency fix configuration...
+    if not exist "config\emergency_fix_orchestrator_gpu.yaml" (
+        echo ERROR: No valid training configuration found!
+        pause
+        exit /b 1
+    )
+    set CONFIG_FILE=emergency_fix_orchestrator_gpu.yaml
+) else (
+    set CONFIG_FILE=turnover_penalty_orchestrator_gpu.yaml
+    echo ✅ Using enhanced turnover penalty configuration
 )
 if not exist "config\model_params.yaml" (
     echo ERROR: Model parameters configuration not found!
@@ -204,12 +234,22 @@ if not exist "config\risk_limits.yaml" (
     pause
     exit /b 1
 )
+REM Test TensorBoard and turnover penalty integration
+echo Testing system components...
+python validate_training_setup.py
+
 echo [FINAL CHECK] System ready - launching training...
 echo.
 
 REM Change to src directory and run training
 cd src
-start "MAIN-TRAINING" cmd /k "python main.py train --main_config ../config/emergency_fix_orchestrator_gpu.yaml --symbol NVDA --start_date 2024-01-01 --end_date 2024-03-31"
+if "%CONFIG_FILE%"=="turnover_penalty_orchestrator_gpu.yaml" (
+    echo 🎯 Launching training with TURNOVER PENALTY SYSTEM
+    start "MAIN-TRAINING-TURNOVER-PENALTY" cmd /k "python main.py train --main_config ../config/turnover_penalty_orchestrator_gpu.yaml --symbol NVDA --start_date 2024-01-01 --end_date 2024-03-31"
+) else (
+    echo 🔧 Launching training with emergency fix configuration
+    start "MAIN-TRAINING-EMERGENCY-FIX" cmd /k "python main.py train --main_config ../config/emergency_fix_orchestrator_gpu.yaml --symbol NVDA --start_date 2024-01-01 --end_date 2024-03-31"
+)
 
 REM Return to root directory
 cd ..
@@ -217,34 +257,52 @@ cd ..
 REM Wait for training to start creating logs, then start log tail
 timeout /t 20 /nobreak >nul
 echo Starting log tail now that training has begun...
-start "Log-Tail" cmd /k "powershell -Command \"Get-Content -Path 'logs\emergency_fix_orchestrator_gpu.log' -Wait -Tail 20 -ErrorAction SilentlyContinue\""
+start "Log-Tail" cmd /k "powershell -Command \"Get-Content -Path 'logs\%LOG_FILE%' -Wait -Tail 20 -ErrorAction SilentlyContinue\""
 
 REM ========================================================================
 REM Show status
 REM ========================================================================
 echo.
 echo ========================================================================
-echo 📊 MONITORING DASHBOARD - Enhanced with Rolling Window Backtest
+echo 📊 MONITORING DASHBOARD - Enhanced with TensorBoard Integration
 echo ========================================================================
-echo 🔗 TensorBoard:     http://localhost:6006
-echo 🔗 API Monitoring:  http://localhost:8000/docs
-echo 🔗 API Status:      http://localhost:8000/api/v1/status
+echo 🔗 Primary TensorBoard:    http://localhost:6006
+echo 🔗 Enhanced TensorBoard:   http://localhost:6007
+echo 🔗 API Monitoring:         http://localhost:8000/docs
+echo 🔗 API Status:             http://localhost:8000/api/v1/status
 echo ========================================================================
 echo.
 echo LAUNCHED WINDOWS:
-echo   1. TensorBoard      - Training metrics and visualizations
-echo   2. Log Monitor      - Real-time log analysis
-echo   3. API Server       - REST API for monitoring and control
-echo   4. Visualizer       - Post-training analysis tools
-echo   5. MAIN TRAINING    - Core training process
-echo   6. Log Tail         - Live log streaming (started after training begins)
+echo   1. TensorBoard (Primary)     - Standard training metrics
+echo   2. TensorBoard (Enhanced)    - Comprehensive turnover penalty metrics
+echo   3. Log Monitor              - Real-time log analysis
+echo   4. API Server               - REST API for monitoring and control
+echo   5. Visualizer               - Post-training analysis tools
+echo   6. MAIN TRAINING            - Core training process
+echo   7. Log Tail                 - Live log streaming (started after training begins)
 echo.
-echo 🔄 NEW FEATURES ENABLED:
-echo   ✅ 3-Month Rolling Window Walk-Forward Backtest
-echo   ✅ Automated Robustness Validation
-echo   ✅ Market Regime Analysis
-echo   ✅ Deployment Recommendations
-echo   ✅ Enhanced Risk Management
+if "%CONFIG_FILE%"=="turnover_penalty_orchestrator_gpu.yaml" (
+    echo 🎯 TURNOVER PENALTY FEATURES ENABLED:
+    echo   ✅ Normalized turnover penalty system
+    echo   ✅ Dynamic portfolio value tracking
+    echo   ✅ Smooth sigmoid penalty curves
+    echo   ✅ Real-time TensorBoard monitoring
+    echo   ✅ Comprehensive performance analytics
+    echo   ✅ Target: 2%% normalized turnover
+    echo.
+    echo 📊 KEY TENSORBOARD METRICS TO MONITOR:
+    echo   🎯 turnover/penalty_current - Current penalty value
+    echo   📊 turnover/normalized_current - Current turnover ratio
+    echo   🎯 turnover/target - Target turnover (2%%)
+    echo   📈 performance/win_rate - Success percentage
+    echo   📉 performance/sharpe_ratio - Risk-adjusted returns
+    echo   ⚠️  performance/max_drawdown - Maximum drawdown
+) else (
+    echo 🔄 EMERGENCY FIX FEATURES ENABLED:
+    echo   ✅ Emergency reward system fixes
+    echo   ✅ Enhanced risk management
+    echo   ✅ Standard TensorBoard monitoring
+)
 echo.
 echo ✅ All tools launched! Training with robustness validation is starting...
 echo 💡 Keep this window open as control panel

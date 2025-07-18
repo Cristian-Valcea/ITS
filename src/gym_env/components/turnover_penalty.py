@@ -30,47 +30,45 @@ class TurnoverPenaltyCalculator:
     in reinforcement learning environments. Designed to replace cliff-effect penalties
     with smooth, differentiable functions that provide proper learning gradients.
     
-    The penalty is calculated as:
-    normalized_turnover = total_turnover / (portfolio_value * episode_length)
-    relative_excess = (normalized_turnover - target) / target  # Adaptive scaling
-    penalty = -adaptive_weight * smooth_function(smoothness * relative_excess)
+    The penalty is calculated using different curve types:
     
-    Where smooth_function can be sigmoid or softplus. The adaptive scaling ensures
-    consistent penalty sharpness across different target ranges.
+    turnover_ratio = total_turnover / portfolio_value  # Dimensionless ratio (≤1 for 1× capital)
+    
+    Curve Types:
+    - sigmoid: penalty = -weight / (1 + exp(-k * (ratio - target)))  # Smooth S-curve
+    - quadratic: penalty = -weight * (ratio / target)^2  # Quadratic growth for overtrading
+    - softplus: penalty = -weight * softplus(k * (ratio - target))  # Smooth exponential
+    - steep_softplus: penalty = -weight * softplus(10k * (ratio - target))  # Very steep
+    
+    Where weight scales with portfolio NAV (e.g., 15% of NAV) and k controls curve sharpness.
+    This creates economically meaningful penalties that scale with portfolio size.
     """
     
     def __init__(self, 
-                 episode_length: int,
                  portfolio_value_getter: Union[float, Callable[[], float]],
-                 target_range: float = 0.02,
-                 adaptive_weight_factor: float = 0.001,
-                 smoothness: float = 10.0,
-                 curve: str = "softplus",
+                 target_ratio: float = 0.02,
+                 weight_factor: float = 0.02,
+                 curve_sharpness: float = 25.0,
+                 curve: str = "sigmoid",
                  logger: Optional[logging.Logger] = None):
         """
         Initialize the Turnover Penalty Calculator.
         
         Args:
-            episode_length (int): Total number of steps in the episode
             portfolio_value_getter: Either a float (static) or callable returning current portfolio value
-            target_range (float): Target normalized turnover (default: 2%)
-            adaptive_weight_factor (float): Base weight factor (scales with portfolio)
-            smoothness (float): Smoothness parameter for penalty curves
-            curve (str): Penalty curve type ('sigmoid' or 'softplus')
+            target_ratio (float): Target turnover ratio (default: 2% = 0.02)
+            weight_factor (float): Penalty weight as fraction of NAV (default: 2% = 0.02)
+            curve_sharpness (float): Curve sharpness parameter k (default: 25.0)
+            curve (str): Penalty curve type ('sigmoid', 'softplus', 'quadratic', 'steep_softplus')
             logger (Optional[logging.Logger]): Logger instance for debugging
         """
-        self.episode_length = episode_length
         self.portfolio_value_getter = portfolio_value_getter
-        self.target_range = target_range
-        self.adaptive_weight_factor = adaptive_weight_factor
-        self.smoothness = smoothness
+        self.target_ratio = target_ratio
+        self.weight_factor = weight_factor
+        self.curve_sharpness = curve_sharpness
         self.curve = curve.lower()
         
-        # Get initial portfolio value for weight calculation
-        initial_portfolio_value = self._get_current_portfolio_value()
-        
-        # Calculate adaptive weight (scales with portfolio size)
-        self.adaptive_weight = adaptive_weight_factor * initial_portfolio_value
+        # No need to pre-calculate weight - it will scale dynamically with portfolio value
         
         # Setup logging
         self.logger = logger or logging.getLogger(__name__)
@@ -84,8 +82,8 @@ class TurnoverPenaltyCalculator:
         
         self.logger.debug(
             f"🎯 TurnoverPenaltyCalculator initialized: "
-            f"target={target_range:.3f}, weight={self.adaptive_weight:.2f}, "
-            f"curve={curve}, smoothness={smoothness}"
+            f"target_ratio={self.target_ratio:.3f}, weight_factor={self.weight_factor:.3f}, "
+            f"curve={self.curve}, sharpness={self.curve_sharpness}"
         )
     
     def _get_current_portfolio_value(self) -> float:
@@ -97,28 +95,33 @@ class TurnoverPenaltyCalculator:
     
     def _validate_parameters(self) -> None:
         """Validate initialization parameters."""
-        if self.episode_length <= 0:
-            raise ValueError(f"Episode length must be positive, got {self.episode_length}")
-        
         current_portfolio_value = self._get_current_portfolio_value()
         if current_portfolio_value <= 0:
             raise ValueError(f"Portfolio value must be positive, got {current_portfolio_value}")
         
-        if self.target_range < 0:
-            raise ValueError(f"Target range must be non-negative, got {self.target_range}")
+        if self.target_ratio < 0:
+            raise ValueError(f"Target ratio must be non-negative, got {self.target_ratio}")
         
-        if self.curve not in ['sigmoid', 'softplus']:
-            raise ValueError(f"Unsupported curve type: {self.curve}. Use 'sigmoid' or 'softplus'")
+        if self.weight_factor <= 0:
+            raise ValueError(f"Weight factor must be positive, got {self.weight_factor}")
         
-        if self.smoothness <= 0:
-            raise ValueError(f"Smoothness must be positive, got {self.smoothness}")
+        if self.curve not in ['sigmoid', 'softplus', 'quadratic', 'steep_softplus']:
+            raise ValueError(f"Unsupported curve type: {self.curve}. Use 'sigmoid', 'softplus', 'quadratic', or 'steep_softplus'")
+        
+        if self.curve_sharpness <= 0:
+            raise ValueError(f"Curve sharpness must be positive, got {self.curve_sharpness}")
     
     def compute_penalty(self, total_turnover: float) -> float:
         """
-        Compute the turnover penalty for the given total turnover.
+        Compute the turnover penalty for the given daily turnover.
+        
+        Uses the NAV-scaled formula:
+        ratio = daily_turnover / portfolio_value  # Dimensionless ratio (≤1 for 1× capital)
+        weight = penalty_weight_pct * portfolio_value  # Scales with NAV
+        penalty = -weight / (1 + exp(-k * (ratio - target_ratio)))  # Sigmoid penalty
         
         Args:
-            total_turnover (float): Total traded value in the episode
+            total_turnover (float): Total traded value for the current day
             
         Returns:
             float: Penalty value (negative for penalty, 0 for no penalty)
@@ -126,39 +129,54 @@ class TurnoverPenaltyCalculator:
         if total_turnover < 0:
             raise ValueError(f"Total turnover must be non-negative, got {total_turnover}")
         
-        # Step 1: Calculate normalized turnover using current portfolio value
+        # Step 1: Get current portfolio value
         current_portfolio_value = self._get_current_portfolio_value()
-        if self.episode_length == 0 or current_portfolio_value == 0:
+        if current_portfolio_value <= 0:
             return 0.0
         
-        normalized_turnover = total_turnover / (current_portfolio_value * self.episode_length)
+        # Step 2: Calculate turnover ratio (dimensionless, ≤1 for 1× capital)
+        turnover_ratio = total_turnover / (current_portfolio_value + 1e-6)
         
-        # Step 2: Calculate penalty using adaptive scaling
-        # Normalize excess turnover by target range for consistent sharpness
-        excess_turnover = normalized_turnover - self.target_range
+        # Step 3: Calculate penalty weight (scales with NAV)
+        penalty_weight = self.weight_factor * current_portfolio_value
         
-        # Adaptive scaling: divide by target_range to get relative deviation
-        if self.target_range > 0:
-            relative_excess = excess_turnover / self.target_range
-        else:
-            relative_excess = excess_turnover  # Fallback if target is zero
-        
+        # Step 4: Calculate penalty using different curve types
         if self.curve == "sigmoid":
-            # Sigmoid with adaptive sharpness based on target range
-            penalty_factor = torch.sigmoid(torch.tensor(self.smoothness * relative_excess))
+            # Sigmoid penalty: -weight / (1 + exp(-k * (ratio - target)))
+            penalty_factor = 1.0 / (1.0 + np.exp(-self.curve_sharpness * (turnover_ratio - self.target_ratio)))
+            penalty = -penalty_weight * penalty_factor
+            
         elif self.curve == "softplus":
-            # Softplus with adaptive sharpness based on target range
-            penalty_factor = F.softplus(torch.tensor(relative_excess * self.smoothness))
+            # Softplus penalty for smoother gradients
+            penalty_factor = F.softplus(torch.tensor(self.curve_sharpness * (turnover_ratio - self.target_ratio)))
+            penalty = -penalty_weight * penalty_factor.item()
+            
+        elif self.curve == "quadratic":
+            # Quadratic penalty: -weight * (ratio / target)^2
+            # More aggressive for high turnover, gentler near target
+            if turnover_ratio <= self.target_ratio:
+                # Below target: minimal penalty (optional)
+                penalty = -penalty_weight * 0.1 * (turnover_ratio / (self.target_ratio + 1e-6)) ** 2
+            else:
+                # Above target: quadratic growth
+                excess_ratio = turnover_ratio / (self.target_ratio + 1e-6)
+                penalty = -penalty_weight * (excess_ratio ** 2)
+                
+        elif self.curve == "steep_softplus":
+            # Steep softplus with high β for aggressive penalty growth
+            # β (curve_sharpness) controls steepness - higher = steeper
+            steep_beta = self.curve_sharpness * 10.0  # Make it extra steep
+            penalty_factor = F.softplus(torch.tensor(steep_beta * (turnover_ratio - self.target_ratio)))
+            penalty = -penalty_weight * penalty_factor.item()
+            
         else:
-            # Fallback (should not reach here due to validation)
-            penalty_factor = F.softplus(torch.tensor(relative_excess * self.smoothness))
-        
-        # Step 3: Apply adaptive weight and return penalty
-        penalty = -self.adaptive_weight * penalty_factor.item()
+            # Fallback to sigmoid (should not reach here due to validation)
+            penalty_factor = 1.0 / (1.0 + np.exp(-self.curve_sharpness * (turnover_ratio - self.target_ratio)))
+            penalty = -penalty_weight * penalty_factor
         
         # Track for analysis
         self.penalty_history.append(penalty)
-        self.normalized_turnover_history.append(normalized_turnover)
+        self.normalized_turnover_history.append(turnover_ratio)  # Now stores actual ratio
         
         return penalty
     
@@ -174,35 +192,32 @@ class TurnoverPenaltyCalculator:
             float: Penalty gradient
         """
         current_portfolio_value = self._get_current_portfolio_value()
-        if self.episode_length == 0 or current_portfolio_value == 0:
+        if current_portfolio_value <= 0:
             return 0.0
         
-        normalized_turnover = total_turnover / (current_portfolio_value * self.episode_length)
-        excess_turnover = normalized_turnover - self.target_range
-        
-        # Adaptive scaling: divide by target_range for consistent gradient behavior
-        if self.target_range > 0:
-            relative_excess = excess_turnover / self.target_range
-            scaling_factor = 1.0 / self.target_range  # For gradient chain rule
-        else:
-            relative_excess = excess_turnover
-            scaling_factor = 1.0
+        # Calculate turnover ratio
+        turnover_ratio = total_turnover / (current_portfolio_value + 1e-6)
+        penalty_weight = self.weight_factor * current_portfolio_value
         
         if self.curve == "sigmoid":
-            # Gradient of sigmoid with adaptive scaling
-            sigmoid_val = torch.sigmoid(torch.tensor(self.smoothness * relative_excess))
-            gradient = self.smoothness * sigmoid_val * (1 - sigmoid_val) * scaling_factor
+            # Gradient of sigmoid penalty: d/dx[-w/(1+exp(-k*(x-t)))] = -w*k*exp(-k*(x-t))/(1+exp(-k*(x-t)))^2
+            exp_term = np.exp(-self.curve_sharpness * (turnover_ratio - self.target_ratio))
+            gradient = -penalty_weight * self.curve_sharpness * exp_term / ((1 + exp_term) ** 2)
+            # Chain rule: multiply by d(ratio)/d(turnover) = 1/portfolio_value
+            gradient = gradient / current_portfolio_value
         elif self.curve == "softplus":
-            # Gradient of softplus with adaptive scaling
-            gradient = torch.sigmoid(torch.tensor(self.smoothness * relative_excess)) * self.smoothness * scaling_factor
+            # Gradient of softplus penalty
+            sigmoid_val = torch.sigmoid(torch.tensor(self.curve_sharpness * (turnover_ratio - self.target_ratio)))
+            gradient = -penalty_weight * self.curve_sharpness * sigmoid_val.item()
+            # Chain rule: multiply by d(ratio)/d(turnover) = 1/portfolio_value
+            gradient = gradient / current_portfolio_value
         else:
-            gradient = torch.sigmoid(torch.tensor(self.smoothness * relative_excess)) * self.smoothness * scaling_factor
+            # Fallback to sigmoid
+            exp_term = np.exp(-self.curve_sharpness * (turnover_ratio - self.target_ratio))
+            gradient = -penalty_weight * self.curve_sharpness * exp_term / ((1 + exp_term) ** 2)
+            gradient = gradient / current_portfolio_value
         
-        # Scale by adaptive weight and normalization factor
-        current_portfolio_value = self._get_current_portfolio_value()
-        scaled_gradient = -self.adaptive_weight * gradient.item() / (current_portfolio_value * self.episode_length)
-        
-        return scaled_gradient
+        return gradient
     
 
     
@@ -217,21 +232,23 @@ class TurnoverPenaltyCalculator:
             Dict[str, np.ndarray]: Dictionary with turnover values and corresponding penalties
         """
         penalties = []
-        normalized_turnovers = []
+        turnover_ratios = []
+        current_portfolio_value = self._get_current_portfolio_value()
         
         for turnover in turnover_range:
             penalty = self.compute_penalty(turnover)
-            normalized = turnover / (self.portfolio_value * self.episode_length)
+            ratio = turnover / (current_portfolio_value + 1e-6)
             
             penalties.append(penalty)
-            normalized_turnovers.append(normalized)
+            turnover_ratios.append(ratio)
         
         return {
             'turnover_values': turnover_range,
-            'normalized_turnover': np.array(normalized_turnovers),
+            'turnover_ratios': np.array(turnover_ratios),
             'penalties': np.array(penalties),
-            'target_range': self.target_range,
-            'curve_type': self.curve
+            'target_ratio': self.target_ratio,
+            'curve_type': self.curve,
+            'portfolio_value': current_portfolio_value
         }
     
     def log_debug(self, total_turnover: float, step: Optional[int] = None) -> None:
@@ -243,32 +260,32 @@ class TurnoverPenaltyCalculator:
             step (Optional[int]): Current step number for context
         """
         current_portfolio_value = self._get_current_portfolio_value()
-        if self.episode_length == 0 or current_portfolio_value == 0:
+        if current_portfolio_value <= 0:
             self.logger.warning(
                 f"🎯 [TurnoverPenalty] INVALID STATE: "
-                f"episode_length={self.episode_length}, portfolio_value={current_portfolio_value}"
+                f"portfolio_value={current_portfolio_value}"
             )
             return
         
-        normalized_turnover = total_turnover / (current_portfolio_value * self.episode_length)
+        turnover_ratio = total_turnover / (current_portfolio_value + 1e-6)
         penalty = self.compute_penalty(total_turnover)
         gradient = self.compute_penalty_gradient(total_turnover)
+        penalty_weight = self.weight_factor * current_portfolio_value
         
         step_info = f"Step {step}, " if step is not None else ""
         
         # Raw input logging for debugging
-        print(f"[TurnoverPenalty] Raw: turnover={total_turnover:.2f}, portfolio={current_portfolio_value:.2f}, steps={self.episode_length}")
+        print(f"[TurnoverPenalty] Raw: turnover={total_turnover:.2f}, portfolio={current_portfolio_value:.2f}")
         
         # Enhanced debug logging with all calculation details
         self.logger.info(
             f"🎯 [TurnoverPenalty] {step_info}"
-            f"Normalized: {normalized_turnover:.5f} | "
-            f"Target: {self.target_range:.3f} | "
-            f"Penalty: {penalty:.2f} | "
+            f"Ratio: {turnover_ratio:.5f} | "
+            f"Target: {self.target_ratio:.3f} | "
+            f"Penalty: ${penalty:.2f} | "
+            f"Weight: ${penalty_weight:.2f} | "
             f"Total: ${total_turnover:.0f} | "
-            f"Portfolio: ${current_portfolio_value:.2f} | "
-            f"EpisodeLen: {self.episode_length} | "
-            f"Denominator: {current_portfolio_value * self.episode_length:.0f}"
+            f"Portfolio: ${current_portfolio_value:.2f}"
         )
     
     def get_statistics(self) -> Dict[str, Any]:
@@ -290,14 +307,15 @@ class TurnoverPenaltyCalculator:
         return {
             'num_calculations': len(self.penalty_history),
             'avg_penalty': np.mean(self.penalty_history),
-            'avg_normalized_turnover': np.mean(self.normalized_turnover_history),
+            'avg_turnover_ratio': np.mean(self.normalized_turnover_history),
             'penalty_std': np.std(self.penalty_history),
-            'turnover_std': np.std(self.normalized_turnover_history),
+            'turnover_ratio_std': np.std(self.normalized_turnover_history),
             'min_penalty': np.min(self.penalty_history),
             'max_penalty': np.max(self.penalty_history),
-            'target_range': self.target_range,
+            'target_ratio': self.target_ratio,
             'curve_type': self.curve,
-            'adaptive_weight': self.adaptive_weight
+            'weight_factor': self.weight_factor,
+            'current_portfolio_value': self._get_current_portfolio_value()
         }
     
     def reset_history(self) -> None:
@@ -308,12 +326,13 @@ class TurnoverPenaltyCalculator:
     
     def __repr__(self) -> str:
         """String representation of the calculator."""
+        current_portfolio_value = self._get_current_portfolio_value()
         return (
             f"TurnoverPenaltyCalculator("
-            f"target={self.target_range:.3f}, "
-            f"weight={self.adaptive_weight:.2f}, "
+            f"target_ratio={self.target_ratio:.3f}, "
+            f"weight_factor={self.weight_factor:.3f}, "
             f"curve={self.curve}, "
-            f"episode_length={self.episode_length})"
+            f"portfolio_value=${current_portfolio_value:.2f})"
         )
 
 
@@ -324,44 +343,41 @@ class TurnoverPenaltyFactory:
     """
     
     @staticmethod
-    def create_conservative(episode_length: int, portfolio_value: float, 
+    def create_conservative(portfolio_value: float, 
                           logger: Optional[logging.Logger] = None) -> TurnoverPenaltyCalculator:
         """Create a conservative penalty calculator (low turnover target)."""
         return TurnoverPenaltyCalculator(
-            episode_length=episode_length,
-            portfolio_value=portfolio_value,
-            target_range=0.01,  # 1% target
-            adaptive_weight_factor=0.002,  # Higher penalty
-            smoothness=15.0,  # Steeper curve
+            portfolio_value_getter=portfolio_value,
+            target_ratio=0.01,  # 1% target
+            weight_factor=0.03,  # 3% of NAV penalty weight
+            curve_sharpness=30.0,  # Steeper curve
             curve="sigmoid",
             logger=logger
         )
     
     @staticmethod
-    def create_moderate(episode_length: int, portfolio_value: float,
+    def create_moderate(portfolio_value: float,
                        logger: Optional[logging.Logger] = None) -> TurnoverPenaltyCalculator:
         """Create a moderate penalty calculator (balanced approach)."""
         return TurnoverPenaltyCalculator(
-            episode_length=episode_length,
-            portfolio_value=portfolio_value,
-            target_range=0.02,  # 2% target
-            adaptive_weight_factor=0.001,  # Standard penalty
-            smoothness=10.0,  # Moderate curve
-            curve="softplus",
+            portfolio_value_getter=portfolio_value,
+            target_ratio=0.02,  # 2% target
+            weight_factor=0.02,  # 2% of NAV penalty weight
+            curve_sharpness=25.0,  # Moderate curve
+            curve="sigmoid",
             logger=logger
         )
     
     @staticmethod
-    def create_aggressive(episode_length: int, portfolio_value: float,
+    def create_aggressive(portfolio_value: float,
                          logger: Optional[logging.Logger] = None) -> TurnoverPenaltyCalculator:
         """Create an aggressive penalty calculator (higher turnover allowed)."""
         return TurnoverPenaltyCalculator(
-            episode_length=episode_length,
-            portfolio_value=portfolio_value,
-            target_range=0.05,  # 5% target
-            adaptive_weight_factor=0.0005,  # Lower penalty
-            smoothness=5.0,  # Gentler curve
-            curve="softplus",
+            portfolio_value_getter=portfolio_value,
+            target_ratio=0.05,  # 5% target
+            weight_factor=0.01,  # 1% of NAV penalty weight
+            curve_sharpness=15.0,  # Gentler curve
+            curve="sigmoid",
             logger=logger
         )
 
@@ -374,7 +390,6 @@ if __name__ == "__main__":
     
     # Example: Create a moderate penalty calculator
     calculator = TurnoverPenaltyFactory.create_moderate(
-        episode_length=5000,
         portfolio_value=50000.0,
         logger=logger
     )
@@ -384,10 +399,13 @@ if __name__ == "__main__":
     
     print("\n🎯 Turnover Penalty Calculator Test")
     print("=" * 50)
+    print(f"Portfolio: $50,000, Target: 2%, Weight: 2% of NAV")
+    print("=" * 50)
     
     for turnover in test_turnovers:
         penalty = calculator.compute_penalty(turnover)
-        calculator.log_debug(turnover)
+        ratio = turnover / 50000.0
+        print(f"Turnover: ${turnover:>6.0f} | Ratio: {ratio:>6.1%} | Penalty: ${penalty:>8.2f}")
     
     # Show statistics
     stats = calculator.get_statistics()
@@ -398,5 +416,6 @@ if __name__ == "__main__":
     curve_data = calculator.get_penalty_curve_preview(turnover_range)
     
     print(f"\n📈 Penalty curve generated with {len(curve_data['penalties'])} points")
-    print(f"Target normalized turnover: {curve_data['target_range']:.3f}")
+    print(f"Target ratio: {curve_data['target_ratio']:.1%}")
     print(f"Curve type: {curve_data['curve_type']}")
+    print(f"Portfolio value: ${curve_data['portfolio_value']:,.2f}")

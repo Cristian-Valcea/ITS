@@ -89,11 +89,12 @@ class IntradayTradingEnv(gym.Env):
                  use_emergency_reward_fix: bool = False, # Use simplified reward function
                  emergency_holding_bonus: float = 0.1, # Bonus for not trading (scaled by portfolio value)
                  emergency_transaction_cost_pct: float = 0.0001, # Reduced transaction cost for training
-                 # New turnover-based reward system
-                 use_turnover_penalty: bool = False, # Use normalized turnover penalty system
-                 turnover_target_pct: float = 0.02, # Target normalized turnover (2%)
-                 turnover_penalty_weight: float = 0.001, # Penalty weight multiplier
-                 turnover_penalty_type: str = 'softplus' # 'softplus' or 'sigmoid'
+                 # Fixed turnover penalty system
+                 use_turnover_penalty: bool = False, # Use fixed turnover penalty system
+                 turnover_target_ratio: float = 0.02, # Target turnover ratio (dimensionless)
+                 turnover_weight_factor: float = 0.02, # Penalty weight: % of NAV
+                 turnover_curve_sharpness: float = 25.0, # Sigmoid curve sharpness
+                 turnover_penalty_type: str = 'sigmoid' # 'sigmoid' or 'softplus'
                  ):
         """
         Args:
@@ -165,10 +166,11 @@ class IntradayTradingEnv(gym.Env):
         self.emergency_holding_bonus = emergency_holding_bonus
         self.emergency_transaction_cost_pct = emergency_transaction_cost_pct
         
-        # New turnover-based reward system
+        # Fixed turnover penalty system
         self.use_turnover_penalty = use_turnover_penalty
-        self.turnover_target_pct = turnover_target_pct
-        self.turnover_penalty_weight = turnover_penalty_weight
+        self.turnover_target_ratio = turnover_target_ratio
+        self.turnover_weight_factor = turnover_weight_factor
+        self.turnover_curve_sharpness = turnover_curve_sharpness
         self.turnover_penalty_type = turnover_penalty_type
         
         # Initialize turnover tracking
@@ -181,7 +183,7 @@ class IntradayTradingEnv(gym.Env):
         
         # Log reward system status
         if self.use_turnover_penalty:
-            self.logger.info(f"🎯 TURNOVER PENALTY SYSTEM ENABLED - Target: {self.turnover_target_pct:.3f}, Weight: {self.turnover_penalty_weight:.6f}, Type: {self.turnover_penalty_type}")
+            self.logger.info(f"🎯 FIXED TURNOVER PENALTY SYSTEM ENABLED - Target: {self.turnover_target_ratio:.1%}, Weight: {self.turnover_weight_factor:.1%} NAV, Sharpness: {self.turnover_curve_sharpness}, Type: {self.turnover_penalty_type}")
         elif self.use_emergency_reward_fix:
             self.logger.info(f"🚨 EMERGENCY REWARD FIX ENABLED - Transaction cost: {self.emergency_transaction_cost_pct:.6f}, Holding bonus: {self.emergency_holding_bonus}")
         else:
@@ -381,36 +383,15 @@ class IntradayTradingEnv(gym.Env):
 
     def _initialize_turnover_penalty_calculator(self) -> None:
         """Initialize the turnover penalty calculator component."""
-        if self.episode_length_steps <= 0:
-            # Use a reasonable default if episode length not set yet
-            episode_length = getattr(self, 'max_episode_steps', 5000)
-        else:
-            episode_length = self.episode_length_steps
-        
-        # Create calculator based on penalty type preference
-        if self.turnover_penalty_type == 'conservative':
-            self.turnover_penalty_calculator = TurnoverPenaltyFactory.create_conservative(
-                episode_length=episode_length,
-                portfolio_value=self.portfolio_value,
-                logger=self.logger
-            )
-        elif self.turnover_penalty_type == 'aggressive':
-            self.turnover_penalty_calculator = TurnoverPenaltyFactory.create_aggressive(
-                episode_length=episode_length,
-                portfolio_value=self.portfolio_value,
-                logger=self.logger
-            )
-        else:
-            # Default: create with custom parameters
-            self.turnover_penalty_calculator = TurnoverPenaltyCalculator(
-                episode_length=episode_length,
-                portfolio_value_getter=lambda: self.portfolio_value,
-                target_range=self.turnover_target_pct,
-                adaptive_weight_factor=self.turnover_penalty_weight,
-                smoothness=10.0,
-                curve=self.turnover_penalty_type if self.turnover_penalty_type in ['sigmoid', 'softplus'] else 'softplus',
-                logger=self.logger
-            )
+        # Always use the new fixed system (no episode_length dependency)
+        self.turnover_penalty_calculator = TurnoverPenaltyCalculator(
+            portfolio_value_getter=lambda: self.portfolio_value,
+            target_ratio=getattr(self, 'turnover_target_ratio', 0.02),
+            weight_factor=getattr(self, 'turnover_weight_factor', 0.02),
+            curve_sharpness=getattr(self, 'turnover_curve_sharpness', 25.0),
+            curve=getattr(self, 'turnover_penalty_type', 'sigmoid'),
+            logger=self.logger
+        )
         
         self.logger.info(f"🎯 Turnover penalty calculator initialized: {self.turnover_penalty_calculator}")
 
@@ -622,6 +603,11 @@ class IntradayTradingEnv(gym.Env):
             # but should be explicitly cleared daily for cleaner accounting if desired.
             self.trades_this_hour.clear() 
             self.hourly_traded_value = 0.0
+            
+            # Reset daily turnover tracking for daily turnover penalty
+            self.total_traded_value = 0.0
+            self.daily_turnover_reset = True  # Flag for TensorBoard logging
+            self.logger.info(f"Daily turnover reset to 0.0 for new trading day: {current_date}")
 
     def reset(self, seed=None, options=None):
         # Log action histogram from previous episode (if any)
@@ -663,6 +649,7 @@ class IntradayTradingEnv(gym.Env):
         
         # Reset turnover tracking for new system
         self.total_traded_value = 0.0
+        self.daily_turnover_reset = False  # Initialize reset flag
         self.episode_length_steps = len(self.price_data) if hasattr(self, 'price_data') else 0
         
         # Reset turnover penalty calculator for new episode
@@ -969,13 +956,14 @@ class IntradayTradingEnv(gym.Env):
             # Store turnover reward breakdown for monitoring
             turnover_penalty = self._calculate_turnover_penalty()
             
-            # Get normalized turnover from the component (if available)
+            # Get normalized daily turnover from the component (if available)
             if self.turnover_penalty_calculator is not None:
                 current_portfolio_value = self.turnover_penalty_calculator._get_current_portfolio_value()
-                normalized_turnover = self.total_traded_value / (current_portfolio_value * self.turnover_penalty_calculator.episode_length)
+                # Daily turnover ratio: daily_turnover / portfolio_value (dimensionless ratio)
+                normalized_turnover = self.total_traded_value / (current_portfolio_value + 1e-6)
             else:
-                # Fallback to old calculation
-                normalized_turnover = self.total_traded_value / (self.portfolio_value * self.episode_length_steps) if self.episode_length_steps > 0 else 0.0
+                # Fallback calculation for daily turnover ratio
+                normalized_turnover = self.total_traded_value / (self.portfolio_value + 1e-6)
             
             self._last_reward_breakdown = {
                 'turnover_system': True,
@@ -986,7 +974,7 @@ class IntradayTradingEnv(gym.Env):
                 'core_pnl': realized_pnl_this_step - self.total_fees_this_step,
                 'turnover_penalty': turnover_penalty,
                 'normalized_turnover': normalized_turnover,
-                'target_turnover': self.turnover_target_pct
+                'target_turnover': self.turnover_target_ratio
             }
             
             self.logger.debug(

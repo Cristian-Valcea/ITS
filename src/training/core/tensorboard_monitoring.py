@@ -193,27 +193,44 @@ class TensorBoardMonitoringCallback(BaseCallback):
             if hasattr(base_env, 'turnover_penalty_calculator') and base_env.turnover_penalty_calculator:
                 calc = base_env.turnover_penalty_calculator
                 
-                # Get current turnover data
-                current_turnover = getattr(base_env, 'total_turnover', 0.0)
-                if current_turnover > 0:
-                    # Calculate normalized turnover
-                    portfolio_value = calc._get_current_portfolio_value()
-                    episode_length = calc.episode_length
-                    normalized_turnover = current_turnover / (portfolio_value * episode_length)
+                # Get current daily turnover data
+                current_turnover = getattr(base_env, 'total_traded_value', 0.0)
+                
+                # Always log turnover metrics (including zero turnover periods)
+                portfolio_value = calc._get_current_portfolio_value()
+                normalized_turnover = current_turnover / (portfolio_value + 1e-6)
+                target_ratio = calc.target_ratio
+                excess_ratio = normalized_turnover - target_ratio
+                
+                # Calculate penalty (even for zero turnover)
+                turnover_penalty = calc.compute_penalty(current_turnover)
+                
+                # Store metrics
+                self.turnover_penalty_buffer.append(turnover_penalty)
+                self.turnover_normalized_buffer.append(normalized_turnover)
+                self.turnover_absolute_buffer.append(current_turnover)
+                self.turnover_target_buffer.append(target_ratio)
+                self.turnover_excess_buffer.append(excess_ratio)
+                
+                # Log per-step turnover metrics to TensorBoard immediately
+                if self.tb_writer:
+                    self.tb_writer.add_scalar('turnover/ratio', normalized_turnover, self.step_count)
+                    self.tb_writer.add_scalar('turnover/penalty', turnover_penalty, self.step_count)
+                    self.tb_writer.add_scalar('turnover/absolute_value', current_turnover, self.step_count)
+                    self.tb_writer.add_scalar('turnover/excess_over_target', excess_ratio, self.step_count)
                     
-                    # Calculate penalty
-                    turnover_penalty = calc.compute_penalty(current_turnover)
+                    # Log penalty as percentage of NAV for better interpretation
+                    penalty_pct_nav = abs(turnover_penalty) / (portfolio_value + 1e-6)
+                    self.tb_writer.add_scalar('turnover/penalty_pct_nav', penalty_pct_nav, self.step_count)
                     
-                    # Calculate excess over target
-                    target_ratio = calc.target_range
-                    excess_ratio = normalized_turnover - target_ratio
+                    # Log daily turnover reset events
+                    daily_reset = getattr(base_env, 'daily_turnover_reset', False)
+                    self.tb_writer.add_scalar('turnover/daily_reset_event', float(daily_reset), self.step_count)
                     
-                    # Store metrics
-                    self.turnover_penalty_buffer.append(turnover_penalty)
-                    self.turnover_normalized_buffer.append(normalized_turnover)
-                    self.turnover_absolute_buffer.append(current_turnover)
-                    self.turnover_target_buffer.append(target_ratio)
-                    self.turnover_excess_buffer.append(excess_ratio)
+                    # Reset the flag after logging
+                    if hasattr(base_env, 'daily_turnover_reset'):
+                        base_env.daily_turnover_reset = False
+
             
             # Extract portfolio performance metrics
             if hasattr(base_env, 'portfolio_value'):

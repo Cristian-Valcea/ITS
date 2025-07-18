@@ -36,19 +36,20 @@ environment:
   trade_cooldown_steps: 0
   max_episode_steps: 20000
   
-  # 🎯 NEW TURNOVER PENALTY SYSTEM - ENABLED
+  # 🎯 FIXED TURNOVER PENALTY SYSTEM - ENABLED
   use_turnover_penalty: true
-  turnover_target_pct: 0.02          # Target 2% normalized turnover
-  turnover_penalty_weight: 0.001     # Penalty weight (portfolio_value * 0.001)
-  turnover_penalty_type: softplus    # Use smooth softplus penalty
+  turnover_target_ratio: 0.02        # Target 2% turnover ratio (dimensionless)
+  turnover_weight_factor: 0.15       # Penalty weight: 15% of NAV (strong deterrent)
+  turnover_curve_sharpness: 25.0     # Sigmoid curve sharpness (k=25)
+  turnover_penalty_type: quadratic   # Use quadratic penalty for aggressive overtrading control
   
   # 🚨 DISABLE EMERGENCY FIX - Use new system instead
   use_emergency_reward_fix: false
-  emergency_transaction_cost_pct: 0.001  # Standard transaction costs
+  emergency_transaction_cost_pct: 0.0003  # Realistic exchange + slippage costs
   emergency_holding_bonus: 0.0           # No holding bonus needed
   
-  # Standard transaction costs (not reduced)
-  transaction_cost_pct: 0.001  # Standard 0.1% transaction cost
+  # Realistic exchange fees + slippage
+  transaction_cost_pct: 0.0003  # 0.03% (3 basis points) - realistic exchange + slippage
   
   # Disable old turnover controls
   action_change_penalty_factor: 0.0
@@ -229,18 +230,20 @@ training:
   gpu_memory_fraction: 0.6
   mixed_precision: false
 
-# 🎯 TURNOVER PENALTY SYSTEM VALIDATION CRITERIA
+# 🎯 FIXED TURNOVER PENALTY SYSTEM VALIDATION CRITERIA
 turnover_penalty_validation:
   target_metrics:
-    normalized_turnover: 0.025      # Target: 2.5% normalized turnover
+    turnover_ratio: 0.025           # Target: 2.5% turnover ratio (dimensionless)
     min_sharpe_ratio: 0.5           # Should be > 0.5
     max_drawdown_pct: 0.08          # Should be < 8%
     min_win_rate: 0.50              # Should be > 50%
     min_total_return: 0.02          # Should be > 2%
+    penalty_range: [-1000, -200]    # Expected penalty range for $50k portfolio
   
   success_criteria:
-    - "Normalized turnover stays near 2% target"
-    - "Smooth penalty function prevents extreme behaviors"
+    - "Turnover ratio stays near 2% target (dimensionless, ≤1 for 1× capital)"
+    - "Penalty scales with NAV (2% of portfolio value)"
+    - "Smooth sigmoid curve prevents cliff effects"
     - "Model trades selectively for profit"
     - "Sharpe ratio improves significantly"
-    - "No cliff effects or binary behaviors"
+    - "No episode length dependency"

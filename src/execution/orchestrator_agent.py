@@ -215,11 +215,12 @@ class OrchestratorAgent:
                 'use_emergency_reward_fix': env_cfg.get('use_emergency_reward_fix', False),
                 'emergency_transaction_cost_pct': env_cfg.get('emergency_transaction_cost_pct', 0.0001),
                 'emergency_holding_bonus': env_cfg.get('emergency_holding_bonus', 0.1),
-                # 🎯 NEW TURNOVER PENALTY SYSTEM PARAMETERS
+                # 🎯 FIXED TURNOVER PENALTY SYSTEM PARAMETERS
                 'use_turnover_penalty': env_cfg.get('use_turnover_penalty', False),
-                'turnover_target_pct': env_cfg.get('turnover_target_pct', 0.02),
-                'turnover_penalty_weight': env_cfg.get('turnover_penalty_weight', 0.001),
-                'turnover_penalty_type': env_cfg.get('turnover_penalty_type', 'softplus'),
+                'turnover_target_ratio': env_cfg.get('turnover_target_ratio', 0.02),
+                'turnover_weight_factor': env_cfg.get('turnover_weight_factor', 0.02),
+                'turnover_curve_sharpness': env_cfg.get('turnover_curve_sharpness', 25.0),
+                'turnover_penalty_type': env_cfg.get('turnover_penalty_type', 'sigmoid'),
                 # Enhanced Kyle Lambda fill simulation
                 'enable_kyle_lambda_fills': env_cfg.get('kyle_lambda_fills', {}).get('enable_kyle_lambda_fills', True),
                 'fill_simulator_config': env_cfg.get('kyle_lambda_fills', {}).get('fill_simulator_config', {})
