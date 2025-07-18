@@ -74,11 +74,15 @@ class BacktestRunner:
             self.logger.info(f"Model observation space: {model.observation_space}")
             self.logger.info(f"Environment observation space: {evaluation_env.observation_space}")
             
-            # Fix observation shape mismatch - flatten if needed
-            if len(obs.shape) > 1 and model.observation_space.shape != obs.shape:
-                expected_shape = model.observation_space.shape
-                if len(expected_shape) == 1 and np.prod(obs.shape) == expected_shape[0]:
-                    self.logger.info(f"Flattening observation from {obs.shape} to {expected_shape}")
+            # Fix observation shape mismatch - handle LSTM vs non-LSTM models
+            expected_shape = model.observation_space.shape
+            if len(obs.shape) > 1 and expected_shape != obs.shape:
+                # For LSTM models (RecurrentPPO), preserve sequence structure
+                if len(expected_shape) > 1:
+                    self.logger.info(f"Preserving sequence structure for LSTM model: {obs.shape} -> {expected_shape}")
+                    # Don't flatten - LSTM models need sequence structure
+                elif len(expected_shape) == 1 and np.prod(obs.shape) == expected_shape[0]:
+                    self.logger.info(f"Flattening observation for non-LSTM model: {obs.shape} -> {expected_shape}")
                     obs = obs.flatten()
             
             # Log initial state
@@ -87,27 +91,51 @@ class BacktestRunner:
 
             # Run backtest loop
             while not (terminated or truncated):
-                # Ensure observation shape matches model expectation
-                if len(obs.shape) > 1:
-                    # Always flatten multi-dimensional observations
-                    obs = obs.flatten()
+                # Handle observation shape for different model types
+                expected_shape = model.observation_space.shape
                 
-                # Handle observation size mismatch (e.g., old models vs new risk features)
-                expected_size = model.observation_space.shape[0]
-                actual_size = obs.shape[0]
-                
-                if actual_size != expected_size:
-                    if actual_size > expected_size:
-                        # Truncate extra features (e.g., risk features not in old model)
-                        obs = obs[:expected_size]
+                if len(expected_shape) > 1:
+                    # LSTM model - preserve sequence structure
+                    if obs.shape != expected_shape:
                         if total_steps == 1:  # Log only once
-                            self.logger.warning(f"Truncating observation from {actual_size} to {expected_size} features for model compatibility")
-                    else:
-                        # Pad with zeros if observation is too small
-                        padding = np.zeros(expected_size - actual_size, dtype=obs.dtype)
-                        obs = np.concatenate([obs, padding])
-                        if total_steps == 1:  # Log only once
-                            self.logger.warning(f"Padding observation from {actual_size} to {expected_size} features for model compatibility")
+                            self.logger.info(f"LSTM model expects {expected_shape}, got {obs.shape}")
+                        
+                        # Handle sequence dimension mismatch
+                        if len(obs.shape) == 2 and len(expected_shape) == 2:
+                            seq_len, features = obs.shape
+                            exp_seq_len, exp_features = expected_shape
+                            
+                            if features != exp_features:
+                                if features > exp_features:
+                                    # Truncate extra features
+                                    obs = obs[:, :exp_features]
+                                    if total_steps == 1:
+                                        self.logger.warning(f"Truncating features from {features} to {exp_features}")
+                                else:
+                                    # Pad with zeros
+                                    padding = np.zeros((seq_len, exp_features - features), dtype=obs.dtype)
+                                    obs = np.concatenate([obs, padding], axis=1)
+                                    if total_steps == 1:
+                                        self.logger.warning(f"Padding features from {features} to {exp_features}")
+                else:
+                    # Non-LSTM model - flatten if needed
+                    if len(obs.shape) > 1:
+                        obs = obs.flatten()
+                    
+                    # Handle observation size mismatch
+                    expected_size = expected_shape[0]
+                    actual_size = obs.shape[0]
+                    
+                    if actual_size != expected_size:
+                        if actual_size > expected_size:
+                            obs = obs[:expected_size]
+                            if total_steps == 1:
+                                self.logger.warning(f"Truncating observation from {actual_size} to {expected_size}")
+                        else:
+                            padding = np.zeros(expected_size - actual_size, dtype=obs.dtype)
+                            obs = np.concatenate([obs, padding])
+                            if total_steps == 1:
+                                self.logger.warning(f"Padding observation from {actual_size} to {expected_size}")
                 
                 # Get action from model
                 action, _states = model.predict(obs, deterministic=deterministic)

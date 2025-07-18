@@ -863,6 +863,8 @@ class TrainerAgent(BaseAgent):
             callbacks.extend(monitoring_callbacks)
             self.logger.info(f"Added {len(monitoring_callbacks)} monitoring callbacks")
             self.logger.info("TensorBoard custom scalars: vol_penalty, drawdown_pct, Q_variance, lambda")
+            self.logger.info("Enhanced TensorBoard: turnover_penalty, normalized_turnover, win_rate, sharpe_ratio")
+            self.logger.info("Performance metrics: portfolio_value, max_drawdown, risk_metrics")
             self.logger.info("Replay buffer audit: every 50k steps, sample 1k transitions")
             
         except ImportError as e:

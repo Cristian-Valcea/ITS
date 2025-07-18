@@ -9,12 +9,15 @@ import json
 import os
 import time
 import hashlib
+import torch
+import torch.nn.functional as F
 from typing import Optional, Dict, Any, Tuple, List
 
 try:
     from .kyle_lambda_fill_simulator import KyleLambdaFillSimulator, FillPriceSimulatorFactory
     from ..risk.advanced_reward_shaping import AdvancedRewardShaper
     from .enhanced_reward_system import EnhancedRewardCalculator
+    from .components.turnover_penalty import TurnoverPenaltyCalculator, TurnoverPenaltyFactory
 except ImportError:
     # Fallback for direct execution
     import sys
@@ -22,6 +25,7 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).parent))
     from kyle_lambda_fill_simulator import KyleLambdaFillSimulator, FillPriceSimulatorFactory
     from enhanced_reward_system import EnhancedRewardCalculator
+    from components.turnover_penalty import TurnoverPenaltyCalculator, TurnoverPenaltyFactory
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from risk.advanced_reward_shaping import AdvancedRewardShaper
 
@@ -84,7 +88,12 @@ class IntradayTradingEnv(gym.Env):
                  # Emergency fix parameters
                  use_emergency_reward_fix: bool = False, # Use simplified reward function
                  emergency_holding_bonus: float = 0.1, # Bonus for not trading (scaled by portfolio value)
-                 emergency_transaction_cost_pct: float = 0.0001 # Reduced transaction cost for training
+                 emergency_transaction_cost_pct: float = 0.0001, # Reduced transaction cost for training
+                 # New turnover-based reward system
+                 use_turnover_penalty: bool = False, # Use normalized turnover penalty system
+                 turnover_target_pct: float = 0.02, # Target normalized turnover (2%)
+                 turnover_penalty_weight: float = 0.001, # Penalty weight multiplier
+                 turnover_penalty_type: str = 'softplus' # 'softplus' or 'sigmoid'
                  ):
         """
         Args:
@@ -156,11 +165,27 @@ class IntradayTradingEnv(gym.Env):
         self.emergency_holding_bonus = emergency_holding_bonus
         self.emergency_transaction_cost_pct = emergency_transaction_cost_pct
         
-        # Log emergency fix status
-        if self.use_emergency_reward_fix:
+        # New turnover-based reward system
+        self.use_turnover_penalty = use_turnover_penalty
+        self.turnover_target_pct = turnover_target_pct
+        self.turnover_penalty_weight = turnover_penalty_weight
+        self.turnover_penalty_type = turnover_penalty_type
+        
+        # Initialize turnover tracking
+        self.total_traded_value = 0.0
+        self.episode_start_time = None
+        self.episode_length_steps = 0
+        
+        # Initialize turnover penalty calculator (will be created in reset())
+        self.turnover_penalty_calculator = None
+        
+        # Log reward system status
+        if self.use_turnover_penalty:
+            self.logger.info(f"🎯 TURNOVER PENALTY SYSTEM ENABLED - Target: {self.turnover_target_pct:.3f}, Weight: {self.turnover_penalty_weight:.6f}, Type: {self.turnover_penalty_type}")
+        elif self.use_emergency_reward_fix:
             self.logger.info(f"🚨 EMERGENCY REWARD FIX ENABLED - Transaction cost: {self.emergency_transaction_cost_pct:.6f}, Holding bonus: {self.emergency_holding_bonus}")
         else:
-            self.logger.info("Emergency reward fix disabled - using standard reward system")
+            self.logger.info("Using standard reward system")
         
         # Kyle Lambda fill simulation setup
         self.enable_kyle_lambda_fills = enable_kyle_lambda_fills
@@ -354,6 +379,119 @@ class IntradayTradingEnv(gym.Env):
         
         return scaled_reward
 
+    def _initialize_turnover_penalty_calculator(self) -> None:
+        """Initialize the turnover penalty calculator component."""
+        if self.episode_length_steps <= 0:
+            # Use a reasonable default if episode length not set yet
+            episode_length = getattr(self, 'max_episode_steps', 5000)
+        else:
+            episode_length = self.episode_length_steps
+        
+        # Create calculator based on penalty type preference
+        if self.turnover_penalty_type == 'conservative':
+            self.turnover_penalty_calculator = TurnoverPenaltyFactory.create_conservative(
+                episode_length=episode_length,
+                portfolio_value=self.portfolio_value,
+                logger=self.logger
+            )
+        elif self.turnover_penalty_type == 'aggressive':
+            self.turnover_penalty_calculator = TurnoverPenaltyFactory.create_aggressive(
+                episode_length=episode_length,
+                portfolio_value=self.portfolio_value,
+                logger=self.logger
+            )
+        else:
+            # Default: create with custom parameters
+            self.turnover_penalty_calculator = TurnoverPenaltyCalculator(
+                episode_length=episode_length,
+                portfolio_value_getter=lambda: self.portfolio_value,
+                target_range=self.turnover_target_pct,
+                adaptive_weight_factor=self.turnover_penalty_weight,
+                smoothness=10.0,
+                curve=self.turnover_penalty_type if self.turnover_penalty_type in ['sigmoid', 'softplus'] else 'softplus',
+                logger=self.logger
+            )
+        
+        self.logger.info(f"🎯 Turnover penalty calculator initialized: {self.turnover_penalty_calculator}")
+
+    def _calculate_turnover_penalty(self) -> float:
+        """
+        🎯 NEW TURNOVER PENALTY SYSTEM: Uses modular TurnoverPenaltyCalculator component
+        
+        This system addresses overtrading by:
+        1. Using a dedicated, well-tested component for penalty calculation
+        2. Providing clean separation of concerns
+        3. Supporting multiple penalty curve types and configurations
+        4. Enabling easy testing and validation
+        
+        Returns:
+            float: Turnover penalty (negative value)
+        """
+        if not self.use_turnover_penalty:
+            self.logger.debug("🎯 Turnover penalty DISABLED - returning 0.0")
+            return 0.0
+        
+        self.logger.debug(f"🎯 _calculate_turnover_penalty CALLED - Step {self.current_step}")
+        
+        # Initialize calculator if not already done
+        if self.turnover_penalty_calculator is None:
+            self.logger.info("🎯 Initializing turnover penalty calculator...")
+            self._initialize_turnover_penalty_calculator()
+        
+        # Portfolio value is now dynamically retrieved - no manual update needed
+        
+        # Calculate penalty using the component
+        penalty = self.turnover_penalty_calculator.compute_penalty(self.total_traded_value)
+        
+        # Log turnover metrics (every 50 steps to see more data)
+        if self.current_step % 50 == 0 or self.total_traded_value > 1000:
+            self.logger.info(f"🎯 COMPONENT LOGGING - Step {self.current_step}, Total Traded: ${self.total_traded_value:.0f}")
+            self.turnover_penalty_calculator.log_debug(self.total_traded_value, step=self.current_step)
+        
+        self.logger.debug(f"🎯 _calculate_turnover_penalty RETURNING: {penalty:.4f}")
+        return penalty
+
+    def _calculate_turnover_reward(self, realized_pnl: float, transaction_cost: float, 
+                                 position_changed: bool) -> float:
+        """
+        🎯 TURNOVER-BASED REWARD SYSTEM: Combines P&L with normalized turnover penalty
+        
+        This replaces the emergency fix with a more sophisticated approach:
+        1. Core P&L reward (after transaction costs)
+        2. Smooth turnover penalty based on normalized trading frequency
+        3. Proper scaling and logging
+        
+        Args:
+            realized_pnl (float): Realized P&L from position changes
+            transaction_cost (float): Transaction cost for this step
+            position_changed (bool): Whether position changed this step
+            
+        Returns:
+            float: Total reward including turnover penalty
+        """
+        # Core reward: P&L after transaction costs
+        core_reward = realized_pnl - transaction_cost
+        
+        # Turnover penalty: smooth, normalized penalty
+        turnover_penalty = self._calculate_turnover_penalty()
+        
+        # Total reward
+        total_reward = core_reward + turnover_penalty
+        
+        # Scale to reasonable magnitude (convert to cents)
+        scaled_reward = total_reward * 100
+        
+        # Enhanced logging for turnover system
+        if self.current_step % 50 == 0:  # Log every 50 steps
+            self.logger.debug(
+                f"🎯 TURNOVER REWARD: Step {self.current_step}, "
+                f"P&L: ${realized_pnl:.4f}, Cost: ${transaction_cost:.4f}, "
+                f"Core: ${core_reward:.4f}, Turnover Penalty: ${turnover_penalty:.4f}, "
+                f"Total: ${total_reward:.4f}, Scaled: {scaled_reward:.4f}"
+            )
+        
+        return scaled_reward
+
     def _get_current_price(self) -> float:
         """Get current mid-market price with boundary protection."""
         # Add boundary protection to prevent index out of bounds
@@ -522,6 +660,17 @@ class IntradayTradingEnv(gym.Env):
         self.episode_total_trades = 0
         self.episode_realized_pnl = 0.0
         self.episode_start_time = self.dates[0] if len(self.dates) > 0 else None
+        
+        # Reset turnover tracking for new system
+        self.total_traded_value = 0.0
+        self.episode_length_steps = len(self.price_data) if hasattr(self, 'price_data') else 0
+        
+        # Reset turnover penalty calculator for new episode
+        if self.use_turnover_penalty:
+            if self.turnover_penalty_calculator is not None:
+                self.turnover_penalty_calculator.reset_history()
+            # Reinitialize with correct episode length
+            self._initialize_turnover_penalty_calculator()
         
         self.hourly_traded_value = 0.0
         self.trades_this_hour = []
@@ -809,8 +958,45 @@ class IntradayTradingEnv(gym.Env):
         gross_pnl_change = (self.portfolio_value - portfolio_value_before_action)
         self.net_pnl_this_step = gross_pnl_change  # Net P&L already includes fees (they reduce portfolio value)
         
-        # 🚨 EMERGENCY REWARD FIX: Use simplified reward function if enabled
-        if self.use_emergency_reward_fix:
+        # 🎯 NEW TURNOVER PENALTY SYSTEM: Use normalized turnover penalty if enabled
+        if self.use_turnover_penalty:
+            reward = self._calculate_turnover_reward(
+                realized_pnl=realized_pnl_this_step,
+                transaction_cost=self.total_fees_this_step,
+                position_changed=transaction_executed
+            )
+            
+            # Store turnover reward breakdown for monitoring
+            turnover_penalty = self._calculate_turnover_penalty()
+            
+            # Get normalized turnover from the component (if available)
+            if self.turnover_penalty_calculator is not None:
+                current_portfolio_value = self.turnover_penalty_calculator._get_current_portfolio_value()
+                normalized_turnover = self.total_traded_value / (current_portfolio_value * self.turnover_penalty_calculator.episode_length)
+            else:
+                # Fallback to old calculation
+                normalized_turnover = self.total_traded_value / (self.portfolio_value * self.episode_length_steps) if self.episode_length_steps > 0 else 0.0
+            
+            self._last_reward_breakdown = {
+                'turnover_system': True,
+                'realized_pnl': realized_pnl_this_step,
+                'transaction_cost': self.total_fees_this_step,
+                'position_changed': transaction_executed,
+                'total_reward': reward,
+                'core_pnl': realized_pnl_this_step - self.total_fees_this_step,
+                'turnover_penalty': turnover_penalty,
+                'normalized_turnover': normalized_turnover,
+                'target_turnover': self.turnover_target_pct
+            }
+            
+            self.logger.debug(
+                f"🎯 TURNOVER REWARD ACTIVE: Step {self.current_step}, "
+                f"P&L: ${realized_pnl_this_step:.4f}, Cost: ${self.total_fees_this_step:.4f}, "
+                f"Turnover: {normalized_turnover:.4f}, Reward: {reward:.4f}"
+            )
+        
+        # 🚨 EMERGENCY REWARD FIX: Use simplified reward function if enabled (fallback)
+        elif self.use_emergency_reward_fix:
             reward = self._calculate_emergency_reward(
                 realized_pnl=realized_pnl_this_step,
                 transaction_cost=self.total_fees_this_step,
@@ -955,6 +1141,9 @@ class IntradayTradingEnv(gym.Env):
             self.episode_total_trades += 1
             self.episode_total_turnover += trade_value_executed
             self.episode_realized_pnl += realized_pnl_this_step
+            
+            # Track turnover for new penalty system
+            self.total_traded_value += trade_value_executed
             
             # 🔍 DIAGNOSTIC: Trade executed
             self.logger.log(self.TRADE_LOG_LEVEL, f"🔍 TRADE EXECUTED: Step {self.current_step}, Action {action} -> Position {desired_position_signal}, Shares: {shares_traded_this_step:.2f}, Value: ${trade_value_executed:.2f}")

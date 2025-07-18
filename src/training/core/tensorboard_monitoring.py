@@ -70,6 +70,20 @@ class TensorBoardMonitoringCallback(BaseCallback):
         self.lambda_buffer = deque(maxlen=1000)
         self.reward_buffer = deque(maxlen=1000)
         
+        # Turnover penalty tracking buffers
+        self.turnover_penalty_buffer = deque(maxlen=1000)
+        self.turnover_normalized_buffer = deque(maxlen=1000)
+        self.turnover_absolute_buffer = deque(maxlen=1000)
+        self.turnover_target_buffer = deque(maxlen=1000)
+        self.turnover_excess_buffer = deque(maxlen=1000)
+        
+        # Performance metrics buffers
+        self.total_reward_buffer = deque(maxlen=1000)
+        self.win_rate_buffer = deque(maxlen=100)  # Track wins over episodes
+        self.sharpe_ratio_buffer = deque(maxlen=100)
+        self.max_drawdown_buffer = deque(maxlen=100)
+        self.portfolio_value_buffer = deque(maxlen=1000)
+        
         # TensorBoard writer
         self.tb_writer = None
         
@@ -175,8 +189,75 @@ class TensorBoardMonitoringCallback(BaseCallback):
             last_reward = getattr(base_env, 'last_reward', 0.0)
             self.reward_buffer.append(abs(last_reward))
             
+            # Extract turnover penalty metrics
+            if hasattr(base_env, 'turnover_penalty_calculator') and base_env.turnover_penalty_calculator:
+                calc = base_env.turnover_penalty_calculator
+                
+                # Get current turnover data
+                current_turnover = getattr(base_env, 'total_turnover', 0.0)
+                if current_turnover > 0:
+                    # Calculate normalized turnover
+                    portfolio_value = calc._get_current_portfolio_value()
+                    episode_length = calc.episode_length
+                    normalized_turnover = current_turnover / (portfolio_value * episode_length)
+                    
+                    # Calculate penalty
+                    turnover_penalty = calc.compute_penalty(current_turnover)
+                    
+                    # Calculate excess over target
+                    target_ratio = calc.target_range
+                    excess_ratio = normalized_turnover - target_ratio
+                    
+                    # Store metrics
+                    self.turnover_penalty_buffer.append(turnover_penalty)
+                    self.turnover_normalized_buffer.append(normalized_turnover)
+                    self.turnover_absolute_buffer.append(current_turnover)
+                    self.turnover_target_buffer.append(target_ratio)
+                    self.turnover_excess_buffer.append(excess_ratio)
+            
+            # Extract portfolio performance metrics
+            if hasattr(base_env, 'portfolio_value'):
+                portfolio_value = base_env.portfolio_value
+                self.portfolio_value_buffer.append(portfolio_value)
+                
+                # Calculate total reward for episode tracking
+                if hasattr(base_env, 'episode_reward'):
+                    episode_reward = getattr(base_env, 'episode_reward', 0.0)
+                    self.total_reward_buffer.append(episode_reward)
+            
+            # Extract performance metrics at episode end
+            if hasattr(base_env, 'done') and getattr(base_env, 'done', False):
+                self._extract_episode_metrics(base_env)
+            
         except Exception as e:
             self._logger.debug(f"Error extracting environment metrics: {e}")
+    
+    def _extract_episode_metrics(self, base_env) -> None:
+        """Extract episode-level performance metrics."""
+        try:
+            # Calculate win rate (positive episode return)
+            if hasattr(base_env, 'episode_reward'):
+                episode_reward = getattr(base_env, 'episode_reward', 0.0)
+                is_win = 1.0 if episode_reward > 0 else 0.0
+                self.win_rate_buffer.append(is_win)
+            
+            # Calculate Sharpe ratio (if we have enough data)
+            if len(self.total_reward_buffer) >= 30:  # Need at least 30 episodes
+                returns = np.array(list(self.total_reward_buffer)[-30:])
+                if np.std(returns) > 0:
+                    sharpe_ratio = np.mean(returns) / np.std(returns) * np.sqrt(252)  # Annualized
+                    self.sharpe_ratio_buffer.append(sharpe_ratio)
+            
+            # Calculate max drawdown
+            if len(self.portfolio_value_buffer) >= 10:
+                portfolio_values = np.array(list(self.portfolio_value_buffer)[-100:])  # Last 100 values
+                peak = np.maximum.accumulate(portfolio_values)
+                drawdown = (peak - portfolio_values) / peak
+                max_drawdown = np.max(drawdown) * 100  # Convert to percentage
+                self.max_drawdown_buffer.append(max_drawdown)
+                
+        except Exception as e:
+            self._logger.debug(f"Error extracting episode metrics: {e}")
 
     def _log_custom_scalars(self) -> None:
         """Log custom scalars to TensorBoard."""
@@ -217,9 +298,68 @@ class TensorBoardMonitoringCallback(BaseCallback):
                 self.tb_writer.add_scalar('monitoring/reward_magnitude_mean', reward_mean, self.step_count)
                 self.tb_writer.add_scalar('monitoring/reward_magnitude_std', reward_std, self.step_count)
             
+            # Log turnover penalty metrics
+            if self.turnover_penalty_buffer:
+                turnover_penalty_mean = np.mean(list(self.turnover_penalty_buffer))
+                turnover_penalty_current = list(self.turnover_penalty_buffer)[-1]
+                self.tb_writer.add_scalar('turnover/penalty_mean', turnover_penalty_mean, self.step_count)
+                self.tb_writer.add_scalar('turnover/penalty_current', turnover_penalty_current, self.step_count)
+            
+            if self.turnover_normalized_buffer:
+                normalized_mean = np.mean(list(self.turnover_normalized_buffer))
+                normalized_current = list(self.turnover_normalized_buffer)[-1]
+                self.tb_writer.add_scalar('turnover/normalized_mean', normalized_mean, self.step_count)
+                self.tb_writer.add_scalar('turnover/normalized_current', normalized_current, self.step_count)
+            
+            if self.turnover_absolute_buffer:
+                absolute_mean = np.mean(list(self.turnover_absolute_buffer))
+                absolute_current = list(self.turnover_absolute_buffer)[-1]
+                self.tb_writer.add_scalar('turnover/absolute_mean', absolute_mean, self.step_count)
+                self.tb_writer.add_scalar('turnover/absolute_current', absolute_current, self.step_count)
+            
+            if self.turnover_target_buffer:
+                target_current = list(self.turnover_target_buffer)[-1]
+                self.tb_writer.add_scalar('turnover/target', target_current, self.step_count)
+            
+            if self.turnover_excess_buffer:
+                excess_mean = np.mean(list(self.turnover_excess_buffer))
+                excess_current = list(self.turnover_excess_buffer)[-1]
+                self.tb_writer.add_scalar('turnover/excess_mean', excess_mean, self.step_count)
+                self.tb_writer.add_scalar('turnover/excess_current', excess_current, self.step_count)
+            
+            # Log performance metrics
+            if self.total_reward_buffer:
+                total_reward_mean = np.mean(list(self.total_reward_buffer))
+                total_reward_current = list(self.total_reward_buffer)[-1] if self.total_reward_buffer else 0.0
+                self.tb_writer.add_scalar('performance/total_reward_mean', total_reward_mean, self.step_count)
+                self.tb_writer.add_scalar('performance/total_reward_current', total_reward_current, self.step_count)
+            
+            if self.win_rate_buffer:
+                win_rate = np.mean(list(self.win_rate_buffer)) * 100  # Convert to percentage
+                self.tb_writer.add_scalar('performance/win_rate', win_rate, self.step_count)
+            
+            if self.sharpe_ratio_buffer:
+                sharpe_current = list(self.sharpe_ratio_buffer)[-1]
+                sharpe_mean = np.mean(list(self.sharpe_ratio_buffer))
+                self.tb_writer.add_scalar('performance/sharpe_ratio_current', sharpe_current, self.step_count)
+                self.tb_writer.add_scalar('performance/sharpe_ratio_mean', sharpe_mean, self.step_count)
+            
+            if self.max_drawdown_buffer:
+                max_dd_current = list(self.max_drawdown_buffer)[-1]
+                max_dd_worst = np.max(list(self.max_drawdown_buffer))
+                self.tb_writer.add_scalar('performance/max_drawdown_current', max_dd_current, self.step_count)
+                self.tb_writer.add_scalar('performance/max_drawdown_worst', max_dd_worst, self.step_count)
+            
+            if self.portfolio_value_buffer:
+                portfolio_current = list(self.portfolio_value_buffer)[-1]
+                portfolio_mean = np.mean(list(self.portfolio_value_buffer))
+                self.tb_writer.add_scalar('performance/portfolio_value_current', portfolio_current, self.step_count)
+                self.tb_writer.add_scalar('performance/portfolio_value_mean', portfolio_mean, self.step_count)
+            
             # Log buffer statistics
             self.tb_writer.add_scalar('monitoring/vol_penalty_buffer_size', len(self.vol_penalty_buffer), self.step_count)
             self.tb_writer.add_scalar('monitoring/drawdown_buffer_size', len(self.drawdown_buffer), self.step_count)
+            self.tb_writer.add_scalar('monitoring/turnover_penalty_buffer_size', len(self.turnover_penalty_buffer), self.step_count)
             
             # Flush writer
             self.tb_writer.flush()
@@ -267,6 +407,50 @@ class TensorBoardMonitoringCallback(BaseCallback):
                 'mean': np.mean(list(self.reward_buffer)),
                 'std': np.std(list(self.reward_buffer)),
                 'max': np.max(list(self.reward_buffer))
+            }
+        
+        # Turnover penalty statistics
+        if self.turnover_penalty_buffer:
+            stats['turnover_penalty'] = {
+                'mean': np.mean(list(self.turnover_penalty_buffer)),
+                'std': np.std(list(self.turnover_penalty_buffer)),
+                'current': list(self.turnover_penalty_buffer)[-1]
+            }
+        
+        if self.turnover_normalized_buffer:
+            stats['turnover_normalized'] = {
+                'mean': np.mean(list(self.turnover_normalized_buffer)),
+                'std': np.std(list(self.turnover_normalized_buffer)),
+                'current': list(self.turnover_normalized_buffer)[-1]
+            }
+        
+        if self.turnover_excess_buffer:
+            stats['turnover_excess'] = {
+                'mean': np.mean(list(self.turnover_excess_buffer)),
+                'std': np.std(list(self.turnover_excess_buffer)),
+                'current': list(self.turnover_excess_buffer)[-1]
+            }
+        
+        # Performance statistics
+        if self.win_rate_buffer:
+            stats['win_rate'] = np.mean(list(self.win_rate_buffer)) * 100
+        
+        if self.sharpe_ratio_buffer:
+            stats['sharpe_ratio'] = {
+                'mean': np.mean(list(self.sharpe_ratio_buffer)),
+                'current': list(self.sharpe_ratio_buffer)[-1]
+            }
+        
+        if self.max_drawdown_buffer:
+            stats['max_drawdown'] = {
+                'current': list(self.max_drawdown_buffer)[-1],
+                'worst': np.max(list(self.max_drawdown_buffer))
+            }
+        
+        if self.portfolio_value_buffer:
+            stats['portfolio_value'] = {
+                'current': list(self.portfolio_value_buffer)[-1],
+                'mean': np.mean(list(self.portfolio_value_buffer))
             }
         
         return stats

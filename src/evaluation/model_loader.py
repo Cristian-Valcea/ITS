@@ -140,22 +140,31 @@ class ModelLoader:
             return False
 
         # Check for SB3 model files (.zip) or dummy files (.dummy)
-        model_zip_exists = os.path.exists(model_path + ".zip")
-        model_dummy_exists = os.path.exists(model_path + ".dummy")
+        # Handle both cases: path with and without .zip extension
+        if model_path.endswith('.zip'):
+            model_zip_exists = os.path.exists(model_path)
+            model_dummy_exists = os.path.exists(model_path.replace('.zip', '.dummy'))
+            base_path = model_path.replace('.zip', '')
+        else:
+            model_zip_exists = os.path.exists(model_path + ".zip")
+            model_dummy_exists = os.path.exists(model_path + ".dummy")
+            base_path = model_path
         
         if not model_zip_exists and not model_dummy_exists:
-            self.logger.error(f"Model file not found at {model_path}.zip or {model_path}.dummy")
+            self.logger.error(f"Model file not found at {model_path} or {base_path}.dummy")
             self.loaded_model = None
             return False
 
         self.logger.info(f"Loading model for evaluation from: {model_path} (Algorithm: {algo_name_upper})")
         
         # Try to load SB3 model first
-        if self._try_load_sb3_model(model_path, algo_name_upper):
+        actual_model_path = model_path if model_path.endswith('.zip') else model_path + '.zip'
+        if self._try_load_sb3_model(actual_model_path, algo_name_upper):
             return True
         
         # Fall back to dummy model
-        if self._try_load_dummy_model(model_path, env_context):
+        dummy_path = base_path + '.dummy'
+        if self._try_load_dummy_model(dummy_path, env_context):
             return True
             
         # Both methods failed
@@ -198,25 +207,26 @@ class ModelLoader:
             self.logger.error(f"Error loading SB3 model {algo_name_upper} from {model_path}: {e}", exc_info=True)
             return False
     
-    def _try_load_dummy_model(self, model_path: str, env_context=None) -> bool:
+    def _try_load_dummy_model(self, dummy_path: str, env_context=None) -> bool:
         """
         Try to load a dummy model for testing.
         
         Args:
-            model_path: Path to the model file
+            dummy_path: Path to the dummy model file (including .dummy extension)
             env_context: Environment context
             
         Returns:
             True if loaded successfully, False otherwise
         """
-        if os.path.exists(model_path + ".dummy"):
-            self.logger.warning(f"SB3 model not available. Attempting to load as dummy from {model_path}.dummy")
+        if os.path.exists(dummy_path):
+            self.logger.warning(f"SB3 model not available. Attempting to load as dummy from {dummy_path}")
             try:
-                self.loaded_model = DummyEvalModel.load(model_path, env=env_context)
+                base_path = dummy_path.replace('.dummy', '')
+                self.loaded_model = DummyEvalModel.load(base_path, env=env_context)
                 self.logger.info("Dummy model loaded successfully for evaluation.")
                 return True
             except Exception as e:
-                self.logger.error(f"Error loading dummy model from {model_path}.dummy: {e}", exc_info=True)
+                self.logger.error(f"Error loading dummy model from {dummy_path}: {e}", exc_info=True)
                 return False
         return False
     
