@@ -421,8 +421,9 @@ class IntradayTradingEnv(gym.Env):
         
         # Portfolio value is now dynamically retrieved - no manual update needed
         
-        # Calculate penalty using the component
-        penalty = self.turnover_penalty_calculator.compute_penalty(self.total_traded_value)
+        # Calculate penalty using rolling window (390 steps = 1 trading day)
+        rolling_turnover_total = sum(self.rolling_turnover_window) if hasattr(self, 'rolling_turnover_window') else self.total_traded_value
+        penalty = self.turnover_penalty_calculator.compute_penalty(rolling_turnover_total)
         
         # Log turnover metrics (every 50 steps to see more data)
         if self.current_step % 50 == 0 or self.total_traded_value > 1000:
@@ -468,6 +469,9 @@ class IntradayTradingEnv(gym.Env):
         
         # Scale to reasonable magnitude (convert to cents)
         scaled_reward = total_reward * 100
+        
+        # 🔧 CRITICAL: Clip rewards to prevent gradient explosion
+        scaled_reward = np.clip(scaled_reward, -10000, 10000)
         
         # Enhanced logging for turnover system
         if self.current_step % 50 == 0:  # Log every 50 steps
@@ -658,6 +662,10 @@ class IntradayTradingEnv(gym.Env):
         # Reset turnover tracking for new system
         self.total_traded_value = 0.0
         self.daily_turnover_reset = False  # Initialize reset flag
+        
+        # 🔧 ROLLING TURNOVER WINDOW: Track last 390 trades instead of daily reset
+        from collections import deque
+        self.rolling_turnover_window = deque(maxlen=390)  # 390 steps = 1 trading day
         self.episode_length_steps = len(self.price_data) if hasattr(self, 'price_data') else 0
         
         # Reset turnover penalty calculator for new episode
@@ -965,14 +973,15 @@ class IntradayTradingEnv(gym.Env):
             # Store turnover reward breakdown for monitoring
             turnover_penalty = self._calculate_turnover_penalty()
             
-            # Get normalized daily turnover from the component (if available)
+            # Get normalized turnover from rolling window (390 steps = 1 trading day)
+            rolling_turnover_total = sum(self.rolling_turnover_window)
             if self.turnover_penalty_calculator is not None:
                 current_portfolio_value = self.turnover_penalty_calculator._get_current_portfolio_value()
-                # Daily turnover ratio: daily_turnover / portfolio_value (dimensionless ratio)
-                normalized_turnover = self.total_traded_value / (current_portfolio_value + 1e-6)
+                # Rolling turnover ratio: rolling_turnover / portfolio_value (dimensionless ratio)
+                normalized_turnover = rolling_turnover_total / (current_portfolio_value + 1e-6)
             else:
-                # Fallback calculation for daily turnover ratio
-                normalized_turnover = self.total_traded_value / (self.portfolio_value + 1e-6)
+                # Fallback calculation for rolling turnover ratio
+                normalized_turnover = rolling_turnover_total / (self.portfolio_value + 1e-6)
             
             self._last_reward_breakdown = {
                 'turnover_system': True,
@@ -1141,6 +1150,9 @@ class IntradayTradingEnv(gym.Env):
             
             # Track turnover for new penalty system
             self.total_traded_value += trade_value_executed
+            
+            # 🔧 ROLLING WINDOW: Add to rolling turnover window
+            self.rolling_turnover_window.append(trade_value_executed)
             
             # 🔍 DIAGNOSTIC: Trade executed
             self.logger.log(self.TRADE_LOG_LEVEL, f"🔍 TRADE EXECUTED: Step {self.current_step}, Action {action} -> Position {desired_position_signal}, Shares: {shares_traded_this_step:.2f}, Value: ${trade_value_executed:.2f}")

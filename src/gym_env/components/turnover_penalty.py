@@ -196,42 +196,43 @@ class TurnoverPenaltyCalculator:
         
         # Step 3: 🎯 DYNAMIC CURRICULUM - Adjust penalty weight based on behavior
         dynamic_weight_factor = self._update_dynamic_curriculum(turnover_ratio)
-        penalty_weight = dynamic_weight_factor * current_portfolio_value
+        # NOTE: dynamic_weight_factor is already a percentage (0.15, 0.45, 1.05)
+        # We'll apply it to NAV inside each penalty calculation to avoid double multiplication
         
         # Step 4: Calculate penalty using different curve types
         if self.curve == "sigmoid":
-            # Sigmoid penalty: -weight / (1 + exp(-k * (ratio - target)))
+            # Sigmoid penalty: -weight_factor * NAV * sigmoid_curve
             penalty_factor = 1.0 / (1.0 + np.exp(-self.curve_sharpness * (turnover_ratio - self.target_ratio)))
-            penalty = -penalty_weight * penalty_factor
+            penalty = -dynamic_weight_factor * current_portfolio_value * penalty_factor
             
         elif self.curve == "softplus":
             # Softplus penalty for smoother gradients
             penalty_factor = F.softplus(torch.tensor(self.curve_sharpness * (turnover_ratio - self.target_ratio)))
-            penalty = -penalty_weight * penalty_factor.item()
+            penalty = -dynamic_weight_factor * current_portfolio_value * penalty_factor.item()
             
         elif self.curve == "quadratic":
-            # Quadratic penalty: -weight * ((ratio - target) / target)^2
-            # More aggressive for high turnover, gentler near target
+            # 🔧 FIXED: Linear penalty with quadratic cap to prevent explosion
             if turnover_ratio <= self.target_ratio:
-                # Below target: minimal penalty (optional)
-                penalty = -penalty_weight * 0.1 * (turnover_ratio / (self.target_ratio + 1e-6)) ** 2
+                # Below target: minimal penalty
+                penalty = -dynamic_weight_factor * current_portfolio_value * 0.1 * (turnover_ratio / (self.target_ratio + 1e-6))
             else:
-                # Above target: quadratic growth based on EXCESS over target
-                excess_over_target = turnover_ratio - self.target_ratio
-                normalized_excess = excess_over_target / (self.target_ratio + 1e-6)
-                penalty = -penalty_weight * (normalized_excess ** 2)
+                # Above target: LINEAR growth with cap at 30% excess
+                excess_over_target = max(0, turnover_ratio - self.target_ratio)
+                capped_excess = min(excess_over_target, 0.30)  # Cap at 30% to prevent explosion
+                normalized_excess = capped_excess / (self.target_ratio + 1e-6)
+                penalty = -dynamic_weight_factor * current_portfolio_value * normalized_excess  # LINEAR, not quadratic!
                 
         elif self.curve == "steep_softplus":
             # Steep softplus with high β for aggressive penalty growth
             # β (curve_sharpness) controls steepness - higher = steeper
             steep_beta = self.curve_sharpness * 10.0  # Make it extra steep
             penalty_factor = F.softplus(torch.tensor(steep_beta * (turnover_ratio - self.target_ratio)))
-            penalty = -penalty_weight * penalty_factor.item()
+            penalty = -dynamic_weight_factor * current_portfolio_value * penalty_factor.item()
             
         else:
             # Fallback to sigmoid (should not reach here due to validation)
             penalty_factor = 1.0 / (1.0 + np.exp(-self.curve_sharpness * (turnover_ratio - self.target_ratio)))
-            penalty = -penalty_weight * penalty_factor
+            penalty = -dynamic_weight_factor * current_portfolio_value * penalty_factor
         
         # Track for analysis
         self.penalty_history.append(penalty)
