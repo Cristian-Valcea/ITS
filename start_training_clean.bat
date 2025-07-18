@@ -95,11 +95,11 @@ if exist "%USERPROFILE%\.feature_cache\*.lock" (
 )
 
 echo [6/6] Cleaning old log files...
-if exist "logs\orchestrator_gpu_fixed_rainbow_qrdqn.log" (
+if exist "logs\emergency_fix_orchestrator_gpu.log" (
     echo   - Archiving previous log file...
     for /f "tokens=2-4 delims=/ " %%a in ('date /t') do set mydate=%%c%%a%%b
     for /f "tokens=1-2 delims=: " %%a in ('time /t') do set mytime=%%a%%b
-    move "logs\orchestrator_gpu_fixed_rainbow_qrdqn.log" "logs\orchestrator_gpu_fixed_rainbow_qrdqn_!mydate!_!mytime!.log" >nul 2>&1
+    move "logs\emergency_fix_orchestrator_gpu.log" "logs\emergency_fix_orchestrator_gpu_!mydate!_!mytime!.log" >nul 2>&1
 )
 
 echo.
@@ -122,19 +122,19 @@ echo Virtual environment activated successfully
 
 REM Create logs directory if it doesn't exist
 if not exist "logs" mkdir "logs"
-if not exist "logs\tensorboard_gpu_recurrent_ppo_microstructural" mkdir "logs\tensorboard_gpu_recurrent_ppo_microstructural"
+if not exist "logs\tensorboard_emergency_fix" mkdir "logs\tensorboard_emergency_fix"
 
 REM Create required data directories
 if not exist "data" mkdir "data"
-if not exist "data\raw_orch_gpu_rainbow_qrdqn" mkdir "data\raw_orch_gpu_rainbow_qrdqn"
-if not exist "data\processed_orch_gpu_rainbow_qrdqn" mkdir "data\processed_orch_gpu_rainbow_qrdqn"
+if not exist "data\raw_emergency_fix" mkdir "data\raw_emergency_fix"
+if not exist "data\processed_emergency_fix" mkdir "data\processed_emergency_fix"
 if not exist "models" mkdir "models"
-if not exist "models\orch_gpu_rainbow_qrdqn" mkdir "models\orch_gpu_rainbow_qrdqn"
+if not exist "models\emergency_fix" mkdir "models\emergency_fix"
 if not exist "reports" mkdir "reports"
-if not exist "reports\orch_gpu_rainbow_qrdqn" mkdir "reports\orch_gpu_rainbow_qrdqn"
+if not exist "reports\emergency_fix" mkdir "reports\emergency_fix"
 
 REM Create placeholder log file for tail monitoring
-echo [%date% %time%] Log monitoring started... > "logs\orchestrator_gpu_fixed_rainbow_qrdqn.log"
+echo [%date% %time%] Log monitoring started... > "logs\emergency_fix_orchestrator_gpu.log"
 echo Log directories prepared...
 echo.
 
@@ -143,11 +143,11 @@ REM Launch monitoring tools (each in separate window, inheriting venv)
 REM ========================================================================
 
 echo Starting TensorBoard on http://localhost:6006...
-start "TensorBoard" cmd /k "tensorboard --logdir logs\tensorboard_gpu_recurrent_ppo_microstructural --port 6006 --host localhost"
+start "TensorBoard" cmd /k "tensorboard --logdir logs\tensorboard_emergency_fix --port 6006 --host localhost"
 timeout /t 2 /nobreak >nul
 
 echo Starting log monitor...
-start "Log-Monitor" cmd /k "python monitor_live_logs.py"
+start "Log-Monitor" cmd /k "python monitor_live_logs.py logs\emergency_fix_orchestrator_gpu.log"
 timeout /t 1 /nobreak >nul
 
 echo Starting API server on http://localhost:8000...
@@ -189,7 +189,7 @@ if not exist "src\main.py" (
     pause
     exit /b 1
 )
-if not exist "config\main_config_orchestrator_gpu_fixed.yaml" (
+if not exist "config\emergency_fix_orchestrator_gpu.yaml" (
     echo ERROR: Training configuration not found!
     pause
     exit /b 1
@@ -209,7 +209,7 @@ echo.
 
 REM Change to src directory and run training
 cd src
-start "MAIN-TRAINING" cmd /k "python main.py train --main_config ../config/main_config_orchestrator_gpu_fixed.yaml --symbol NVDA --start_date 2024-01-01 --end_date 2024-01-31"
+start "MAIN-TRAINING" cmd /k "python main.py train --main_config ../config/emergency_fix_orchestrator_gpu.yaml --symbol NVDA --start_date 2024-01-01 --end_date 2024-03-31"
 
 REM Return to root directory
 cd ..
@@ -217,7 +217,7 @@ cd ..
 REM Wait for training to start creating logs, then start log tail
 timeout /t 20 /nobreak >nul
 echo Starting log tail now that training has begun...
-start "Log-Tail" cmd /k "powershell -Command \"Get-Content -Path 'logs\orchestrator_gpu_fixed_rainbow_qrdqn.log' -Wait -Tail 20 -ErrorAction SilentlyContinue\""
+start "Log-Tail" cmd /k "powershell -Command \"Get-Content -Path 'logs\emergency_fix_orchestrator_gpu.log' -Wait -Tail 20 -ErrorAction SilentlyContinue\""
 
 REM ========================================================================
 REM Show status

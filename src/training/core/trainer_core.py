@@ -133,21 +133,52 @@ class TrainerCore:
         This handles the case where algorithm parameters are mixed with training
         parameters in the YAML configuration for convenience.
         """
-        # Algorithm-specific parameters that should be passed to the model constructor
-        algorithm_param_keys = {
-            'policy', 'policy_kwargs', 'buffer_size', 'batch_size', 'learning_rate',
-            'gamma', 'exploration_fraction', 'exploration_initial_eps', 
+        # Common parameters for all algorithms
+        common_params = {
+            'policy', 'policy_kwargs', 'learning_rate', 'gamma', 'batch_size'
+        }
+        
+        # DQN-specific parameters
+        dqn_params = {
+            'buffer_size', 'exploration_fraction', 'exploration_initial_eps', 
             'exploration_final_eps', 'target_update_interval', 'train_freq',
             'gradient_steps', 'learning_starts', 'tau', 'prioritized_replay',
             'prioritized_replay_alpha', 'prioritized_replay_beta0', 
             'prioritized_replay_eps', 'optimize_memory_usage'
         }
         
+        # PPO-specific parameters
+        ppo_params = {
+            'n_steps', 'n_epochs', 'gae_lambda', 'clip_range', 'clip_range_vf',
+            'normalize_advantage', 'ent_coef', 'vf_coef', 'max_grad_norm',
+            'use_sde', 'sde_sample_freq', 'target_kl'
+        }
+        
+        # Determine which parameters to extract based on algorithm
+        if self.algorithm_name in ['DQN', 'QR-DQN']:
+            algorithm_param_keys = common_params.union(dqn_params)
+        elif self.algorithm_name in ['PPO', 'RECURRENTPPO']:
+            algorithm_param_keys = common_params.union(ppo_params)
+        else:
+            # For unknown algorithms, use common parameters only
+            algorithm_param_keys = common_params
+            self.logger.warning(f"Unknown algorithm {self.algorithm_name}, using common parameters only")
+        
         # Extract algorithm parameters from training_params
         for key in algorithm_param_keys:
             if key in self.training_params:
                 self.algo_params[key] = self.training_params[key]
                 self.logger.debug(f"Extracted algorithm param: {key} = {self.training_params[key]}")
+        
+        # Log ignored parameters for debugging
+        for key in self.training_params:
+            if key not in algorithm_param_keys and key not in {
+                'algorithm', 'total_timesteps', 'max_episodes', 'max_training_time_minutes',
+                'early_stopping', 'save_freq', 'save_replay_buffer', 'tensorboard_log',
+                'verbose', 'device', 'gpu_memory_fraction', 'mixed_precision',
+                'lstm_states_saving', 'sequence_length'
+            }:
+                self.logger.debug(f"Ignored parameter '{key}' for algorithm {self.algorithm_name}")
         
         # Handle dueling DQN configuration
         self._setup_dueling_dqn()
@@ -177,6 +208,10 @@ class TrainerCore:
         policy_kwargs = self.training_params.get('policy_kwargs', {})
         
         if policy_kwargs:
+            # Create a deep copy to avoid modifying the original config
+            import copy
+            policy_kwargs = copy.deepcopy(policy_kwargs)
+            
             # Handle activation function string to class conversion
             if 'activation_fn' in policy_kwargs:
                 activation_name = policy_kwargs['activation_fn']
@@ -542,7 +577,7 @@ class TrainerCore:
             
             metadata_path = run_dir / f"{run_name}_metadata.json"
             with open(metadata_path, 'w') as f:
-                json.dump(metadata, f, indent=2)
+                json.dump(metadata, f, indent=2, default=str)
                 # NOTE: Consider gzip compression for large metadata files in future optimization
             
             self.logger.info(f"Model bundle saved: {model_zip_path}")

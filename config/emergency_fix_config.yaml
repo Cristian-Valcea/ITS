@@ -1,0 +1,128 @@
+# Emergency Fix Configuration for DQN Profitability
+# This configuration enables the emergency reward function fix to address overtrading
+
+default_data_params:
+  interval: 1min
+  symbol: NVDA
+  use_rth: true
+  what_to_show: TRADES
+
+environment:
+  initial_capital: 100000.0
+  log_trades_in_env: true
+  max_episode_steps: null
+  position_sizing_pct_capital: 0.25
+  reward_scaling: 1.0
+  trade_cooldown_steps: 0
+  
+  # 🚨 EMERGENCY FIX PARAMETERS
+  use_emergency_reward_fix: true
+  emergency_transaction_cost_pct: 0.0001  # 0.01% instead of 0.05%
+  emergency_holding_bonus: 0.1  # Bonus for not trading
+  
+  # Reduced transaction costs for training
+  transaction_cost_pct: 0.0001  # 0.01% (10x reduction)
+  
+  # Aggressive turnover controls
+  hourly_turnover_cap: 1.0  # 1x per hour (down from 5x)
+  turnover_penalty_factor: 0.05  # Higher penalty
+  turnover_exponential_penalty_factor: 0.2  # Higher exponential penalty
+  
+  # Aggressive termination
+  terminate_on_turnover_breach: true
+  turnover_termination_threshold_multiplier: 1.5  # Terminate at 1.5x cap
+  turnover_termination_penalty_pct: 0.1  # 10% penalty on termination
+  
+  # Disable complex reward systems
+  enable_kyle_lambda_fills: false  # Disable market impact simulation
+  
+  # Risk management
+  max_daily_drawdown_pct: 0.05  # 5% max daily drawdown
+  
+  # Simplified reward components
+  action_change_penalty_factor: 0.001  # Small penalty for changing actions
+  turnover_bonus_threshold: 0.5  # Bonus when turnover < 50% of cap
+  turnover_bonus_factor: 0.001  # Small bonus for low turnover
+
+evaluation:
+  data_duration_for_fetch: 30 D  # Shorter evaluation period
+  metrics:
+  - total_return_pct
+  - sharpe_ratio
+  - max_drawdown_pct
+  - num_trades
+  - win_rate_pct
+  - turnover_ratio_period
+
+feature_engineering:
+  ema:
+    ema_diff:
+      fast_ema_idx: 0
+      slow_ema_idx: 1
+    windows:
+    - 10
+    - 20
+    - 50
+  feature_cols_to_scale:
+  - rsi_14
+  - ema_10
+  - ema_20
+  - ema_50
+  - vwap_deviation
+  features_to_calculate:
+  - RSI
+  - EMA
+  - VWAP
+  - Time
+  lookback_window: 5
+  observation_feature_cols:
+  - rsi_14
+  - ema_10
+  - ema_20
+  - ema_50
+  - vwap_deviation
+  - price_change_pct
+  - volume_sma_ratio
+  - hour_sin
+  - hour_cos
+
+training:
+  algorithm: DQN
+  total_timesteps: 50000  # Shorter training for testing
+  learning_rate: 0.0001
+  batch_size: 64
+  buffer_size: 50000
+  learning_starts: 1000
+  target_update_interval: 1000
+  exploration_fraction: 0.1
+  exploration_final_eps: 0.05
+  train_freq: 4
+  gradient_steps: 1
+  
+  # Policy network
+  policy_kwargs:
+    net_arch: [64, 64]
+    activation_fn: "relu"
+  
+  # Training monitoring
+  verbose: 1
+  log_interval: 100
+  eval_freq: 5000
+  eval_episodes: 5
+
+risk_management:
+  max_position_size: 1.0
+  max_daily_loss_pct: 0.05
+  max_drawdown_pct: 0.10
+  
+# Orchestrator settings
+orchestrator:
+  mode: train
+  save_models: true
+  model_save_path: "models/emergency_fix"
+  tensorboard_log: "logs/tensorboard_emergency_fix"
+  
+  # Emergency fix specific settings
+  emergency_fix_enabled: true
+  baseline_performance_required: false  # Don't require baseline performance
+  early_stopping_patience: 10  # Stop if no improvement for 10 evaluations

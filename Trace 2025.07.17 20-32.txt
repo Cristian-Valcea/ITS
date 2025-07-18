@@ -1,0 +1,479 @@
+ACTION PLAN
+
+  Phase 1: Fix Model Configuration Issues
+
+  1. Remove invalid RecurrentPPO parameters
+    - Remove target_update_interval from model config
+  (DQN parameter, not PPO)
+    - Fix JSON serialization issues in model saving
+  2. Verify model creation works
+    - Test model instantiation without training
+    - Ensure all parameters are compatible with
+  RecurrentPPO
+
+  Phase 2: Fix Emergency Reward Parameter Passing
+
+  1. Trace parameter flow
+    - Verify config → orchestrator → environment
+  parameter passing
+    - Check if emergency parameters are properly passed       
+  to gym environment
+  2. Debug environment initialization
+    - Add logging to confirm emergency fix parameters are     
+   received
+    - Verify reward function activation
+
+  Phase 3: Integration Testing
+
+  1. Run short test training
+    - Use minimal timesteps to verify system works
+    - Confirm emergency reward messages appear
+  2. Full training validation
+    - Monitor for turnover reduction
+    - Validate emergency fix effectiveness
+
+  Phase 4: Optional Database Fix
+
+  1. PostgreSQL setup (if needed)
+    - Start PostgreSQL service or configure alternative       
+
+  ---
+  Priority Order:
+  1. High: Fix model configuration (blocking training)        
+  2. High: Fix emergency reward parameter passing
+  3. Medium: Integration testing
+  4. Low: Database connection issues
+
+  Expected Outcome:
+  - Training pipeline runs without errors
+  - Emergency reward system activates properly
+  - Turnover reduces from 65x to <3x
+
+  Ready to proceed with implementation?
+
+
+
+
+
+Phase 1 Complete!
+
+  Phase 1 Summary: Fix Model Configuration Issues
+
+  ✅ Issues Fixed:
+
+  1. RecurrentPPO Parameter Compatibility
+    - Fixed algorithm-specific parameter filtering in
+  src/training/core/trainer_core.py
+    - Added logic to only pass valid parameters to each       
+  algorithm type
+    - Resolved target_update_interval error by filtering      
+  DQN-specific parameters
+  2. JSON Serialization Issues
+    - Fixed Object of type type is not JSON serializable      
+  error
+    - Added default=str to JSON serialization in model        
+  saving
+    - Used deep copy to prevent modification of original      
+  config
+  3. Model Creation Testing
+    - Verified model instantiation works without errors       
+    - Confirmed configuration loading and parsing works       
+  correctly
+    - Validated that activation functions are properly        
+  handled
+
+  ✅ Verification:
+  - Basic configuration and imports work correctly
+  - RecurrentPPO algorithm properly selected
+  - JSON serialization works with string conversion
+  - TrainerCore imports successfully
+
+  Ready for Phase 2: Fix Emergency Reward Parameter 
+  Passing
+
+  The model configuration issues that were blocking
+  training have been resolved. The system should now be       
+  able to create RecurrentPPO models without the
+  target_update_interval error and save model bundles
+  without JSON serialization errors.
+
+
+
+
+
+
+  🔄 Context Preservation - Emergency Fix Status
+
+  Current Status:
+
+  - ✅ Emergency fix implemented in trading environment
+  - ✅ Configuration created with proper parameters
+  - ✅ Critical bug fixed - Parameters now properly passed to
+  environment
+  - ⚠️ Ready for testing - Need to run training again to validate       
+
+  What We Just Fixed:
+
+  The emergency fix wasn't working because the parameters weren't       
+  being passed from config to environment. I just fixed this in:        
+  - File: src/execution/orchestrator_agent.py (lines 214-217)
+  - Added: use_emergency_reward_fix,
+  emergency_transaction_cost_pct, emergency_holding_bonus
+
+  Next Session Action:
+
+  1. Run training: .\start_training_clean.bat
+  2. Look for: "🚨 EMERGENCY REWARD ACTIVE" messages
+  3. Expect: Turnover to drop from 65x to <3x
+
+  GitHub Issue Update:
+
+  Update your GitHub issue with:
+  - Status: Emergency fix parameter passing bug fixed
+  - Next: Ready for validation testing
+  - Expected: Massive reduction in turnover and transaction costs       
+
+  Files Modified Today:
+
+  - src/gym_env/intraday_trading_env.py - Emergency reward function     
+  - src/execution/orchestrator_agent.py - Parameter passing fix
+  - config/emergency_fix_orchestrator_gpu.yaml - Complete config        
+
+  The emergency fix should work properly now! Test it in your next      
+  session.
+
+
+Agents package initialized.
+Agents package initialized.
+2025-07-17 20:27:34,935 - RLTradingPlatform.Main - INFO - Starting application in 'train' mode.
+2025-07-17 20:27:34,936 - RLTradingPlatform.Main - INFO - Main config: ../config/emergency_fix_orchestrator_gpu.yaml
+2025-07-17 20:27:34,936 - RLTradingPlatform.Main - INFO - Model params config: ../config/model_params.yaml
+2025-07-17 20:27:34,936 - RLTradingPlatform.Main - INFO - Risk limits config: ../config/risk_limits.yaml
+2025-07-17 20:27:34,936 - RLTradingPlatform.OrchestratorAgent - INFO - Initializing OrchestratorAgent...
+2025-07-17 20:27:34,948 - RLTradingPlatform.OrchestratorAgent - INFO - Main Config loaded successfully from ../config/emergency_fix_orchestrator_gpu.yaml
+2025-07-17 20:27:34,951 - RLTradingPlatform.OrchestratorAgent - INFO - Model Params Config loaded successfully from ../config/model_params.yaml
+2025-07-17 20:27:34,958 - RLTradingPlatform.OrchestratorAgent - INFO - Risk Limits Config loaded successfully from ../config/risk_limits.yaml
+2025-07-17 20:27:34,958 - RLTradingPlatform.Agent.DataAgent - INFO - DataAgent initialized.
+2025-07-17 20:27:34,959 - RLTradingPlatform.Agent.DataAgent - WARNING - IBKR simulation mode enabled. Using cached data only.
+2025-07-17 20:27:34,959 - RLTradingPlatform.Agent.DataAgent - INFO - Raw data will be saved to: data/raw/
+2025-07-17 20:27:34,959 - RLTradingPlatform.Agent.FeatureAgent - INFO - FeatureAgent initialized.
+2025-07-17 20:27:34,960 - FeatureRegistry - INFO - Registered calculator: RSI
+2025-07-17 20:27:34,960 - FeatureRegistry - INFO - Registered calculator: EMA
+2025-07-17 20:27:34,960 - FeatureRegistry - INFO - Registered calculator: VWAP
+2025-07-17 20:27:34,960 - FeatureRegistry - INFO - Registered calculator: Time
+2025-07-17 20:27:34,960 - FeatureRegistry - INFO - Registered calculator: MarketImpact
+2025-07-17 20:27:34,961 - FeatureRegistry - INFO - Registered calculator: ATR
+2025-07-17 20:27:34,961 - FeatureRegistry - INFO - Registered calculator: VWAPRatio
+2025-07-17 20:27:34,961 - FeatureRegistry - INFO - Registered calculator: MicroPriceImbalance
+2025-07-17 20:27:34,961 - RLTradingPlatform.Agent.FeatureAgent - INFO - Initialized RSI calculator
+2025-07-17 20:27:34,961 - RLTradingPlatform.Agent.FeatureAgent - INFO - Initialized EMA calculator
+2025-07-17 20:27:34,961 - RLTradingPlatform.Agent.FeatureAgent - INFO - Initialized VWAP calculator
+2025-07-17 20:27:34,961 - RLTradingPlatform.Agent.FeatureAgent - INFO - Initialized Time calculator
+2025-07-17 20:27:34,962 - src.shared.db_pool - INFO - Initializing PostgreSQL pool for manifest operations
+2025-07-17 20:27:39,081 - src.shared.db_pool - ERROR - Failed to initialize PostgreSQL pool: connection to server at "localhost" (::1), port 5432 failed: Connection refused (0x0000274D/10061)
+        Is the server running on that host and accepting TCP/IP connections?
+connection to server at "localhost" (127.0.0.1), port 5432 failed: Connection refused (0x0000274D/10061)
+        Is the server running on that host and accepting TCP/IP connections?
+
+2025-07-17 20:27:39,125 - RLTradingPlatform.Agent.FeatureAgent - INFO - Using DuckDB manifest database: C:\Users\crist\.feature_cache\manifest.duckdb
+2025-07-17 20:27:39,126 - RLTradingPlatform.Agent.FeatureAgent - INFO - FeatureStore initialized at C:\Users\crist\.feature_cache
+2025-07-17 20:27:39,126 - RLTradingPlatform.Agent.FeatureAgent - INFO - Manifest backend: DuckDB
+2025-07-17 20:27:39,127 - RLTradingPlatform.Agent.FeatureAgent - INFO - Processed data directory: data/processed/
+2025-07-17 20:27:39,128 - RLTradingPlatform.Agent.FeatureAgent - INFO - Scalers directory: data/scalers/
+2025-07-17 20:27:39,128 - RLTradingPlatform.Agent.FeatureAgent - INFO - Active feature calculators: ['RSI', 'EMA', 'VWAP', 'Time']
+2025-07-17 20:27:39,128 - RLTradingPlatform.Agent.FeatureAgent - INFO - Lookback window: 5
+2025-07-17 20:27:39,128 - RLTradingPlatform.Agent.FeatureAgent - INFO - Max indicator lookback: 50
+2025-07-17 20:27:39,129 - RLTradingPlatform.Agent.FeatureAgent - INFO - Feature caching enabled: True
+2025-07-17 20:27:39,143 - RLTradingPlatform.Agent.FeatureAgent - INFO - Feature cache stats: 0 entries, 0.0 MB
+2025-07-17 20:27:39,144 - RLTradingPlatform.Agent.EnvAgent - INFO - EnvAgent initialized.
+2025-07-17 20:27:39,144 - RLTradingPlatform.Agent.EnvAgent - INFO - EnvAgent initialized. Environment(s) will be created when data is provided.
+2025-07-17 20:27:39,144 - RLTradingPlatform.Agent.TrainerAgent - INFO - TrainerAgent initialized.
+2025-07-17 20:27:39,149 - RLTradingPlatform.Agent.TrainerAgent - INFO - ✅ Activation function set to: ReLU
+2025-07-17 20:27:39,149 - RLTradingPlatform.Agent.TrainerAgent - INFO - ✅ Enhanced DQN Policy configured
+2025-07-17 20:27:39,149 - RLTradingPlatform.Agent.TrainerAgent - INFO -    Network Architecture: [64, 64]
+2025-07-17 20:27:39,150 - RLTradingPlatform.Agent.TrainerAgent - INFO -    Activation Function: <class 'torch.nn.modules.activation.ReLU'>
+2025-07-17 20:27:39,150 - RLTradingPlatform.Agent.TrainerAgent - INFO - 🎯 Double DQN Features (Built into SB3):
+2025-07-17 20:27:39,150 - RLTradingPlatform.Agent.TrainerAgent - INFO -    - Target Network: ✅ (reduces overestimation bias)
+2025-07-17 20:27:39,150 - RLTradingPlatform.Agent.TrainerAgent - INFO -    - Experience Replay: ✅ (improves sample efficiency)
+2025-07-17 20:27:39,151 - RLTradingPlatform.Agent.TrainerAgent - INFO -    - Epsilon-Greedy Exploration: ✅ (balanced exploration/exploitation)
+2025-07-17 20:27:39,151 - RLTradingPlatform.Agent.TrainerAgent - INFO - 🎯 Enhanced Double DQN Configuration:
+2025-07-17 20:27:39,151 - RLTradingPlatform.Agent.TrainerAgent - INFO -   - Policy: MlpLstmPolicy
+2025-07-17 20:27:39,151 - RLTradingPlatform.Agent.TrainerAgent - INFO -   - Network Architecture: [64, 64]
+2025-07-17 20:27:39,152 - RLTradingPlatform.Agent.TrainerAgent - INFO -   - Activation Function: <class 'torch.nn.modules.activation.ReLU'>
+2025-07-17 20:27:39,152 - RLTradingPlatform.Agent.TrainerAgent - INFO -   - Buffer size: default
+2025-07-17 20:27:39,152 - RLTradingPlatform.Agent.TrainerAgent - INFO -   - Batch size: 32
+2025-07-17 20:27:39,152 - RLTradingPlatform.Agent.TrainerAgent - INFO -   - Benefits: Target network reduces overestimation bias + larger network capacity
+2025-07-17 20:27:39,176 - RLTradingPlatform.Agent.TrainerAgent - INFO - 🚀 GPU Auto-detected: NVIDIA GeForce RTX 3060 Laptop GPU (6.0 GB)
+2025-07-17 20:27:39,176 - RLTradingPlatform.Agent.TrainerAgent - INFO - 🔧 GPU memory fraction: 0.6
+2025-07-17 20:27:39,177 - RLTradingPlatform.Agent.TrainerAgent - INFO - TrainerCore initialized for RECURRENTPPO
+2025-07-17 20:27:39,177 - RLTradingPlatform.Agent.TrainerAgent - INFO - Model save dir: models
+2025-07-17 20:27:39,177 - RLTradingPlatform.Agent.TrainerAgent - INFO - Log dir: logs\tensorboard
+2025-07-17 20:27:39,178 - RLTradingPlatform.Agent.TrainerAgent - INFO - TrainerAgent initialized for RECURRENTPPO
+2025-07-17 20:27:39,178 - RLTradingPlatform.Agent.TrainerAgent - INFO - Model save dir: models
+2025-07-17 20:27:39,178 - RLTradingPlatform.Agent.TrainerAgent - INFO - Log dir: logs\tensorboard
+2025-07-17 20:27:39,178 - RLTradingPlatform.Agent.EvaluatorAgent - INFO - EvaluatorAgent initialized.
+2025-07-17 20:27:39,179 - ReportGenerator - INFO - ReportGenerator initialized. Reports will be saved to: reports/
+2025-07-17 20:27:39,179 - RLTradingPlatform.Agent.EvaluatorAgent - INFO - EvaluatorAgent initialized with specialized components.
+2025-07-17 20:27:39,179 - RLTradingPlatform.Agent.EvaluatorAgent - INFO - Evaluation reports will be saved to: reports/
+2025-07-17 20:27:39,179 - RLTradingPlatform.Agent.EvaluatorAgent - INFO - Metrics to calculate: ['total_return_pct', 'sharpe_ratio', 'max_drawdown_pct', 'num_trades', 'turnover_ratio_period', 'win_rate_pct']
+2025-07-17 20:27:39,180 - DrawdownCalculator - INFO - Initialized DrawdownCalculator calculator
+2025-07-17 20:27:39,180 - TurnoverCalculator - INFO - Initialized TurnoverCalculator calculator
+2025-07-17 20:27:39,180 - UlcerIndexCalculator - INFO - Initialized UlcerIndexCalculator calculator
+2025-07-17 20:27:39,180 - DrawdownVelocityCalculator - INFO - Initialized DrawdownVelocityCalculator calculator
+2025-07-17 20:27:39,180 - ExpectedShortfallCalculator - INFO - Initialized ExpectedShortfallCalculator calculator
+2025-07-17 20:27:39,180 - KyleLambdaCalculator - INFO - Initialized KyleLambdaCalculator calculator
+2025-07-17 20:27:39,180 - DepthShockCalculator - INFO - Initialized DepthShockCalculator calculator
+2025-07-17 20:27:39,181 - FeedStalenessCalculator - INFO - Initialized FeedStalenessCalculator calculator
+2025-07-17 20:27:39,181 - LatencyDriftCalculator - INFO - Initialized LatencyDriftCalculator calculator
+2025-07-17 20:27:39,181 - ADVParticipationCalculator - INFO - Initialized ADVParticipationCalculator calculator
+2025-07-17 20:27:39,181 - RulesEngine - INFO - RulesEngine initialized
+2025-07-17 20:27:39,182 - Policy.Basic Risk Limits - INFO - Added rule Daily Drawdown Limit to policy Basic Risk Limits
+2025-07-17 20:27:39,182 - Policy.Basic Risk Limits - INFO - Added rule Hourly Turnover Limit to policy Basic Risk Limits
+2025-07-17 20:27:39,182 - Policy.Basic Risk Limits - INFO - Added rule Daily Turnover Limit to policy Basic Risk Limits
+2025-07-17 20:27:39,182 - RulesEngine - INFO - Registered policy Basic Risk Limits (ID: basic_risk_limits)
+2025-07-17 20:27:39,182 - RiskAgentV2 - INFO - RiskAgentV2 initialized with 10 calculators
+2025-07-17 20:27:39,183 - RiskAgentAdapter - INFO - RiskAgentAdapter initialized with RiskAgentV2 backend
+2025-07-17 20:27:39,188 - src.execution.core.high_perf_audit - INFO - HighPerfAuditLogger initialized: logs\audit_hiperf
+2025-07-17 20:27:39,189 - src.execution.core.latency_monitor - INFO - LatencyMonitor initialized
+2025-07-17 20:27:39,189 - RLTradingPlatform.OrchestratorAgent - INFO - High-performance audit system initialized - KILL_SWITCH latency optimized
+2025-07-17 20:27:39,190 - RLTradingPlatform.OrchestratorAgent - INFO - Latency monitoring active - targeting <10µs for KILL_SWITCH operations
+2025-07-17 20:27:39,192 - src.shared.fee_schedule - INFO - Loaded fee schedule for CME with 7 instruments
+2025-07-17 20:27:39,193 - RLTradingPlatform.OrchestratorAgent.PnLTracker - INFO - Fee engine initialized for venue: CME
+2025-07-17 20:27:39,193 - RLTradingPlatform.OrchestratorAgent - INFO - Core execution modules initialized successfully
+2025-07-17 20:27:39,193 - RLTradingPlatform.OrchestratorAgent - INFO - All specialized agents and core modules initialized by Orchestrator.
+2025-07-17 20:27:39,193 - RLTradingPlatform.Main - INFO - Initiating training for NVDA from 2024-01-01 to 2024-01-31 (1min).
+2025-07-17 20:27:39,193 - RLTradingPlatform.OrchestratorAgent - INFO - --- Starting Training Pipeline for NVDA (2024-01-01 to 2024-01-31, 1min) ---
+2025-07-17 20:27:39,194 - RLTradingPlatform.OrchestratorAgent - INFO - Calculated duration from date range: 31 D
+2025-07-17 20:27:39,194 - RLTradingPlatform.Agent.DataAgent - INFO - DataAgent run triggered for NVDA from 2024-01-01 to 2024-01-31 at 1min interval.
+2025-07-17 20:27:39,194 - RLTradingPlatform.Agent.DataAgent - INFO - Converted interval '1min' to IBKR format '1 min'
+Loading from cache: cache_ibkr\NVDA_2024-01-01_2024-01-31_1_min_TRADES.pkl
+Loaded 8190 rows from cache.
+2025-07-17 20:27:39,374 - RLTradingPlatform.Agent.DataAgent - INFO - Saved data to C:\Projects\IntradayJules\src\data\raw\NVDA\NVDA_20240101_20240131_1min.csv
+2025-07-17 20:27:39,375 - RLTradingPlatform.Agent.DataAgent - INFO - Data validation passed for NVDA with 8190 rows.
+2025-07-17 20:27:39,375 - RLTradingPlatform.Agent.DataAgent - INFO - Successfully fetched and validated data for NVDA.
+2025-07-17 20:27:39,376 - RLTradingPlatform.OrchestratorAgent - INFO - DataAgent returned raw data of shape: (8190, 5)
+2025-07-17 20:27:39,376 - RLTradingPlatform.Agent.FeatureAgent - INFO - FeatureAgent processing started for NVDA
+2025-07-17 20:27:39,398 - RLTradingPlatform.Agent.FeatureAgent - INFO - Cache MISS for NVDA e09da14a992f2abd... - computing features
+2025-07-17 20:27:39,408 - RLTradingPlatform.Agent.FeatureAgent - INFO - Added 'vwap' and 'vwap_deviation' features
+2025-07-17 20:27:39,411 - RLTradingPlatform.Agent.FeatureAgent - INFO - Dropped 19 rows due to NaNs after feature calculation
+2025-07-17 20:27:39,411 - RLTradingPlatform.Agent.FeatureAgent - INFO - Computed features. DataFrame columns: ['open', 'high', 'low', 'close', 'volume', 'rsi_14', 'ema_10', 'ema_20', 'vwap', 'vwap_deviation', 'hour_sin', 'hour_cos']
+2025-07-17 20:27:39,476 - RLTradingPlatform.Agent.FeatureAgent - INFO - Cached 8171 features for NVDA (485,611 bytes compressed) [DuckDB]
+2025-07-17 20:27:39,504 - RLTradingPlatform.Agent.FeatureAgent - INFO - Fitting new StandardScaler for NVDA on columns: ['rsi_14', 'ema_10', 'ema_20', 'vwap', 'hour_sin', 'hour_cos']
+2025-07-17 20:27:39,512 - RLTradingPlatform.Agent.FeatureAgent - INFO - Scaler for NVDA saved to data/scalers/NVDA_feature_scaler.pkl
+2025-07-17 20:27:39,514 - RLTradingPlatform.Agent.FeatureAgent - INFO - Features normalized for NVDA
+2025-07-17 20:27:39,520 - RLTradingPlatform.Agent.FeatureAgent - INFO - Created sequences of shape: (8167, 5, 6)
+2025-07-17 20:27:39,600 - RLTradingPlatform.Agent.FeatureAgent - INFO - Saved processed DataFrame to data/processed/NVDA\NVDA_20240101_20240131_1min_features.csv
+2025-07-17 20:27:39,606 - RLTradingPlatform.Agent.FeatureAgent - INFO - Saved feature sequences to data/processed/NVDA\NVDA_20240101_20240131_1min_features.npy
+2025-07-17 20:27:39,606 - RLTradingPlatform.Agent.FeatureAgent - INFO - FeatureAgent processing completed for NVDA
+2025-07-17 20:27:39,606 - RLTradingPlatform.OrchestratorAgent - INFO - FeatureAgent returned sequences of shape: (8167, 5, 6) and prices of shape (8167,)
+2025-07-17 20:27:39,607 - RLTradingPlatform.Agent.EnvAgent - INFO - EnvAgent run: Creating or retrieving trading environment.
+2025-07-17 20:27:39,618 - RLTradingPlatform.Agent.EnvAgent - INFO - Creating IntradayTradingEnv with 8167 steps. (env_id=c739bd29196c0c510ea1aa30d613c13d)
+2025-07-17 20:27:39,619 - RLTradingPlatform.Agent.EnvAgent - INFO - Market Feature data shape: (8167, 5, 6), Price data shape: (8167,)
+2025-07-17 20:27:39,619 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - Using mid-price fills (Kyle Lambda simulation disabled)
+2025-07-17 20:27:39,619 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - Advanced Reward Shaping disabled
+2025-07-17 20:27:39,620 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - Enhanced Reward System disabled - using traditional P&L rewards
+2025-07-17 20:27:39,620 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - Observation space: Box(-inf, inf, (5, 7), float32) (Shape: (5, 7))
+2025-07-17 20:27:39,621 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - Action space: Discrete(3)
+2025-07-17 20:27:39,625 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 💾 Run metadata saved: logs/run_metadata/run_metadata_episode_1752773259.json
+2025-07-17 20:27:39,626 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-02. Previous day REALIZED P&L: 0.00
+2025-07-17 20:27:39,626 - RLTradingPlatform.Agent.EnvAgent - INFO - IntradayTradingEnv created successfully.
+2025-07-17 20:27:39,626 - RLTradingPlatform.Agent.EnvAgent - INFO - Skipping FlattenObservation wrapper for LSTM-based algorithm.
+2025-07-17 20:27:39,627 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🎲 Random seed set: 0
+2025-07-17 20:27:39,627 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-02. Previous day REALIZED P&L: 0.00
+C:\Projects\IntradayJules\venv\lib\site-packages\stable_baselines3\common\env_checker.py:272: UserWarning: Your observation  has an unconventional shape (neither an image, nor a 1D vector). We recommend you to flatten the observation to have only a 1D vector or use a custom policy to properly process the data.
+  warnings.warn(
+2025-07-17 20:27:39,628 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-02. Previous day REALIZED P&L: 0.00
+2025-07-17 20:27:39,629 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🎯 ACTION HISTOGRAM (Total: 1): BUY: 1
+2025-07-17 20:27:39,630 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-02. Previous day REALIZED P&L: 0.00
+2025-07-17 20:27:39,633 - RLTradingPlatform.Agent.EnvAgent - INFO - Environment passed SB3 check_env validation.
+2025-07-17 20:27:39,633 - RLTradingPlatform.OrchestratorAgent - INFO - EnvAgent created training environment: <IntradayTradingEnv instance>
+2025-07-17 20:27:39,633 - VolatilityPenalty - INFO - VolatilityPenalty initialized - window: 60, lambda: 0.0, target_sigma: 0.0
+2025-07-17 20:27:39,633 - CurriculumScheduler - INFO - CurriculumScheduler disabled
+2025-07-17 20:27:39,634 - RiskManager - INFO - RiskManager initialized - vol_window: 60, penalty_lambda: 0.0, dd_limit: 0.05
+2025-07-17 20:27:39,634 - VolatilityPenaltyReward - INFO - VolatilityPenaltyReward wrapper initialized
+2025-07-17 20:27:39,634 - RLTradingPlatform.OrchestratorAgent - INFO - ✅ Applied VolatilityPenaltyReward - λ=0.0
+2025-07-17 20:27:39,634 - RLTradingPlatform.OrchestratorAgent - INFO - 🛡️ Risk-wrapped environment created for training - dd_limit: 5.0%, vol_window: 60
+2025-07-17 20:27:39,634 - RLTradingPlatform.OrchestratorAgent - INFO - 🚀 Training will use GPU: NVIDIA GeForce RTX 3060 Laptop GPU (6.0 GB)
+2025-07-17 20:27:39,635 - RLTradingPlatform.Agent.TrainerAgent - INFO - Starting TrainerAgent run
+2025-07-17 20:27:39,635 - RLTradingPlatform.Agent.TrainerAgent - INFO - 🚀 GPU Training Mode: NVIDIA GeForce RTX 3060 Laptop GPU
+2025-07-17 20:27:39,637 - RLTradingPlatform.Agent.TrainerAgent - INFO - Single training environment set with monitor: logs\tensorboard\monitor_logs\monitor_20250717_202739.csv
+Using cuda device
+Wrapping the env in a DummyVecEnv.
+2025-07-17 20:27:41,722 - RLTradingPlatform.Agent.TrainerAgent - INFO - ✅ Created Enhanced Double RECURRENTPPO model
+2025-07-17 20:27:41,722 - RLTradingPlatform.Agent.TrainerAgent - INFO -    Policy: MlpLstmPolicy
+2025-07-17 20:27:41,723 - RLTradingPlatform.Agent.TrainerAgent - INFO -    Network Architecture: [64, 64]
+2025-07-17 20:27:41,723 - RLTradingPlatform.Agent.TrainerAgent - INFO -    Activation Function: <class 'torch.nn.modules.activation.ReLU'>
+2025-07-17 20:27:41,724 - RLTradingPlatform.Agent.TrainerAgent - INFO -    Buffer Size: default
+2025-07-17 20:27:41,725 - RLTradingPlatform.Agent.TrainerAgent - INFO -    Batch Size: 32
+2025-07-17 20:27:41,725 - RLTradingPlatform.Agent.TrainerAgent - INFO -    🎯 Benefits: Target network reduces overestimation bias + enhanced capacity
+2025-07-17 20:27:41,726 - RLTradingPlatform.Agent.TrainerAgent - INFO - === Hardware Information ===
+2025-07-17 20:27:41,760 - RLTradingPlatform.Agent.TrainerAgent - INFO - Platform: Windows-10-10.0.22621-SP0
+2025-07-17 20:27:41,761 - RLTradingPlatform.Agent.TrainerAgent - INFO - Python: 3.10.11
+2025-07-17 20:27:41,761 - RLTradingPlatform.Agent.TrainerAgent - INFO - PyTorch: 2.5.1+cu121
+2025-07-17 20:27:41,761 - RLTradingPlatform.Agent.TrainerAgent - INFO - CPU: 14 cores (20 logical)
+2025-07-17 20:27:41,762 - RLTradingPlatform.Agent.TrainerAgent - INFO - CPU Frequency: 2500.00 MHz
+2025-07-17 20:27:41,768 - RLTradingPlatform.Agent.TrainerAgent - INFO - Memory: 63.7 GB total, 33.5 GB available
+2025-07-17 20:27:41,769 - RLTradingPlatform.Agent.TrainerAgent - INFO - CUDA GPUs: 1
+2025-07-17 20:27:41,769 - RLTradingPlatform.Agent.TrainerAgent - INFO -   GPU 0: NVIDIA GeForce RTX 3060 Laptop GPU (6.0 GB)
+2025-07-17 20:27:41,773 - RLTradingPlatform.Agent.TrainerAgent - INFO - === Training Configuration ===
+2025-07-17 20:27:41,773 - RLTradingPlatform.Agent.TrainerAgent - INFO - Total timesteps: 10,000
+2025-07-17 20:27:41,773 - RLTradingPlatform.Agent.TrainerAgent - INFO - Log interval: 100
+2025-07-17 20:27:41,773 - RLTradingPlatform.Agent.TrainerAgent - INFO - Algorithm: RECURRENTPPO
+2025-07-17 20:27:41,774 - RLTradingPlatform.Agent.TrainerAgent - INFO - Training params: {'algorithm': 'RecurrentPPO', 'policy': 'MlpLstmPolicy', 'policy_kwargs': {'net_arch': [64, 64], 'activation_fn': <class 'torch.nn.modules.activation.ReLU'>, 'lstm_hidden_size': 32, 'n_lstm_layers': 1}, 'learning_rate': 0.0001, 'n_steps': 128, 'batch_size': 32, 'n_epochs': 4, 'gamma': 0.99, 'gae_lambda': 0.95, 'clip_range': 0.2, 'clip_range_vf': None, 'normalize_advantage': True, 'ent_coef': 0.01, 'vf_coef': 0.5, 'max_grad_norm': 0.5, 'use_sde': False, 'sde_sample_freq': -1, 'target_kl': None, 'total_timesteps': 10000, 'max_episodes': 50, 'max_training_time_minutes': 30, 'lstm_states_saving': True, 'sequence_length': 5, 'early_stopping': {'patience': 10, 'min_improvement': 0.01, 'check_freq': 1000, 'verbose': True, 'min_episodes_before_stopping': 10}, 'save_freq': 5000, 'save_replay_buffer': False, 'tensorboard_log': 'logs/tensorboard_emergency_fix', 'verbose': 1, 'device': 'auto', 'gpu_memory_fraction': 0.6, 'mixed_precision': False}
+2025-07-17 20:27:41,774 - RLTradingPlatform.Agent.TrainerAgent - INFO - Environment: Monitor
+2025-07-17 20:27:41,774 - RLTradingPlatform.Agent.TrainerAgent - INFO - Starting training at 2025-07-17 20:27:41
+2025-07-17 20:27:41,775 - RLTradingPlatform.Agent.TrainerAgent - INFO - Calling model.learn() with 10,000 timesteps...
+2025-07-17 20:27:41,775 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🎯 ACTION HISTOGRAM (Total: 10): SELL: 4, HOLD: 3, BUY: 3
+2025-07-17 20:27:41,775 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-02. Previous day REALIZED P&L: 0.00
+Logging to logs\tensorboard\RECURRENTPPO_2025-07-17_20-27-39_1
+2025-07-17 20:27:41,781 - src.training.core.early_stopping_callback - INFO - Early stopping callback initialized:
+2025-07-17 20:27:41,781 - src.training.core.early_stopping_callback - INFO -   - Max episodes: 50
+2025-07-17 20:27:41,782 - src.training.core.early_stopping_callback - INFO -   - Max training time: 30 minutes
+2025-07-17 20:27:41,782 - src.training.core.early_stopping_callback - INFO -   - Plateau patience: 10 episodes
+2025-07-17 20:27:41,782 - src.training.core.early_stopping_callback - INFO -   - Check frequency: every 1000 steps
+2025-07-17 20:27:41,782 - src.training.core.early_stopping_callback - INFO -   - Min episodes before stopping: 10
+2025-07-17 20:27:43,528 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was -1)
+2025-07-17 20:27:43,542 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:58:00 (was -1)
+2025-07-17 20:27:43,546 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-03. Previous day REALIZED P&L: -0.04
+2025-07-17 20:27:45,503 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-04. Previous day REALIZED P&L: -19.00
+2025-07-17 20:27:48,086 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:57:00 (was -1)
+2025-07-17 20:27:48,103 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-05. Previous day REALIZED P&L: 18.92
+2025-07-17 20:27:51,075 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:56:00 (was 1)
+2025-07-17 20:27:51,105 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:58:00 (was 1)
+2025-07-17 20:27:51,116 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-08. Previous day REALIZED P&L: 7.20
+2025-07-17 20:27:55,186 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was -1)
+2025-07-17 20:27:55,206 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:57:00 (was -1)
+2025-07-17 20:27:55,225 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:59:00 (was -1)
+2025-07-17 20:27:55,225 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-09. Previous day REALIZED P&L: -16.74
+2025-07-17 20:28:07,953 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:56:00 (was 1)
+2025-07-17 20:28:07,978 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:58:00 (was 1)
+2025-07-17 20:28:07,990 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-10. Previous day REALIZED P&L: 7.27
+2025-07-17 20:28:13,093 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:59:00 (was -1)
+2025-07-17 20:28:13,094 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-11. Previous day REALIZED P&L: 12.42
+2025-07-17 20:28:18,777 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was 1)
+2025-07-17 20:28:18,808 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:57:00 (was 1)
+2025-07-17 20:28:18,868 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:59:00 (was -1)
+2025-07-17 20:28:18,869 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-12. Previous day REALIZED P&L: 23.94
+2025-07-17 20:28:25,278 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:56:00 (was -1)
+2025-07-17 20:28:25,329 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-16. Previous day REALIZED P&L: 1.80
+2025-07-17 20:28:30,867 - RLTradingPlatform.Env.IntradayTradingEnv - WARNING - Step 3796: Max daily drawdown breached! Drawdown: 2.00%, Limit: 2.00%. Portfolio Value: 49706.82
+2025-07-17 20:28:30,868 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - ================================================================================
+2025-07-17 20:28:30,868 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 📊 EPISODE SUMMARY - MONITORING & DRIFT DETECTION
+2025-07-17 20:28:30,869 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - ================================================================================
+2025-07-17 20:28:30,869 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 Duration: 2024-01-02 09:53:00 → 2024-01-16 14:40:00
+2025-07-17 20:28:30,870 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 📈 Performance: -0.59% ($-293.18)
+2025-07-17 20:28:30,870 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 💰 P&L Breakdown: Realized=$+34.87, Unrealized=$-328.05
+2025-07-17 20:28:30,870 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 💸 Total Fees: $328.05 (0.010% of turnover)
+2025-07-17 20:28:30,871 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🔄 Trading Activity: 2515 trades, $3,280,475 turnover (65.61x)
+2025-07-17 20:28:30,871 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - ⚡ Trade Efficiency: $1,304 avg size, 7.4 trades/hour
+2025-07-17 20:28:30,871 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🎯 Actions: {2: 1311, 1: 1245, 0: 1241}
+2025-07-17 20:28:30,872 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 📍 Final Position: 1 (17 shares)
+2025-07-17 20:28:30,872 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - ================================================================================
+2025-07-17 20:28:30,881 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 📊 Episode summary saved to: logs/episode_summaries.csv
+2025-07-17 20:28:30,882 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🎯 ACTION HISTOGRAM (Total: 3797): SELL: 1241, HOLD: 1245, BUY: 1311
+2025-07-17 20:28:30,884 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-02. Previous day REALIZED P&L: 0.00
+2025-07-17 20:28:30,884 - VolatilityPenalty - INFO - Episode completed - Total penalty: 0.0000, Avg penalty/step: 0.000000, Steps: 3797
+2025-07-17 20:28:30,897 - src.training.core.early_stopping_callback - INFO - Episode 1: New best reward 189318.22
+2025-07-17 20:28:41,260 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was -1)
+2025-07-17 20:28:41,275 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:57:00 (was -1)
+2025-07-17 20:28:41,292 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:59:00 (was 1)
+2025-07-17 20:28:41,293 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-03. Previous day REALIZED P&L: 8.69
+2025-07-17 20:28:43,617 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was 1)
+2025-07-17 20:28:43,633 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:57:00 (was -1)
+2025-07-17 20:28:43,650 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:59:00 (was -1)
+2025-07-17 20:28:43,651 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-04. Previous day REALIZED P&L: -14.75
+2025-07-17 20:28:46,598 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was -1)
+2025-07-17 20:28:46,618 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:57:00 (was -1)
+2025-07-17 20:28:46,638 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:59:00 (was -1)
+2025-07-17 20:28:46,638 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-05. Previous day REALIZED P&L: 21.47
+2025-07-17 20:28:49,963 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was -1)
+2025-07-17 20:28:49,994 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:57:00 (was -1)
+2025-07-17 20:28:50,022 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:59:00 (was -1)
+2025-07-17 20:28:50,022 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-08. Previous day REALIZED P&L: 13.60
+2025-07-17 20:28:54,280 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was -1)
+2025-07-17 20:28:54,302 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:57:00 (was 1)
+2025-07-17 20:28:54,327 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:59:00 (was -1)
+2025-07-17 20:28:54,327 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-09. Previous day REALIZED P&L: 11.88
+2025-07-17 20:28:58,965 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:57:00 (was 1)
+2025-07-17 20:28:58,988 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:59:00 (was -1)
+2025-07-17 20:28:58,989 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-10. Previous day REALIZED P&L: -10.63
+2025-07-17 20:29:12,324 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was 1)
+2025-07-17 20:29:12,362 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:58:00 (was 1)
+2025-07-17 20:29:12,375 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-11. Previous day REALIZED P&L: -2.16
+2025-07-17 20:29:13,637 - RLTradingPlatform.Env.IntradayTradingEnv - WARNING - Step 2793: Max daily drawdown breached! Drawdown: 2.00%, Limit: 2.00%. Portfolio Value: 49755.44
+2025-07-17 20:29:13,638 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - ================================================================================
+2025-07-17 20:29:13,638 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 📊 EPISODE SUMMARY - MONITORING & DRIFT DETECTION
+2025-07-17 20:29:13,638 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - ================================================================================
+2025-07-17 20:29:13,639 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 Duration: 2024-01-02 09:53:00 → 2024-01-11 10:57:00
+2025-07-17 20:29:13,639 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 📈 Performance: -0.49% ($-244.56)
+2025-07-17 20:29:13,639 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 💰 P&L Breakdown: Realized=$-3.58, Unrealized=$-240.98
+2025-07-17 20:29:13,640 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 💸 Total Fees: $240.98 (0.010% of turnover)
+2025-07-17 20:29:13,640 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🔄 Trading Activity: 1861 trades, $2,409,761 turnover (48.20x)
+2025-07-17 20:29:13,640 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - ⚡ Trade Efficiency: $1,295 avg size, 8.6 trades/hour
+2025-07-17 20:29:13,640 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🎯 Actions: {1: 956, 2: 907, 0: 931}
+2025-07-17 20:29:13,641 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 📍 Final Position: 1 (18 shares)
+2025-07-17 20:29:13,641 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - ================================================================================
+2025-07-17 20:29:13,650 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 📊 Episode summary saved to: logs/episode_summaries.csv
+2025-07-17 20:29:13,650 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🎯 ACTION HISTOGRAM (Total: 2794): SELL: 931, HOLD: 956, BUY: 907
+2025-07-17 20:29:13,651 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-02. Previous day REALIZED P&L: 0.00
+2025-07-17 20:29:13,651 - VolatilityPenalty - INFO - Episode completed - Total penalty: 0.0000, Avg penalty/step: 0.000000, Steps: 2794
+2025-07-17 20:29:15,263 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was -1)
+2025-07-17 20:29:15,282 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:58:00 (was -1)
+2025-07-17 20:29:15,291 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-03. Previous day REALIZED P&L: -4.71
+2025-07-17 20:29:17,745 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was -1)
+2025-07-17 20:29:17,769 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:58:00 (was -1)
+2025-07-17 20:29:17,780 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-04. Previous day REALIZED P&L: -19.50
+2025-07-17 20:29:20,979 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was 1)
+2025-07-17 20:29:20,995 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:57:00 (was 1)
+2025-07-17 20:29:21,011 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:59:00 (was 1)
+2025-07-17 20:29:21,012 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-05. Previous day REALIZED P&L: -23.08
+2025-07-17 20:29:24,723 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:56:00 (was -1)
+2025-07-17 20:29:24,748 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:58:00 (was -1)
+2025-07-17 20:29:24,757 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-08. Previous day REALIZED P&L: -5.20
+2025-07-17 20:29:37,330 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was -1)
+2025-07-17 20:29:37,363 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:57:00 (was 1)
+2025-07-17 20:29:37,390 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:59:00 (was 1)
+2025-07-17 20:29:37,390 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-09. Previous day REALIZED P&L: 28.57
+2025-07-17 20:29:42,056 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was 1)
+2025-07-17 20:29:42,082 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:57:00 (was -1)
+2025-07-17 20:29:42,105 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:59:00 (was 1)
+2025-07-17 20:29:42,105 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-10. Previous day REALIZED P&L: 6.50
+2025-07-17 20:29:47,015 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:56:00 (was 1)
+2025-07-17 20:29:47,058 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:59:00 (was 1)
+2025-07-17 20:29:47,058 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-11. Previous day REALIZED P&L: -9.00
+2025-07-17 20:29:52,526 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was 1)
+2025-07-17 20:29:52,572 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:58:00 (was 1)
+2025-07-17 20:29:52,589 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-12. Previous day REALIZED P&L: -22.86
+2025-07-17 20:29:58,672 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:55:00 (was -1)
+2025-07-17 20:29:58,707 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:57:00 (was -1)
+2025-07-17 20:29:58,744 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - 🕐 END-OF-DAY FLAT RULE: Forcing position to 0 at 15:59:00 (was -1)
+2025-07-17 20:29:58,744 - RLTradingPlatform.Env.IntradayTradingEnv - INFO - New trading day: 2024-01-16. Previous day REALIZED P&L: 9.18
+2025-07-17 20:30:10,350 - src.training.core.early_stopping_callback - INFO - Training completed after 2 episodes in 2.5 minutes
+2025-07-17 20:30:10,350 - src.training.core.early_stopping_callback - INFO - Average reward (last 10 episodes): 164303.59
+2025-07-17 20:30:10,351 - RLTradingPlatform.Agent.TrainerAgent - INFO - Training completed successfully at 2025-07-17 20:30:10
+2025-07-17 20:30:10,351 - RLTradingPlatform.Agent.TrainerAgent - INFO - Training duration: 0:02:28.577727
+2025-07-17 20:30:10,351 - RLTradingPlatform.Agent.TrainerAgent - INFO - Timesteps per second: 67.30
+2025-07-17 20:30:10,485 - src.training.core.policy_export - INFO - Exporting TorchScript bundle for RECURRENTPPO_2025-07-17_20-27-39
+C:\Projects\IntradayJules\venv\lib\site-packages\stable_baselines3\common\utils.py:488: TracerWarning: torch.as_tensor results are registered as constants in the trace. You can safely ignore this warning if you use this function to create tensors out of constant variables that would be the same every time you call this function. In any other case, this might cause the trace to be incorrect.
+  return th.as_tensor(obs, device=device)
+C:\Projects\IntradayJules\venv\lib\site-packages\sb3_contrib\common\recurrent\policies.py:406: TracerWarning: torch.tensor results are registered as constants in the trace. You can safely ignore this warning if you use this function to create tensors out of constant variables that would be the same every time you call this function. In any other case, this might cause the trace to be incorrect.
+  states = th.tensor(state[0], dtype=th.float32, device=self.device), th.tensor(
+C:\Projects\IntradayJules\venv\lib\site-packages\sb3_contrib\common\recurrent\policies.py:409: TracerWarning: torch.tensor results are registered as constants in the trace. You can safely ignore this warning if you use this function to create tensors out of constant variables that would be the same every time you call this function. In any other case, this might cause the trace to be incorrect.
+  episode_starts = th.tensor(episode_start, dtype=th.float32, device=self.device)
+C:\Projects\IntradayJules\venv\lib\site-packages\sb3_contrib\common\recurrent\policies.py:191: TracerWarning: Converting a tensor to a Python boolean might cause the trace to be incorrect. We can't record the data flow of Python values, so this value will be treated as a constant in the future. This means that the trace might not generalize to other inputs!
+  if th.all(episode_starts == 0.0):
+C:\Projects\IntradayJules\venv\lib\site-packages\sb3_contrib\common\recurrent\policies.py:413: TracerWarning: Converting a tensor to a NumPy array might cause the trace to be incorrect. We can't record the data flow of Python values, so this value will be treated as a constant in the future. This means that the trace might not generalize to other inputs!
+  states = (states[0].cpu().numpy(), states[1].cpu().numpy())
+C:\Projects\IntradayJules\venv\lib\site-packages\sb3_contrib\common\recurrent\policies.py:416: TracerWarning: Converting a tensor to a NumPy array might cause the trace to be incorrect. We can't record the data flow of Python values, so this value will be treated as a constant in the future. This means that the trace might not generalize to other inputs!
+  actions = actions.cpu().numpy()
+C:\Projects\IntradayJules\src\training\core\policy_export.py:89: TracerWarning: torch.tensor results are registered as constants in the trace. You can safely ignore this warning if you use this function to create tensors out of constant variables that would be the same every time you call this function. In any other case, this might cause the trace to be incorrect.
+  return torch.tensor(action, dtype=torch.long, device=device)
+2025-07-17 20:30:10,914 - src.training.core.policy_export - INFO - TorchScript model saved to models\RECURRENTPPO_2025-07-17_20-27-39\RECURRENTPPO_2025-07-17_20-27-39_torchscript.pt
+2025-07-17 20:30:10,915 - src.training.core.policy_export - INFO - TorchScript model test successful, output shape: torch.Size([1])
+2025-07-17 20:30:10,917 - RLTradingPlatform.Agent.TrainerAgent - INFO - TorchScript export successful: models\RECURRENTPPO_2025-07-17_20-27-39\RECURRENTPPO_2025-07-17_20-27-39_torchscript.pt
+2025-07-17 20:30:10,922 - RLTradingPlatform.Agent.TrainerAgent - ERROR - Failed to save model bundle: Object of type type is not JSON serializable
+2025-07-17 20:30:10,923 - RLTradingPlatform.Agent.TrainerAgent - ERROR - Training failed: Object of type type is not JSON serializable
+2025-07-17 20:30:10,923 - RLTradingPlatform.OrchestratorAgent - ERROR - Model training failed. Training pipeline aborted.
+2025-07-17 20:30:10,923 - RLTradingPlatform.Main - ERROR - Training pipeline failed.
+
+(venv) C:\Projects\IntradayJules\src>

@@ -211,6 +211,10 @@ class OrchestratorAgent:
                 # Enhanced turnover enforcement parameters
                 'turnover_exponential_penalty_factor': risk_cfg.get('turnover_exponential_penalty_factor', 0.1),
                 'turnover_termination_penalty_pct': risk_cfg.get('turnover_termination_penalty_pct', 0.05),
+                # 🚨 EMERGENCY FIX PARAMETERS
+                'use_emergency_reward_fix': env_cfg.get('use_emergency_reward_fix', False),
+                'emergency_transaction_cost_pct': env_cfg.get('emergency_transaction_cost_pct', 0.0001),
+                'emergency_holding_bonus': env_cfg.get('emergency_holding_bonus', 0.1),
                 # Enhanced Kyle Lambda fill simulation
                 'enable_kyle_lambda_fills': env_cfg.get('kyle_lambda_fills', {}).get('enable_kyle_lambda_fills', True),
                 'fill_simulator_config': env_cfg.get('kyle_lambda_fills', {}).get('fill_simulator_config', {})
@@ -221,12 +225,19 @@ class OrchestratorAgent:
         # Use new TrainerAgent factory function (bounded context)
         risk_limits_path="config/risk_limits_orchestrator_test.yaml"
 
+        # Check if the main config training section specifies an algorithm
+        training_params = self.main_config.get('training', {})
+        main_algorithm = training_params.get('algorithm')
+        
+        # Use algorithm from main config if specified, otherwise use model_params config
+        algorithm = main_algorithm if main_algorithm else self.model_params_config.get('algorithm_name', 'DQN')
+        
         trainer_config = {
             'model_save_dir': paths.get('model_save_dir', 'models/'),
             'log_dir': paths.get('tensorboard_log_dir', 'logs/tensorboard/'),
-            'algorithm': self.model_params_config.get('algorithm_name', 'DQN'),
+            'algorithm': algorithm,
             'algo_params': self.model_params_config.get('algorithm_params', {}),
-            'training_params': self.main_config.get('training', {}),
+            'training_params': training_params,
             'risk_config': {
                 'enabled': self.risk_limits_config.get('risk_aware_training', {}).get('enabled', False),
                 'policy_yaml': risk_limits_path,

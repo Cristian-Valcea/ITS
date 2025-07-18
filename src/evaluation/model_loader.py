@@ -13,11 +13,24 @@ import logging
 from typing import Optional, Any, Dict
 
 try:
-    from stable_baselines3 import DQN
-    SB3_MODEL_CLASSES = {'DQN': DQN}
+    from stable_baselines3 import DQN, PPO, A2C, SAC
+    SB3_MODEL_CLASSES = {'DQN': DQN, 'PPO': PPO, 'A2C': A2C, 'SAC': SAC}
     SB3_AVAILABLE = True
+    
+    # Try to import advanced algorithms from sb3-contrib
+    try:
+        from sb3_contrib import QRDQN, RecurrentPPO
+        SB3_MODEL_CLASSES['QR-DQN'] = QRDQN
+        SB3_MODEL_CLASSES['QRDQN'] = QRDQN
+        SB3_MODEL_CLASSES['RecurrentPPO'] = RecurrentPPO
+        SB3_MODEL_CLASSES['RECURRENTPPO'] = RecurrentPPO  # Add uppercase version for compatibility
+        SB3_CONTRIB_AVAILABLE = True
+    except ImportError:
+        SB3_CONTRIB_AVAILABLE = False
+        
 except ImportError:
     SB3_AVAILABLE = False
+    SB3_CONTRIB_AVAILABLE = False
     SB3_MODEL_CLASSES = {}
 
 
@@ -96,6 +109,17 @@ class ModelLoader:
         self.default_model_load_path = config.get('model_load_path', None)
         self.loaded_model = None
         
+        # Log available algorithms for debugging
+        if SB3_AVAILABLE:
+            available_algorithms = list(SB3_MODEL_CLASSES.keys())
+            self.logger.info(f"Available algorithms: {available_algorithms}")
+            if SB3_CONTRIB_AVAILABLE:
+                self.logger.info("sb3-contrib algorithms are available (RecurrentPPO, QRDQN)")
+            else:
+                self.logger.warning("sb3-contrib is not available - RecurrentPPO and QRDQN will not work")
+        else:
+            self.logger.error("Stable-Baselines3 is not available")
+        
     def load_model(self, model_path: str, algorithm_name: str = "DQN", env_context=None) -> bool:
         """
         Load a model for evaluation.
@@ -115,8 +139,12 @@ class ModelLoader:
             self.loaded_model = None
             return False
 
-        if not os.path.exists(model_path) and not os.path.exists(model_path + ".dummy"):
-            self.logger.error(f"Model file not found at {model_path} or {model_path}.dummy")
+        # Check for SB3 model files (.zip) or dummy files (.dummy)
+        model_zip_exists = os.path.exists(model_path + ".zip")
+        model_dummy_exists = os.path.exists(model_path + ".dummy")
+        
+        if not model_zip_exists and not model_dummy_exists:
+            self.logger.error(f"Model file not found at {model_path}.zip or {model_path}.dummy")
             self.loaded_model = None
             return False
 
@@ -131,7 +159,13 @@ class ModelLoader:
             return True
             
         # Both methods failed
-        self.logger.error(f"Cannot load model: SB3 is not available for algorithm '{algo_name_upper}' and no dummy file found at {model_path}.dummy")
+        available_algorithms = list(SB3_MODEL_CLASSES.keys()) if SB3_AVAILABLE else []
+        self.logger.error(f"Cannot load model: Algorithm '{algo_name_upper}' not available and no dummy file found at {model_path}.dummy")
+        self.logger.error(f"Available algorithms: {available_algorithms}")
+        if not SB3_AVAILABLE:
+            self.logger.error("Stable-Baselines3 is not available")
+        if not SB3_CONTRIB_AVAILABLE:
+            self.logger.error("sb3-contrib is not available (required for RecurrentPPO, QRDQN)")
         self.loaded_model = None
         return False
     
@@ -146,16 +180,23 @@ class ModelLoader:
         Returns:
             True if loaded successfully, False otherwise
         """
-        if SB3_AVAILABLE and algo_name_upper in SB3_MODEL_CLASSES:
-            ModelClass = SB3_MODEL_CLASSES[algo_name_upper]
-            try:
-                self.loaded_model = ModelClass.load(model_path, env=None)
-                self.logger.info(f"Successfully loaded SB3 model {algo_name_upper} from {model_path}")
-                return True
-            except Exception as e:
-                self.logger.error(f"Error loading SB3 model {algo_name_upper} from {model_path}: {e}", exc_info=True)
-                return False
-        return False
+        if not SB3_AVAILABLE:
+            self.logger.debug("SB3 not available, skipping SB3 model loading")
+            return False
+            
+        if algo_name_upper not in SB3_MODEL_CLASSES:
+            self.logger.debug(f"Algorithm '{algo_name_upper}' not in available SB3 model classes")
+            return False
+            
+        ModelClass = SB3_MODEL_CLASSES[algo_name_upper]
+        try:
+            self.logger.info(f"Loading {algo_name_upper} model from {model_path}")
+            self.loaded_model = ModelClass.load(model_path, env=None)
+            self.logger.info(f"Successfully loaded SB3 model {algo_name_upper} from {model_path}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error loading SB3 model {algo_name_upper} from {model_path}: {e}", exc_info=True)
+            return False
     
     def _try_load_dummy_model(self, model_path: str, env_context=None) -> bool:
         """

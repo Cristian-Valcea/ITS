@@ -80,7 +80,11 @@ class IntradayTradingEnv(gym.Env):
                  turnover_bonus_threshold: float = 0.8, # Bonus when turnover < 80% of cap
                  turnover_bonus_factor: float = 0.001, # Bonus amount per step when under threshold
                  # Advanced reward shaping configuration
-                 advanced_reward_config: Dict[str, Any] = None # Configuration for advanced reward shaping
+                 advanced_reward_config: Dict[str, Any] = None, # Configuration for advanced reward shaping
+                 # Emergency fix parameters
+                 use_emergency_reward_fix: bool = False, # Use simplified reward function
+                 emergency_holding_bonus: float = 0.1, # Bonus for not trading (scaled by portfolio value)
+                 emergency_transaction_cost_pct: float = 0.0001 # Reduced transaction cost for training
                  ):
         """
         Args:
@@ -146,6 +150,17 @@ class IntradayTradingEnv(gym.Env):
         self.action_change_penalty_factor = action_change_penalty_factor
         self.turnover_bonus_threshold = turnover_bonus_threshold
         self.turnover_bonus_factor = turnover_bonus_factor
+        
+        # Emergency fix parameters
+        self.use_emergency_reward_fix = use_emergency_reward_fix
+        self.emergency_holding_bonus = emergency_holding_bonus
+        self.emergency_transaction_cost_pct = emergency_transaction_cost_pct
+        
+        # Log emergency fix status
+        if self.use_emergency_reward_fix:
+            self.logger.info(f"🚨 EMERGENCY REWARD FIX ENABLED - Transaction cost: {self.emergency_transaction_cost_pct:.6f}, Holding bonus: {self.emergency_holding_bonus}")
+        else:
+            self.logger.info("Emergency reward fix disabled - using standard reward system")
         
         # Kyle Lambda fill simulation setup
         self.enable_kyle_lambda_fills = enable_kyle_lambda_fills
@@ -264,7 +279,12 @@ class IntradayTradingEnv(gym.Env):
         to prevent look-ahead bias. All indicators (RSI, EMA, etc.) at time t should
         use only data from times <= t, not future information.
         """
-        market_obs_part = self.market_feature_data[self.current_step].astype(np.float32)
+        # Add boundary protection for market feature data access
+        if self.current_step >= len(self.market_feature_data):
+            self.logger.warning(f"🚨 BOUNDARY PROTECTION: Step {self.current_step} >= market data length {len(self.market_feature_data)}, using last available data")
+            market_obs_part = self.market_feature_data[-1].astype(np.float32)  # Use last available data
+        else:
+            market_obs_part = self.market_feature_data[self.current_step].astype(np.float32)
         position_feature = float(self.current_position) # Current position (-1, 0, or 1)
 
         if self.lookback_window > 1:
@@ -280,8 +300,66 @@ class IntradayTradingEnv(gym.Env):
         
         return obs
 
+    def _calculate_emergency_reward(self, realized_pnl: float, transaction_cost: float, 
+                                  position_changed: bool) -> float:
+        """
+        🚨 EMERGENCY REWARD FIX: Simplified reward function focused on profitability
+        
+        This function addresses the core issue of reward function pollution by:
+        1. Focusing purely on P&L after transaction costs
+        2. Providing holding bonus to discourage overtrading
+        3. Using reduced transaction costs for training
+        4. Scaling rewards appropriately
+        
+        Args:
+            realized_pnl (float): Realized P&L from position changes
+            transaction_cost (float): Transaction cost for this step
+            position_changed (bool): Whether position changed this step
+            
+        Returns:
+            float: Simple reward focused on profitability
+        """
+        # Use reduced transaction cost for training if emergency fix is enabled
+        if self.use_emergency_reward_fix:
+            # Recalculate transaction cost with reduced rate
+            if position_changed:
+                # Get current price and trade details
+                current_price = self._get_current_price()
+                trade_value = abs(getattr(self, 'shares_traded_last_step', 0)) * current_price
+                transaction_cost = trade_value * self.emergency_transaction_cost_pct
+        
+        # Core reward: P&L after transaction costs
+        core_reward = realized_pnl - transaction_cost
+        
+        # Holding bonus: encourage NOT trading
+        holding_bonus = 0.0
+        if not position_changed:
+            # Scale holding bonus by portfolio value to maintain consistency
+            holding_bonus = self.emergency_holding_bonus * (self.portfolio_value / self.initial_capital)
+        
+        # Simple reward calculation
+        total_reward = core_reward + holding_bonus
+        
+        # Scale to reasonable magnitude (convert to cents)
+        scaled_reward = total_reward * 100
+        
+        # Log emergency reward details
+        if self.use_emergency_reward_fix:
+            self.logger.debug(
+                f"🚨 EMERGENCY REWARD: Step {self.current_step}, "
+                f"P&L: ${realized_pnl:.4f}, Cost: ${transaction_cost:.4f}, "
+                f"Core: ${core_reward:.4f}, Holding: ${holding_bonus:.4f}, "
+                f"Total: ${total_reward:.4f}, Scaled: {scaled_reward:.4f}"
+            )
+        
+        return scaled_reward
+
     def _get_current_price(self) -> float:
-        """Get current mid-market price."""
+        """Get current mid-market price with boundary protection."""
+        # Add boundary protection to prevent index out of bounds
+        if self.current_step >= len(self.price_data):
+            self.logger.warning(f"🚨 BOUNDARY PROTECTION: Step {self.current_step} >= data length {len(self.price_data)}, using last available price")
+            return self.price_data.iloc[-1]  # Return last available price
         return self.price_data.iloc[self.current_step]
     
     def _compute_unrealized_pnl(self) -> float:
@@ -305,14 +383,22 @@ class IntradayTradingEnv(gym.Env):
     
     def _apply_transaction_fee(self, shares: float, price: float, fee_type: str = "") -> float:
         """Apply transaction fee and track for reward calculation."""
-        fee_amount = self.transaction_cost_pct * shares * price
+        # Use emergency transaction cost rate if emergency fix is enabled
+        if self.use_emergency_reward_fix:
+            fee_rate = self.emergency_transaction_cost_pct
+        else:
+            fee_rate = self.transaction_cost_pct
+            
+        fee_amount = fee_rate * shares * price
         self.current_capital -= fee_amount
         self.total_fees_this_step += fee_amount
         self.episode_total_fees += fee_amount  # Track episode-level fees
         
         # Log the fee
         if fee_type:
-            self.logger.log(self.TRADE_LOG_LEVEL, f"🔍 FEE CALC ({fee_type}): Shares={shares:.2f}, Price={price:.4f}, Rate={self.transaction_cost_pct:.4f} -> Fee=${fee_amount:.4f}")
+            fee_rate_display = fee_rate if self.use_emergency_reward_fix else self.transaction_cost_pct
+            emergency_marker = "🚨 EMERGENCY " if self.use_emergency_reward_fix else ""
+            self.logger.log(self.TRADE_LOG_LEVEL, f"🔍 {emergency_marker}FEE CALC ({fee_type}): Shares={shares:.2f}, Price={price:.4f}, Rate={fee_rate_display:.6f} -> Fee=${fee_amount:.4f}")
         
         return fee_amount
     
@@ -504,6 +590,14 @@ class IntradayTradingEnv(gym.Env):
         
         desired_position_signal = self._action_map[action] # -1 (Sell), 0 (Hold), 1 (Buy)
         current_price = self._get_current_price()
+        
+        # Add boundary protection for timestamp access
+        if self.current_step >= len(self.dates):
+            self.logger.warning(f"🚨 BOUNDARY PROTECTION: Step {self.current_step} >= dates length {len(self.dates)}, episode should end")
+            # Force episode termination by returning done=True
+            obs = self._get_observation()
+            return obs, -1000.0, True, True, {"boundary_exceeded": True}
+        
         timestamp = self.dates[self.current_step]
 
         # End-of-day flat rule: Force position=0 at 15:55 to cut overnight risk
@@ -539,6 +633,9 @@ class IntradayTradingEnv(gym.Env):
         transaction_executed = False
         trade_value_executed = 0.0 # Absolute monetary value of stock traded
         shares_traded_this_step = 0.0
+        
+        # Track shares traded for emergency reward calculation
+        self.shares_traded_last_step = 0.0
 
         # --- Execute Trade ---
         # This logic assumes full capital deployment or fixed quantity per trade.
@@ -712,8 +809,33 @@ class IntradayTradingEnv(gym.Env):
         gross_pnl_change = (self.portfolio_value - portfolio_value_before_action)
         self.net_pnl_this_step = gross_pnl_change  # Net P&L already includes fees (they reduce portfolio value)
         
+        # 🚨 EMERGENCY REWARD FIX: Use simplified reward function if enabled
+        if self.use_emergency_reward_fix:
+            reward = self._calculate_emergency_reward(
+                realized_pnl=realized_pnl_this_step,
+                transaction_cost=self.total_fees_this_step,
+                position_changed=transaction_executed
+            )
+            
+            # Store simple reward breakdown for monitoring
+            self._last_reward_breakdown = {
+                'emergency_fix': True,
+                'realized_pnl': realized_pnl_this_step,
+                'transaction_cost': self.total_fees_this_step,
+                'position_changed': transaction_executed,
+                'total_reward': reward,
+                'core_pnl': realized_pnl_this_step - self.total_fees_this_step,
+                'holding_bonus': 0.0 if transaction_executed else self.emergency_holding_bonus * (self.portfolio_value / self.initial_capital) * 100
+            }
+            
+            self.logger.debug(
+                f"🚨 EMERGENCY REWARD ACTIVE: Step {self.current_step}, "
+                f"P&L: ${realized_pnl_this_step:.4f}, Cost: ${self.total_fees_this_step:.4f}, "
+                f"Reward: {reward:.4f}"
+            )
+        
         # Use Enhanced Reward System if enabled (addresses high-frequency reward noise)
-        if self.enhanced_reward_calculator:
+        elif self.enhanced_reward_calculator:
             reward, reward_breakdown = self.enhanced_reward_calculator.calculate_reward(
                 realized_pnl=realized_pnl_this_step,
                 transaction_cost=self.total_fees_this_step,
@@ -823,6 +945,9 @@ class IntradayTradingEnv(gym.Env):
         
         # Update previous action for next step
         self.previous_action = action
+        
+        # Track shares traded for emergency reward calculation
+        self.shares_traded_last_step = shares_traded_this_step
 
         # --- Log trade if executed ---
         if transaction_executed:
@@ -869,14 +994,21 @@ class IntradayTradingEnv(gym.Env):
             # reward -= drawdown_penalty 
             # Reward already reflects the loss in portfolio value. Additional penalty can be added if desired.
 
-        # 2. Hourly Turnover Cap - BINDING ENFORCEMENT
+        # 2. Hourly Turnover Cap - BINDING ENFORCEMENT (More aggressive during emergency fix)
         if self.start_of_day_portfolio_value > 0:
             current_hourly_turnover_ratio = self.hourly_traded_value / self.start_of_day_portfolio_value
-            if current_hourly_turnover_ratio > self.hourly_turnover_cap:
-                self.logger.warning(f"Step {self.current_step}: Hourly turnover cap breached! Ratio: {current_hourly_turnover_ratio:.2f}x, Limit: {self.hourly_turnover_cap:.2f}x.")
+            
+            # Use more aggressive turnover cap during emergency fix
+            effective_turnover_cap = self.hourly_turnover_cap
+            if self.use_emergency_reward_fix:
+                effective_turnover_cap = min(self.hourly_turnover_cap, 1.0)  # Cap at 1.0x during emergency fix
+            
+            if current_hourly_turnover_ratio > effective_turnover_cap:
+                emergency_marker = "🚨 EMERGENCY " if self.use_emergency_reward_fix else ""
+                self.logger.warning(f"Step {self.current_step}: {emergency_marker}Hourly turnover cap breached! Ratio: {current_hourly_turnover_ratio:.2f}x, Effective Limit: {effective_turnover_cap:.2f}x.")
                 
                 # 🚨 STRONG NEGATIVE REWARD for turnover breach
-                excess_turnover = current_hourly_turnover_ratio - self.hourly_turnover_cap
+                excess_turnover = current_hourly_turnover_ratio - effective_turnover_cap
                 
                 # Progressive penalty: gets exponentially worse with higher excess
                 base_penalty = excess_turnover * self.start_of_day_portfolio_value * self.turnover_penalty_factor
@@ -887,9 +1019,14 @@ class IntradayTradingEnv(gym.Env):
                 
                 self.logger.warning(f"Step {self.current_step}: Applied turnover penalty: ${total_turnover_penalty:.2f} (base: ${base_penalty:.2f}, exponential: ${exponential_penalty:.2f})")
                 
-                # 🛑 TERMINATION OPTIONS
-                if self.terminate_on_turnover_breach:
-                    termination_threshold = self.hourly_turnover_cap * self.turnover_termination_threshold_multiplier
+                # 🛑 TERMINATION OPTIONS (More aggressive during emergency fix)
+                if self.terminate_on_turnover_breach or self.use_emergency_reward_fix:
+                    # Use more aggressive termination threshold during emergency fix
+                    if self.use_emergency_reward_fix:
+                        termination_threshold = effective_turnover_cap * 1.5  # Terminate at 1.5x effective cap
+                    else:
+                        termination_threshold = self.hourly_turnover_cap * self.turnover_termination_threshold_multiplier
+                    
                     if current_hourly_turnover_ratio > termination_threshold:
                         self.logger.warning(f"Step {self.current_step}: Terminating due to excessive hourly turnover! Ratio: {current_hourly_turnover_ratio:.2f}x, Cap: {self.hourly_turnover_cap:.2f}x, Termination Threshold: {termination_threshold:.2f}x")
                         terminated = True
