@@ -184,8 +184,8 @@ class CurriculumLearningCallback(BaseCallback):
                         self.logger.info(f"   Drawdown: {criteria['drawdown']['value']:.2%} {dd_status}")
                         self.logger.info(f"   Sharpe: {criteria['sharpe']['value']:.3f} {sharpe_status}")
             
-            # Log to tensorboard if available
-            if hasattr(self.logger, 'record'):
+            # Log to tensorboard if available (with frequency control)
+            if hasattr(self.logger, 'record') and self.current_episode % 10 == 0:  # Log every 10 episodes
                 self.logger.record('curriculum/episode', self.current_episode)
                 self.logger.record('curriculum/stage', curriculum_info['current_stage'])
                 self.logger.record('curriculum/episodes_in_stage', curriculum_info['episodes_in_stage'])

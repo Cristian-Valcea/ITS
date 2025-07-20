@@ -69,6 +69,7 @@ class LagrangianConstraintManager:
         self.constraint_violations = deque(maxlen=1000)  # Track violations
         
         self.logger = logging.getLogger(__name__)
+        self.logger.propagate = False  # 🔧 FIX: Prevent duplicate logging
         
     def update_lambda(self, current_volatility: float) -> float:
         """
@@ -328,6 +329,7 @@ class AdvancedRewardShaper:
         self.cvar_calculator = CVaRRLCalculator(self.config)
         
         self.logger = logging.getLogger(__name__)
+        self.logger.propagate = False  # 🔧 FIX: Prevent duplicate logging
         self.logger.info("🎯 Advanced Reward Shaping initialized:")
         self.logger.info(f"   - Lagrangian Constraint: {'✅' if self.config.lagrangian_enabled else '❌'}")
         self.logger.info(f"   - Sharpe-Adjusted Reward: {'✅' if self.config.sharpe_enabled else '❌'}")

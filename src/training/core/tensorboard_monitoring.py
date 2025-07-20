@@ -203,7 +203,7 @@ class TensorBoardMonitoringCallback(BaseCallback):
                 excess_ratio = normalized_turnover - target_ratio
                 
                 # Calculate penalty (even for zero turnover)
-                turnover_penalty = calc.compute_penalty(current_turnover)
+                turnover_penalty = calc.compute_penalty(current_turnover, step=None)  # No step for monitoring
                 
                 # Store metrics
                 self.turnover_penalty_buffer.append(turnover_penalty)

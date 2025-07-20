@@ -36,12 +36,33 @@ environment:
   trade_cooldown_steps: 0
   max_episode_steps: 20000
   
-  # 🎯 FIXED TURNOVER PENALTY SYSTEM - ENABLED
+  # 🎯 FIXED TURNOVER PENALTY SYSTEM - EMERGENCY CORRECTED
   use_turnover_penalty: true
-  turnover_target_ratio: 0.02        # Target 2% turnover ratio (dimensionless)
-  turnover_weight_factor: 0.15       # Penalty weight: 15% of NAV (strong deterrent)
+  turnover_target_ratio: 0.5         # STARTING target (curriculum will progress this)
+  turnover_weight_factor: 0.001      # PRACTICAL: 0.1% of NAV → gentle intraday penalties
   turnover_curve_sharpness: 25.0     # Sigmoid curve sharpness (k=25)
   turnover_penalty_type: quadratic   # Use quadratic penalty for aggressive overtrading control
+  
+  # 🎯 PPO-SPECIFIC REWARD SCALING (Prevent critic explosion)
+  ppo_reward_scaling: true           # Enable PPO-friendly reward scaling
+  ppo_scale_factor: 1000.0          # Scale rewards to [-10, +10] range
+  
+  # 🎓 CURRICULUM LEARNING: Progressive turnover targets
+  curriculum:
+    enabled: true
+    stages:
+      - target_ratio: 0.5           # Stage 1: Learn basic trading (50% turnover)
+        min_episodes: 20
+        reward_threshold: null      # No threshold for first stage
+      - target_ratio: 1.0           # Stage 2: Increase activity (100% turnover)  
+        min_episodes: 40
+        reward_threshold: 0.0       # Must break even to advance
+      - target_ratio: 1.5           # Stage 3: Active trading (150% turnover)
+        min_episodes: 60
+        reward_threshold: 50.0      # Must show profit to advance
+      - target_ratio: 2.0           # Stage 4: Advanced trading (200% turnover)
+        min_episodes: 80
+        reward_threshold: 100.0     # Must show consistent profit
   
   # 🚨 DISABLE EMERGENCY FIX - Use new system instead
   use_emergency_reward_fix: false
@@ -174,7 +195,7 @@ risk:
 risk_management:
   max_daily_drawdown_pct: 0.05
   # Standard turnover controls (not used with new system)
-  hourly_turnover_cap: 3.0
+  hourly_turnover_cap: 0.5  # FIRST-ORDER FIX: Start low (was 3.0)
   terminate_on_turnover_breach: false
   turnover_penalty_factor: 0.0  # Disabled - using new system
   turnover_termination_threshold_multiplier: 3.0
@@ -199,9 +220,9 @@ training:
   gae_lambda: 0.95
   clip_range: 0.2
   clip_range_vf: null
-  normalize_advantage: True
+  normalize_advantage: True  # Keep advantage normalization
   ent_coef: 0.01
-  vf_coef: 0.5
+  vf_coef: 0.05  # REDUCED: From 0.5 to 0.05 to prevent critic explosion
   max_grad_norm: 0.5
   use_sde: False
   sde_sample_freq: -1

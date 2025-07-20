@@ -211,19 +211,14 @@ if not exist "src\main.py" (
     pause
     exit /b 1
 )
-if not exist "config\turnover_penalty_orchestrator_gpu.yaml" (
-    echo ERROR: Turnover penalty configuration not found!
-    echo Falling back to emergency fix configuration...
-    if not exist "config\emergency_fix_orchestrator_gpu.yaml" (
-        echo ERROR: No valid training configuration found!
-        pause
-        exit /b 1
-    )
-    set CONFIG_FILE=emergency_fix_orchestrator_gpu.yaml
-) else (
-    set CONFIG_FILE=turnover_penalty_orchestrator_gpu.yaml
-    echo ✅ Using enhanced turnover penalty configuration
+REM FORCE USE OF STABILIZED EMERGENCY FIX CONFIG (penalties disabled)
+if not exist "config\emergency_fix_orchestrator_gpu.yaml" (
+    echo ERROR: Emergency fix configuration not found!
+    pause
+    exit /b 1
 )
+set CONFIG_FILE=emergency_fix_orchestrator_gpu.yaml
+echo ✅ Using STABILIZED emergency fix configuration (penalties disabled)
 if not exist "config\model_params.yaml" (
     echo ERROR: Model parameters configuration not found!
     pause
@@ -243,13 +238,8 @@ echo.
 
 REM Change to src directory and run training
 cd src
-if "%CONFIG_FILE%"=="turnover_penalty_orchestrator_gpu.yaml" (
-    echo 🎯 Launching training with TURNOVER PENALTY SYSTEM
-    start "MAIN-TRAINING-TURNOVER-PENALTY" cmd /k "python main.py train --main_config ../config/turnover_penalty_orchestrator_gpu.yaml --symbol NVDA --start_date 2024-01-01 --end_date 2024-03-31"
-) else (
-    echo 🔧 Launching training with emergency fix configuration
-    start "MAIN-TRAINING-EMERGENCY-FIX" cmd /k "python main.py train --main_config ../config/emergency_fix_orchestrator_gpu.yaml --symbol NVDA --start_date 2024-01-01 --end_date 2024-03-31"
-)
+echo 🔧 Launching training with STABILIZED emergency fix configuration (all penalties disabled)
+start "MAIN-TRAINING-STABILIZED" cmd /k "python main.py train --main_config ../config/emergency_fix_orchestrator_gpu.yaml --symbol NVDA --start_date 2024-01-01 --end_date 2024-03-31"
 
 REM Return to root directory
 cd ..

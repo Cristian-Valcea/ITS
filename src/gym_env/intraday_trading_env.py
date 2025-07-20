@@ -18,6 +18,7 @@ try:
     from ..risk.advanced_reward_shaping import AdvancedRewardShaper
     from .enhanced_reward_system import EnhancedRewardCalculator
     from .components.turnover_penalty import TurnoverPenaltyCalculator, TurnoverPenaltyFactory
+    from .components.curriculum_scheduler import CurriculumScheduler
 except ImportError:
     # Fallback for direct execution
     import sys
@@ -26,6 +27,7 @@ except ImportError:
     from kyle_lambda_fill_simulator import KyleLambdaFillSimulator, FillPriceSimulatorFactory
     from enhanced_reward_system import EnhancedRewardCalculator
     from components.turnover_penalty import TurnoverPenaltyCalculator, TurnoverPenaltyFactory
+    from components.curriculum_scheduler import CurriculumScheduler
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from risk.advanced_reward_shaping import AdvancedRewardShaper
 
@@ -65,21 +67,21 @@ class IntradayTradingEnv(gym.Env):
                  reward_scaling: float = 1.0,
                  max_episode_steps: int = None,
                  log_trades: bool = True,
-                 turnover_penalty_factor: float = 0.01, # Penalty per unit of excess turnover
+                 turnover_penalty_factor: float = 0.0001, # REDUCED: Dynamic penalty per unit of excess turnover (% of portfolio)
                  position_sizing_pct_capital: float = 0.25, # Pct of capital to use for sizing (legacy)
                  equity_scaling_factor: float = 0.02, # k factor for equity-scaled sizing: shares = k * portfolio_value / price
-                 trade_cooldown_steps: int = 0, # Number of steps to wait after a trade
+                 trade_cooldown_steps: int = 5, # Number of steps to wait after a trade (INCREASED to stop ping-ponging)
                  terminate_on_turnover_breach: bool = False, # Terminate if turnover cap breached significantly
                  turnover_termination_threshold_multiplier: float = 2.0, # e.g. 2x the cap
                  # Enhanced turnover enforcement parameters
-                 turnover_exponential_penalty_factor: float = 0.1, # Factor for quadratic penalty
+                 turnover_exponential_penalty_factor: float = 0.001, # REDUCED: Huber-shaped penalty factor
                  turnover_termination_penalty_pct: float = 0.05, # Additional penalty on termination (% of portfolio)
                  # New parameters for Kyle Lambda fill simulation
                  enable_kyle_lambda_fills: bool = True, # Enable Kyle Lambda fill price simulation
                  fill_simulator_config: dict = None, # Configuration for fill simulator
                  volume_data: pd.Series = None, # Optional volume data for better impact modeling
                  # Action change penalty to discourage ping-ponging
-                 action_change_penalty_factor: float = 0.001, # L2 penalty factor for action changes
+                 action_change_penalty_factor: float = 2.5, # L2 penalty factor for action changes (INCREASED to stop ping-ponging)
                  # Reward shaping parameters
                  turnover_bonus_threshold: float = 0.8, # Bonus when turnover < 80% of cap
                  turnover_bonus_factor: float = 0.001, # Bonus amount per step when under threshold
@@ -94,7 +96,12 @@ class IntradayTradingEnv(gym.Env):
                  turnover_target_ratio: float = 0.02, # Target turnover ratio (dimensionless)
                  turnover_weight_factor: float = 0.02, # Penalty weight: % of NAV
                  turnover_curve_sharpness: float = 25.0, # Sigmoid curve sharpness
-                 turnover_penalty_type: str = 'sigmoid' # 'sigmoid' or 'softplus'
+                 turnover_penalty_type: str = 'sigmoid', # 'sigmoid' or 'softplus'
+                 # PPO-specific reward scaling
+                 ppo_reward_scaling: bool = True, # Enable PPO-friendly reward scaling
+                 ppo_scale_factor: float = 1000.0, # Divide rewards by (portfolio_value / this factor)
+                 # Curriculum learning
+                 curriculum: Dict[str, Any] = None # Curriculum learning configuration
                  ):
         """
         Args:
@@ -125,6 +132,7 @@ class IntradayTradingEnv(gym.Env):
         """
         super().__init__()
         self.logger = logging.getLogger(f"RLTradingPlatform.Env.IntradayTradingEnv")
+        self.logger.propagate = False  # 🔧 FIX: Prevent duplicate logging
         self.TRADE_LOG_LEVEL = logging.DEBUG   # switch to INFO for verbose runs
         
         if not isinstance(processed_feature_data, np.ndarray):
@@ -173,6 +181,19 @@ class IntradayTradingEnv(gym.Env):
         self.turnover_curve_sharpness = turnover_curve_sharpness
         self.turnover_penalty_type = turnover_penalty_type
         
+        # PPO-specific reward scaling
+        self.ppo_reward_scaling = ppo_reward_scaling
+        self.ppo_scale_factor = ppo_scale_factor
+        
+        # Curriculum learning
+        self.curriculum_scheduler = None
+        if curriculum:
+            self.curriculum_scheduler = CurriculumScheduler(curriculum)
+            # Update initial target ratio from curriculum
+            if self.curriculum_scheduler.enabled:
+                self.turnover_target_ratio = self.curriculum_scheduler.get_current_target_ratio()
+                self.logger.info(f"🎓 Curriculum scheduler enabled - starting target: {self.turnover_target_ratio:.3f}")
+        
         # Initialize turnover tracking
         self.total_traded_value = 0.0
         self.episode_start_time = None
@@ -180,6 +201,10 @@ class IntradayTradingEnv(gym.Env):
         
         # Initialize turnover penalty calculator (will be created in reset())
         self.turnover_penalty_calculator = None
+        
+        # Track consecutive drawdown steps to prevent infinite loops
+        self.consecutive_drawdown_steps = 0
+        self.max_consecutive_drawdown_steps = 200  # Increase limit during stabilization (was 50)
         
         # Log reward system status
         if self.use_turnover_penalty:
@@ -383,9 +408,10 @@ class IntradayTradingEnv(gym.Env):
 
     def _initialize_turnover_penalty_calculator(self) -> None:
         """Initialize the turnover penalty calculator component."""
-        # Always use the new fixed system (no episode_length dependency)
+        # 🎯 FIXED: Now includes episode_length normalization (your correct approach)
         self.turnover_penalty_calculator = TurnoverPenaltyCalculator(
             portfolio_value_getter=lambda: self.portfolio_value,
+            episode_length_getter=lambda: getattr(self, 'max_episode_steps', 390),
             target_ratio=getattr(self, 'turnover_target_ratio', 0.02),
             weight_factor=getattr(self, 'turnover_weight_factor', 0.02),
             curve_sharpness=getattr(self, 'turnover_curve_sharpness', 25.0),
@@ -423,12 +449,13 @@ class IntradayTradingEnv(gym.Env):
         
         # Calculate penalty using rolling window (390 steps = 1 trading day)
         rolling_turnover_total = sum(self.rolling_turnover_window) if hasattr(self, 'rolling_turnover_window') else self.total_traded_value
-        penalty = self.turnover_penalty_calculator.compute_penalty(rolling_turnover_total)
+        penalty = self.turnover_penalty_calculator.compute_penalty(rolling_turnover_total, step=self.current_step)
         
-        # Log turnover metrics (every 50 steps to see more data)
-        if self.current_step % 50 == 0 or self.total_traded_value > 1000:
-            self.logger.info(f"🎯 COMPONENT LOGGING - Step {self.current_step}, Total Traded: ${self.total_traded_value:.0f}")
-            self.turnover_penalty_calculator.log_debug(self.total_traded_value, step=self.current_step)
+        # 🔧 PERFORMANCE: Reduce logging frequency (every 100 steps instead of 50)
+        if self.current_step % 100 == 0 or (self.total_traded_value > 1000 and self.current_step % 200 == 0):
+            if self.logger.isEnabledFor(logging.INFO):
+                self.logger.info(f"🎯 COMPONENT LOGGING - Step {self.current_step}, Total Traded: ${self.total_traded_value:.0f}")
+                self.turnover_penalty_calculator.log_debug(self.total_traded_value, step=self.current_step, penalty=penalty)
         
         self.logger.debug(f"🎯 _calculate_turnover_penalty RETURNING: {penalty:.4f}")
         return penalty
@@ -609,7 +636,20 @@ class IntradayTradingEnv(gym.Env):
             previous_day_realized_pnl = self.daily_pnl # Store before reset
             self.logger.info(f"New trading day: {current_date}. Previous day REALIZED P&L: {previous_day_realized_pnl:.2f}")
             self.daily_pnl = 0.0 # Reset daily *realized* P&L counter
-            self.start_of_day_portfolio_value = self.portfolio_value # Portfolio value at start of new day
+            
+            # 🚨 DRAWDOWN FIX: Don't reset baseline if in drawdown (prevents counter reset)
+            current_drawdown_pct = (self.start_of_day_portfolio_value - self.portfolio_value) / self.start_of_day_portfolio_value \
+                                   if self.start_of_day_portfolio_value > 0 else 0
+            
+            if current_drawdown_pct <= self.max_daily_drawdown_pct:
+                # Only reset baseline if not in drawdown
+                self.start_of_day_portfolio_value = self.portfolio_value # Portfolio value at start of new day
+                self.consecutive_drawdown_steps = 0  # Reset counter when baseline resets
+                self.logger.info(f"Baseline reset to ${self.portfolio_value:.2f} (no drawdown)")
+            else:
+                # Keep existing baseline to maintain drawdown calculation
+                self.logger.warning(f"Baseline NOT reset - in drawdown {current_drawdown_pct*100:.2f}% (baseline: ${self.start_of_day_portfolio_value:.2f})")
+            
             self.last_date = current_date
             # Hourly turnover tracking resets implicitly via _update_hourly_trades if it spans days,
             # but should be explicitly cleared daily for cleaner accounting if desired.
@@ -709,6 +749,25 @@ class IntradayTradingEnv(gym.Env):
         
         observation = self._get_observation()
         info = self._get_info()
+        
+        # Handle curriculum progression (if enabled)
+        if hasattr(self, '_episode_total_reward') and self.curriculum_scheduler:
+            stage_advanced = self.curriculum_scheduler.on_episode_end(self._episode_total_reward)
+            if stage_advanced:
+                # Update target ratio from curriculum
+                new_target = self.curriculum_scheduler.get_current_target_ratio()
+                self.turnover_target_ratio = new_target
+                self.logger.info(f"🎓 Curriculum advanced! New target ratio: {new_target:.3f}")
+                
+                # Recreate turnover penalty calculator with new target
+                if self.turnover_penalty_calculator:
+                    self._initialize_turnover_penalty_calculator()
+        
+        # Reset episode reward tracking
+        self._episode_total_reward = 0.0
+        
+        # Reset consecutive drawdown counter
+        self.consecutive_drawdown_steps = 0
         
         self.logger.debug(f"Environment reset. Initial portfolio value: {self.initial_capital:.2f}")
         return observation, info
@@ -962,6 +1021,10 @@ class IntradayTradingEnv(gym.Env):
         gross_pnl_change = (self.portfolio_value - portfolio_value_before_action)
         self.net_pnl_this_step = gross_pnl_change  # Net P&L already includes fees (they reduce portfolio value)
         
+        # 🟢 TRAINING HEARTBEAT - Log every 100 steps to confirm training is active
+        if self.current_step % 100 == 0:
+            self.logger.info(f"🟢 TRAINING ACTIVE - Step {self.current_step}, Portfolio: ${self.portfolio_value:.2f}, PnL: ${gross_pnl_change:.2f}, Action: {action}")
+        
         # 🎯 NEW TURNOVER PENALTY SYSTEM: Use normalized turnover penalty if enabled
         if self.use_turnover_penalty:
             reward = self._calculate_turnover_reward(
@@ -1133,7 +1196,9 @@ class IntradayTradingEnv(gym.Env):
             action_change_penalty = self.action_change_penalty_factor * ((action - self.previous_action) ** 2) * self.reward_scaling
             reward -= action_change_penalty
             if action != self.previous_action:
-                self.logger.debug(f"🔄 ACTION CHANGE PENALTY: Step {self.current_step}, Action {self.previous_action}→{action}, Penalty: ${action_change_penalty:.6f} (scaled)")
+                # Log at INFO level for significant penalties (was DEBUG)
+                log_level = logging.INFO if action_change_penalty > 0.1 else logging.DEBUG
+                self.logger.log(log_level, f"🔄 [ActionChangePenalty] Step {self.current_step}, Action {self.previous_action}→{action}, Penalty: ${action_change_penalty:.2f} (factor: {self.action_change_penalty_factor})")
         
         # Update previous action for next step
         self.previous_action = action
@@ -1186,11 +1251,34 @@ class IntradayTradingEnv(gym.Env):
                                if self.start_of_day_portfolio_value > 0 else 0
         
         if current_drawdown_pct > self.max_daily_drawdown_pct:
-            self.logger.warning(f"Step {self.current_step}: Max daily drawdown breached! Drawdown: {current_drawdown_pct*100:.2f}%, Limit: {self.max_daily_drawdown_pct*100:.2f}%. Portfolio Value: {self.portfolio_value:.2f}")
-            terminated = True
-            # drawdown_penalty = self.initial_capital * 0.1 # Example fixed penalty
-            # reward -= drawdown_penalty 
-            # Reward already reflects the loss in portfolio value. Additional penalty can be added if desired.
+            self.consecutive_drawdown_steps += 1
+            self.logger.warning(f"Step {self.current_step}: Max daily drawdown breached! Drawdown: {current_drawdown_pct*100:.2f}%, Limit: {self.max_daily_drawdown_pct*100:.2f}%. Portfolio Value: {self.portfolio_value:.2f} (consecutive: {self.consecutive_drawdown_steps})")
+            
+            # 🚨 EMERGENCY FIX: Multiple termination conditions to prevent infinite loops
+            severe_drawdown_threshold = self.max_daily_drawdown_pct * 1.25  # 1.25x the limit (was 1.5x)
+            
+            if (current_drawdown_pct > severe_drawdown_threshold or 
+                self.consecutive_drawdown_steps > self.max_consecutive_drawdown_steps):
+                
+                if current_drawdown_pct > severe_drawdown_threshold:
+                    self.logger.error(f"🚨 SEVERE DRAWDOWN TERMINATION! Drawdown: {current_drawdown_pct*100:.2f}% > {severe_drawdown_threshold*100:.2f}% (1.5x limit)")
+                else:
+                    self.logger.error(f"🚨 CONSECUTIVE DRAWDOWN TERMINATION! {self.consecutive_drawdown_steps} consecutive steps > {self.max_consecutive_drawdown_steps} limit")
+                
+                terminated = True
+                # Apply large termination penalty
+                severe_penalty = self.start_of_day_portfolio_value * 0.01  # 1% of starting value
+                reward -= severe_penalty
+                self.logger.error(f"🚨 Applied severe drawdown penalty: ${severe_penalty:.2f}")
+            else:
+                # Apply drawdown penalty but keep episode alive for learning
+                drawdown_excess = current_drawdown_pct - self.max_daily_drawdown_pct
+                drawdown_penalty = drawdown_excess * self.start_of_day_portfolio_value * 0.001  # Small penalty factor
+                reward -= drawdown_penalty
+                self.logger.warning(f"Step {self.current_step}: Applied drawdown penalty: ${drawdown_penalty:.2f} (excess: {drawdown_excess*100:.2f}%)")
+        else:
+            # Reset consecutive drawdown counter when not in drawdown
+            self.consecutive_drawdown_steps = 0
 
         # 2. Hourly Turnover Cap - BINDING ENFORCEMENT (More aggressive during emergency fix)
         if self.start_of_day_portfolio_value > 0:
@@ -1208,30 +1296,43 @@ class IntradayTradingEnv(gym.Env):
                 # 🚨 STRONG NEGATIVE REWARD for turnover breach
                 excess_turnover = current_hourly_turnover_ratio - effective_turnover_cap
                 
-                # Progressive penalty: gets exponentially worse with higher excess
+                # FIRST-ORDER FIX: Dynamic Huber-shaped penalty (gentle near threshold, steeper for major violations)
+                # Base penalty scales with portfolio value (dynamic scaling)
                 base_penalty = excess_turnover * self.start_of_day_portfolio_value * self.turnover_penalty_factor
-                exponential_penalty = (excess_turnover ** 2) * self.start_of_day_portfolio_value * self.turnover_exponential_penalty_factor
-                total_turnover_penalty = base_penalty + exponential_penalty
+                
+                # Huber-shaped penalty: quadratic for small violations, linear for large ones
+                huber_threshold = 0.05  # Switch to linear after 5% excess
+                if excess_turnover <= huber_threshold:
+                    # Quadratic for small violations (gentle)
+                    huber_penalty = (excess_turnover ** 2) * self.start_of_day_portfolio_value * self.turnover_exponential_penalty_factor
+                else:
+                    # Linear for large violations (prevents explosion)
+                    quadratic_part = (huber_threshold ** 2) * self.start_of_day_portfolio_value * self.turnover_exponential_penalty_factor
+                    linear_part = (excess_turnover - huber_threshold) * huber_threshold * self.start_of_day_portfolio_value * self.turnover_exponential_penalty_factor
+                    huber_penalty = quadratic_part + linear_part
+                
+                total_turnover_penalty = base_penalty + huber_penalty
                 
                 reward -= total_turnover_penalty
                 
-                self.logger.warning(f"Step {self.current_step}: Applied turnover penalty: ${total_turnover_penalty:.2f} (base: ${base_penalty:.2f}, exponential: ${exponential_penalty:.2f})")
+                self.logger.warning(f"Step {self.current_step}: Applied turnover penalty: ${total_turnover_penalty:.2f} (base: ${base_penalty:.2f}, huber: ${huber_penalty:.2f})")
                 
-                # 🛑 TERMINATION OPTIONS (More aggressive during emergency fix)
+                # REMOVED: Turnover-based termination - let penalty term do the teaching
+                # Keep episode alive and let agent learn from penalties instead of terminating
                 if self.terminate_on_turnover_breach or self.use_emergency_reward_fix:
-                    # Use more aggressive termination threshold during emergency fix
+                    # Calculate what would have been termination threshold for logging
                     if self.use_emergency_reward_fix:
-                        termination_threshold = effective_turnover_cap * 1.5  # Terminate at 1.5x effective cap
+                        termination_threshold = effective_turnover_cap * 1.5
                     else:
                         termination_threshold = self.hourly_turnover_cap * self.turnover_termination_threshold_multiplier
                     
                     if current_hourly_turnover_ratio > termination_threshold:
-                        self.logger.warning(f"Step {self.current_step}: Terminating due to excessive hourly turnover! Ratio: {current_hourly_turnover_ratio:.2f}x, Cap: {self.hourly_turnover_cap:.2f}x, Termination Threshold: {termination_threshold:.2f}x")
-                        terminated = True
-                        # Additional termination penalty
-                        termination_penalty = self.start_of_day_portfolio_value * self.turnover_termination_penalty_pct
-                        reward -= termination_penalty
-                        self.logger.warning(f"Step {self.current_step}: Applied termination penalty: ${termination_penalty:.2f} ({self.turnover_termination_penalty_pct:.1%} of portfolio)")
+                        self.logger.warning(f"Step {self.current_step}: Severe turnover breach (would have terminated)! Ratio: {current_hourly_turnover_ratio:.2f}x, Cap: {self.hourly_turnover_cap:.2f}x, Threshold: {termination_threshold:.2f}x")
+                        # REMOVED: terminated = True  # Let penalty term teach instead
+                        # Apply additional penalty but keep episode alive
+                        severe_penalty = self.start_of_day_portfolio_value * self.turnover_termination_penalty_pct * 0.1  # Reduced penalty
+                        reward -= severe_penalty
+                        self.logger.warning(f"Step {self.current_step}: Applied severe turnover penalty: ${severe_penalty:.2f} (but episode continues)")
         
         # --- Advance Time & Log Portfolio ---
         self.current_step += 1
@@ -1341,12 +1442,42 @@ class IntradayTradingEnv(gym.Env):
             self.logger.info(f"⚡ Trade Efficiency: ${episode_summary['avg_trade_size']:,.0f} avg size, {episode_summary['trades_per_hour']:.1f} trades/hour")
             self.logger.info(f"🎯 Actions: {episode_summary['action_histogram']}")
             self.logger.info(f"📍 Final Position: {episode_summary['final_position']} ({episode_summary['final_position_quantity']:.0f} shares)")
+            self.logger.info(f"📊 Risk-Adjusted: Sharpe={episode_summary['sharpe_ratio']:.2f}, Sortino={episode_summary['sortino_ratio']:.2f}, Vol={episode_summary['volatility']:.2f}")
             self.logger.info("=" * 80)
             
             # Save episode summary to CSV for analysis and drift detection
             self._save_episode_summary_to_csv(episode_summary)
         
-        return observation, reward * self.reward_scaling, terminated, truncated, info
+        # Apply PPO-friendly reward scaling to keep rewards in [-10, +10] range
+        if self.ppo_reward_scaling:
+            # Scale by portfolio value to normalize reward magnitude
+            ppo_scale_divisor = self.start_of_day_portfolio_value / self.ppo_scale_factor
+            scaled_reward = (reward * self.reward_scaling) / ppo_scale_divisor
+        else:
+            scaled_reward = reward * self.reward_scaling
+        
+        # Track episode total reward for curriculum
+        if not hasattr(self, '_episode_total_reward'):
+            self._episode_total_reward = 0.0
+        self._episode_total_reward += scaled_reward
+        
+        # 🚨 FINAL SAFETY CHECK: Force termination if conditions are met
+        if not terminated and not truncated:
+            current_drawdown_pct = (self.start_of_day_portfolio_value - self.portfolio_value) / self.start_of_day_portfolio_value \
+                                   if self.start_of_day_portfolio_value > 0 else 0
+            severe_threshold = self.max_daily_drawdown_pct * 1.25
+            
+            if (current_drawdown_pct > severe_threshold or 
+                self.consecutive_drawdown_steps >= self.max_consecutive_drawdown_steps):
+                
+                self.logger.error(f"🚨 FINAL SAFETY TERMINATION! Drawdown: {current_drawdown_pct*100:.2f}%, Consecutive: {self.consecutive_drawdown_steps}")
+                terminated = True
+                # Apply additional penalty
+                safety_penalty = self.start_of_day_portfolio_value * 0.005  # 0.5% penalty
+                scaled_reward -= safety_penalty
+                self.logger.error(f"🚨 Applied final safety penalty: ${safety_penalty:.2f}")
+        
+        return observation, scaled_reward, terminated, truncated, info
 
     def render(self, mode='human'):
         if mode == 'human':
@@ -1406,6 +1537,9 @@ class IntradayTradingEnv(gym.Env):
         unrealized_pnl = self.portfolio_value - self.initial_capital - self.episode_realized_pnl
         net_pnl_after_fees = self.portfolio_value - self.initial_capital
         
+        # Calculate Sharpe and Sortino ratios for episode summary
+        sharpe_ratio, sortino_ratio, volatility = self._calculate_risk_adjusted_returns()
+        
         summary = {
             # Episode identification
             'episode_start_time': self.episode_start_time,
@@ -1438,11 +1572,50 @@ class IntradayTradingEnv(gym.Env):
             'final_position': self.current_position,
             'final_position_quantity': self.position_quantity,
             
+            # Risk-adjusted performance metrics (for offline sweeps)
+            'sharpe_ratio': sharpe_ratio,
+            'sortino_ratio': sortino_ratio,
+            'volatility': volatility,
+            
             # Action distribution
             'action_histogram': dict(getattr(self, 'action_counter', {}))
         }
         
         return summary
+    
+    def _calculate_risk_adjusted_returns(self):
+        """Calculate Sharpe and Sortino ratios for the episode."""
+        if len(self.portfolio_history) < 2:
+            return 0.0, 0.0, 0.0
+        
+        # Calculate returns from portfolio history
+        portfolio_values = np.array(self.portfolio_history)
+        returns = np.diff(portfolio_values) / portfolio_values[:-1]
+        
+        if len(returns) == 0:
+            return 0.0, 0.0, 0.0
+        
+        # Calculate basic statistics
+        mean_return = np.mean(returns)
+        volatility = np.std(returns, ddof=1) if len(returns) > 1 else 0.0
+        
+        # Sharpe ratio (assuming risk-free rate = 0 for simplicity)
+        sharpe_ratio = mean_return / volatility if volatility > 0 else 0.0
+        
+        # Sortino ratio (downside deviation)
+        downside_returns = returns[returns < 0]
+        downside_deviation = np.std(downside_returns, ddof=1) if len(downside_returns) > 1 else 0.0
+        sortino_ratio = mean_return / downside_deviation if downside_deviation > 0 else 0.0
+        
+        # Annualize metrics (assuming intraday data, ~390 steps per day)
+        steps_per_day = 390
+        annualization_factor = np.sqrt(252 * steps_per_day)  # 252 trading days
+        
+        sharpe_ratio_annualized = sharpe_ratio * annualization_factor
+        sortino_ratio_annualized = sortino_ratio * annualization_factor
+        volatility_annualized = volatility * annualization_factor
+        
+        return sharpe_ratio_annualized, sortino_ratio_annualized, volatility_annualized
     
     def _save_run_metadata(self, run_id: str = None, config_dict: Dict = None, additional_metadata: Dict = None):
         """Save run configuration and metadata for reproducibility."""
@@ -1681,7 +1854,7 @@ if __name__ == '__main__':
         'turnover_penalty_factor': 0.05, # Penalize 5% of excess turnover value
         # Showcase new parameters (Step 8)
         'position_sizing_pct_capital': 0.30, # Use 30% of capital for sizing
-        'trade_cooldown_steps': 2,           # Wait 2 steps after a trade
+        'trade_cooldown_steps': 5,           # Wait 5 steps after a trade (ANTI-PING-PONG)
         'terminate_on_turnover_breach': True,# Terminate if turnover is >> cap
         'turnover_termination_threshold_multiplier': 1.5, # Terminate if turnover > 1.5x cap
         # Enhanced turnover enforcement

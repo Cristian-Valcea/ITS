@@ -153,6 +153,7 @@ class OrchestratorAgent:
         read_only: bool = False
     ):
         self.logger = logging.getLogger("RLTradingPlatform.OrchestratorAgent")
+        self.logger.propagate = False  # 🔧 FIX: Prevent duplicate logging
         self.read_only = read_only
         self.logger.info("Initializing OrchestratorAgent...")
 
@@ -221,6 +222,11 @@ class OrchestratorAgent:
                 'turnover_weight_factor': env_cfg.get('turnover_weight_factor', 0.02),
                 'turnover_curve_sharpness': env_cfg.get('turnover_curve_sharpness', 25.0),
                 'turnover_penalty_type': env_cfg.get('turnover_penalty_type', 'sigmoid'),
+                # PPO-specific reward scaling parameters
+                'ppo_reward_scaling': env_cfg.get('ppo_reward_scaling', True),
+                'ppo_scale_factor': env_cfg.get('ppo_scale_factor', 1000.0),
+                # Curriculum learning parameters
+                'curriculum': env_cfg.get('curriculum', None),
                 # Enhanced Kyle Lambda fill simulation
                 'enable_kyle_lambda_fills': env_cfg.get('kyle_lambda_fills', {}).get('enable_kyle_lambda_fills', True),
                 'fill_simulator_config': env_cfg.get('kyle_lambda_fills', {}).get('fill_simulator_config', {})

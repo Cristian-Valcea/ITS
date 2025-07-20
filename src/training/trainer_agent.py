@@ -69,6 +69,7 @@ class RiskPenaltyCallback(BaseCallback):
         self.total_penalties = 0.0
         self.penalty_count = 0
         self._logger = logging.getLogger("RiskPenaltyCallback")
+        self._logger.propagate = False  # 🔧 FIX: Prevent duplicate logging
     
     def _on_step(self) -> bool:
         """Apply risk penalty to current reward."""
@@ -182,6 +183,7 @@ class RiskAwareCallback(BaseCallback):
         self.episode_count = 0
 
         self._logger = logging.getLogger("RiskAwareCallback")
+        self._logger.propagate = False  # 🔧 FIX: Prevent duplicate logging
 
     def _on_step(self) -> bool:
         """Called at each training step."""

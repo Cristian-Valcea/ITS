@@ -35,6 +35,7 @@ class EnhancedRewardCalculator:
             config: Configuration dictionary with reward parameters
         """
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.propagate = False  # 🔧 FIX: Prevent duplicate logging
         
         # Default configuration
         default_config = {

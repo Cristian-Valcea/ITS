@@ -106,6 +106,7 @@ class VolatilityPenalty:
                 - target_sigma: Target volatility threshold (default: 0.0)
         """
         self.logger = logging.getLogger("VolatilityPenalty")
+        self.logger.propagate = False  # 🔧 FIX: Prevent duplicate logging
         
         self.window_size = config.get('vol_window', 60)  # Use vol_window to match config
         self.penalty_lambda = config.get('penalty_lambda', 0.25)

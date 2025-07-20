@@ -35,10 +35,35 @@ environment:
   trade_cooldown_steps: 0  # Remove cooldown for emergency fix
   max_episode_steps: 20000  # Safety limit to prevent data boundary issues
   
-  # 🚨 SMART TRADING PARAMETERS - Encourage intelligent trading
-  use_emergency_reward_fix: true
+  # 🚨 DISABLE ALL PENALTY SYSTEMS - Basic trading only
+  use_emergency_reward_fix: false          # DISABLE emergency fix (causes over-penalization)
+  use_turnover_penalty: false              # DISABLE sophisticated turnover penalty system
   emergency_transaction_cost_pct: 0.0001  # 0.01% instead of 0.1%
-  emergency_holding_bonus: 0.1            # BALANCED bonus for selective trading
+  emergency_holding_bonus: 0.05           # REDUCED bonus to prevent gaming
+  
+  # 🎯 TURNOVER PENALTY CONFIGURATION (FIRST-ORDER FIX: Toned-down targets)
+  turnover_target_ratio: 0.005            # REDUCED: Start with 0.5% normalized turnover
+  turnover_weight_factor: 0.001           # PRACTICAL: 0.1% of NAV → gentle intraday penalties
+  turnover_curve_sharpness: 25.0          # Curve steepness
+  turnover_penalty_type: "softplus"       # Smooth penalty curve
+  
+  # 🎯 PPO-SPECIFIC REWARD SCALING (Disable during stabilization)
+  ppo_reward_scaling: false                # Disable PPO reward scaling to prevent distortion
+  ppo_scale_factor: 1.0                   # No scaling during debug
+  
+  # 🎓 CURRICULUM LEARNING: Progressive turnover targets (emergency version)
+  curriculum:
+    enabled: true
+    stages:
+      - target_ratio: 0.005         # Stage 1: Very conservative (0.5% turnover)
+        min_episodes: 15
+        reward_threshold: null      # No threshold for first stage
+      - target_ratio: 0.01          # Stage 2: Still conservative (1% turnover)
+        min_episodes: 30
+        reward_threshold: 0.0       # Must break even
+      - target_ratio: 0.02          # Stage 3: Moderate activity (2% turnover)
+        min_episodes: 45
+        reward_threshold: 25.0      # Must show some profit
   
   # NEW: Reward profitable trading
   reward_profitable_trades: true          # Reward good trades
@@ -172,13 +197,13 @@ orchestrator:
   save_reports: true
 
 risk:
-  # ENABLE risk features for better learning
-  include_risk_features: true   # ENABLE for intelligent trading
+  # DISABLE risk features during stabilization
+  include_risk_features: false  # DISABLE to fix observation space mismatch
   vol_window: 60
   penalty_lambda: 0.05          # ENABLE moderate volatility penalty
   target_sigma: 0.015           # Target 1.5% daily volatility (realistic)
-  dd_limit: 0.05                # Relaxed limit
-  eval_dd_limit: 0.03
+  dd_limit: 0.50                # DISABLED limit (50%)
+  eval_dd_limit: 0.50           # DISABLED evaluation limit
   
   # 🚨 DISABLE FUNCTIONAL REWARD SHAPING
   reward_shaping:
@@ -189,14 +214,14 @@ risk:
     enabled: false  # DISABLED for emergency fix
 
 risk_management:
-  max_daily_drawdown_pct: 0.05
+  max_daily_drawdown_pct: 0.15  # Increase to 15% during stabilization
   # 🚨 INTELLIGENT TURNOVER CONTROLS (Encourage smart trading)
-  hourly_turnover_cap: 2.0              # RELAXED to allow some trading
+  hourly_turnover_cap: 0.5              # FIRST-ORDER FIX: Start very low (was 2.0)
   terminate_on_turnover_breach: false    # ALLOW LEARNING instead of termination
-  turnover_penalty_factor: 0.05          # REDUCED penalty to encourage learning
+  turnover_penalty_factor: 0.0           # DISABLE all turnover penalties
   turnover_termination_threshold_multiplier: 3.0  # More forgiving
   # Enhanced turnover enforcement - INTELLIGENT
-  turnover_exponential_penalty_factor: 0.08  # REDUCED to allow profitable trading
+  turnover_exponential_penalty_factor: 0.0    # DISABLE exponential penalties
   turnover_termination_penalty_pct: 0.02     # REDUCED to 2% penalty
 
 training:
@@ -220,9 +245,9 @@ training:
   gae_lambda: 0.95
   clip_range: 0.2
   clip_range_vf: null
-  normalize_advantage: True
+  normalize_advantage: True  # Keep advantage normalization
   ent_coef: 0.01
-  vf_coef: 0.5
+  vf_coef: 0.05  # REDUCED: From 0.5 to 0.05 to prevent critic explosion
   max_grad_norm: 0.5
   use_sde: False
   sde_sample_freq: -1
@@ -248,7 +273,7 @@ training:
   # Model saving
   save_freq: 5000
   save_replay_buffer: false
-  tensorboard_log: logs/tensorboard_emergency_fix
+  tensorboard_log: logs/tensorboard
   verbose: 1
   
   # GPU settings

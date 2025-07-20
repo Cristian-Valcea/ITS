@@ -2,18 +2,18 @@
 # Configuration for risk management parameters.
 
 # --- Drawdown Limits ---
-max_daily_drawdown_pct: 0.02
+max_daily_drawdown_pct: 0.50  # DISABLE drawdown penalties during stabilization
 
 # --- Turnover Limits ---
 max_hourly_turnover_ratio: 5.0
 max_daily_turnover_ratio: 20.0
 
 # --- General Risk Behavior ---
-halt_on_breach: true
+halt_on_breach: false  # DISABLE halting during stabilization
 liquidate_on_halt: false
 
 # --- Environment-Specific Risk Settings ---
-env_turnover_penalty_factor: 0.01
+env_turnover_penalty_factor: 0.0   # DISABLE turnover penalties
 env_terminate_on_turnover_breach: false
 env_turnover_termination_threshold_multiplier: 2.0
 

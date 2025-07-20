@@ -34,6 +34,7 @@ class RiskManager:
                 - curriculum: Curriculum configuration (optional)
         """
         self.logger = logging.getLogger("RiskManager")
+        self.logger.propagate = False  # 🔧 FIX: Prevent duplicate logging
         self.config = config
         
         # Initialize volatility penalty tracker
@@ -148,13 +149,16 @@ class RiskManager:
     
     def _check_termination_conditions(self) -> bool:
         """Check if episode should terminate due to risk limits."""
-        # Drawdown limit check
-        if self.current_drawdown > self.dd_limit:
-            self.logger.warning(f"Episode {self.current_episode}: Max drawdown breached! "
-                              f"Drawdown: {self.current_drawdown:.2%}, Limit: {self.dd_limit:.2%}")
-            return True
-        
+        # TEMPORARILY DISABLE ALL TERMINATION CONDITIONS FOR STABILIZATION
         return False
+        
+        # Drawdown limit check (DISABLED)
+        # if self.current_drawdown > self.dd_limit:
+        #     self.logger.warning(f"Episode {self.current_episode}: Max drawdown breached! "
+        #                       f"Drawdown: {self.current_drawdown:.2%}, Limit: {self.dd_limit:.2%}")
+        #     return True
+        # 
+        # return False
     
     def get_risk_features(self) -> Dict[str, float]:
         """

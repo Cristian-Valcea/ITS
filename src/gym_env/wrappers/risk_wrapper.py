@@ -38,6 +38,7 @@ class RiskObsWrapper(gym.ObservationWrapper):
         self.risk_manager = risk_manager
         self.preserve_sequence = preserve_sequence
         self.logger = logging.getLogger("RiskObsWrapper")
+        self.logger.propagate = False  # 🔧 FIX: Prevent duplicate logging
         
         # Extend observation space to include risk features
         # Original observation space + 5 risk features (volatility, drawdown, position_fraction, notional_exposure, position_size)
@@ -135,6 +136,7 @@ class VolatilityPenaltyReward(gym.RewardWrapper):
         super().__init__(env)
         self.risk_manager = risk_manager
         self.logger = logging.getLogger("VolatilityPenaltyReward")
+        self.logger.propagate = False  # 🔧 FIX: Prevent duplicate logging
         
         # Track penalty statistics
         self.total_base_reward = 0.0
