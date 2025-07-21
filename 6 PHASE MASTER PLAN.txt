@@ -1,0 +1,579 @@
+GLOBAL GOALS
+• Convert proof-of-concept agent into an institutional-grade intraday trading system.
+• Preserve the current “known-good” baseline while iterating.
+• Eliminate reward-scale distortion, introduce realistic trading costs, add professional risk
+management and curriculum-driven learning, then graduate to regime-adaptive production code.
+• Monitor key metrics (reward scale, entropy, Sharpe, draw-down, turnover) at every phase.
+• Keep training and evaluation configurations identical – no hidden mismatches.
+• Maintain unit-test coverage for every new maths routine (penalty curves, risk checks, etc.).
+
+PHASE 0 – BASELINE PRESERVATION (IMMEDIATE, 10 MIN, ZERO RISK)
+1. Back up the working model and its exact configuration:
+
+copy models\RECURRENTPPO_2025-07-20_09-11-12\RECURRENTPPO_2025-07-20_09-11-12.zip ^
+     models\baseline_smoke_test_model.zip
+copy config\emergency_fix_orchestrator_gpu.yaml ^
+     config\baseline_smoke_test_config.yaml
+
+
+2.Freeze the Python environment:
+
+conda list > env_freeze_baseline.txt
+pip list   > pip_freeze_baseline.txt
+
+3.Record baseline evaluation metrics in baseline_metrics.txt
+– total return 1.28 %
+– Sharpe −2.23
+– max DD 2.64 %
+– turnover ratio 5.90× capital
+– 307 trades / 20 000 bars
+
+4. Tag the current git commit as “baseline_2025-07-20”.
+
+CLARYFING HINTS :
+
+Question: Environment freeze timing?
+Answer: Run pip freeze > requirements_baseline.txt (or conda list --explicit)
+now, immediately after copying model + config.
+• Guarantees checksum of exact run that produced the baseline.
+• Phase-1 may introduce new libs; we want untouched snapshot first.
+
+Question: Baseline-metrics file format?
+Answer: Use simple key-value pairs one per line – human + script friendly:
+
+makefile
+Copia codice
+total_return_pct: 1.28
+sharpe_ratio: -2.23
+max_drawdown_pct: 2.64
+turnover_ratio: 5.90
+num_trades: 307
+total_bars: 20000
+No JSON/YAML; pure ASCII guarantees anyone can open/edit.
+
+
+
+
+
+PHASE 1 – REALITY GROUNDING FOUNDATION (2–4 H, LOW RISK)
+
+Objective: correct the reward scale, guarantee finite rewards, and align observation space with
+production dimensions.
+
+CONFIG CHANGES (config\emergency_fix_orchestrator_gpu.yaml)
+
+
+environment:
+    initial_capital: 50000.0
+    reward_scaling: 0.01          # converts 950 k reward → 9.5 k realistic
+risk:
+    include_risk_features: true   # expands obs features from 6 to 11
+    penalty_lambda: 0.0           # no risk penalties yet
+    dd_limit: 0.50                # effectively disables forced termination
+
+CODE PATCHES
+
+
+File: src\gym_env\intraday_trading_env.py
+------------------------------------------------
+• Add attribute self.reward_scaling (float, default 1.0) in __init__.
+• In reset()   – check first observation: if any NaN / +/-Inf then replace with 0.0 and log.
+• In step():
+      if not np.isfinite(reward):
+          self.logger.warning(f"Non-finite reward {reward}  – forced to 0.0")
+          reward = 0.0
+      if self.reward_scaling != 1.0:
+          reward *= self.reward_scaling
+      assert np.isfinite(reward)
+
+
+
+POLICY COMPATIBILITY
+
+• MlpLstmPolicy must accept 11 input features.
+  Add assertion in TrainerAgent right after model creation:
+      expected_feats = env.observation_space.shape[-1]
+      actual_feats   = model.policy.mlp_extractor.latent_dim_input
+      assert expected_feats == actual_feats, "Feature dimension mismatch"
+
+
+UNIT TESTS
+
+
+tests\test_reward_scaling.py
+– step() on dummy env returns finite reward in all cases.
+– reward magnitude ~1 – 100 after scaling.
+
+SUCCESS CRITERIA
+
+
+• Episode reward range stabilises between 5 k and 15 k.
+• Entropy loss > −0.30 during first 50 k timesteps.
+• Explained variance > 0.80 by timestep 50 k.
+• No NaN / Inf occurrences in rewards or observations.
+
+
+CLARYFING HINTS :
+
+1. Reward-scaling order
+Question :
+The plan mentions reward_scaling: 0.01 to convert 950k → 9.5k. Should this be applied:
+Before all other reward calculations (raw PnL × 0.01), or
+After all penalties/bonuses are calculated (final_reward × 0.01)?
+Answer
+• Apply scaling LAST:
+final_reward = (raw_PnL - penalties + bonuses) * reward_scaling
+• Reason: we want every subsequent penalty/bonus already in same scale; scaling
+earlier would shrink penalties disproportionately.
+
+Question:
+ Reward-scaling integration?
+Answer:
+ Replace existing scaling to avoid compounding.
+• Remove/disable any prior reward_scaling multiply.
+• Insert single scaling at “final_reward” line (as described earlier).
+
+
+2. Observation-space count
+Question : 
+When enabling include_risk_features: true, the plan mentions expanding from 6 to 11 features. However, current logs show (5,7) → (5,11). Should I:
+Verify the exact current feature count first?
+Update the assertion logic accordingly?
+Answer:
+• Verify actual dimension at runtime: log env.observation_space.shape.
+• If you currently see (5,7) → (5,11) then base features = 6, risk features = 5.
+• Update assertion accordingly: expected_feats = env.observation_space.shape[-1].
+
+3. Policy-compatibility assertion
+Question:
+The assertion expected_feats == actual_feats - should this be:
+A hard assertion that crashes training, or
+A warning with graceful handling?
+Answer:
+• Make it HARD (raise AssertionError). Silent mismatch almost always
+destroys training and wastes GPU time.
+
+Question:
+ Risk-feature dimension check?
+Answer:
+ Do a 5-minute smoke run (2 episodes, 1k steps each) to print shape
+and ensure policy accepts it. That is quicker than full training and
+still verifies end-to-end.
+
+
+
+
+
+PHASE 2 – INTELLIGENT TURNOVER ECONOMICS (4–8 H, MEDIUM RISK)
+Objective: introduce realistic trading costs without killing exploration.
+
+CONFIG ADDITIONS
+
+environment:
+    use_turnover_penalty: true
+
+turnover_penalty:
+    enabled: true
+    limit: 0.02               # 2 % of capital per bar
+    weight: 0.00005           # gentle cost coefficient
+    curve_type: smart_huber
+
+
+
+CODE – smart Huber curve
+
+File: src\gym_env\components\turnover_penalty.py
+
+def compute_smart_huber_penalty(self, turnover_ratio, limit, weight, portfolio_value):
+    excess = max(0.0, turnover_ratio - limit)
+    if excess < 0.02:                           # quadratic zone
+        penalty = weight * (excess ** 2)
+    else:                                       # linear continuation with same slope
+        quadratic_cap   = weight * (0.02 ** 2)           # 0.0004 * weight
+        linear_component = weight * 50 * (excess - 0.02) # slope continuity
+        penalty = quadratic_cap + linear_component
+    return penalty * portfolio_value
+
+• Unit test: verify first derivative continuity at excess = 0.02.
+
+
+
+ENVIRONMENT INTEGRATION
+
+• During step(), calculate turnover_ratio (abs(traded_value) / portfolio_value).
+• penalty = compute_smart_huber_penalty(...).
+• reward -= penalty.
+
+MONITOR
+
+• Log running mean of turnover_ratio and penalty every 1 000 steps.
+
+
+SUCCESS CRITERIA
+
+• Average daily turnover between 0.5× and 3× capital (prev 5.9×).  
+• Average cost per trade event ~ $1–$2 when limit is touched.  
+• Episode rewards remain positive.  
+• Win-rate rises above 40 %.
+
+CLARYFING HINTS :
+
+Smart Huber Implementation:
+Question:
+ The mathematical formulation looks correct, but:
+Should the weight * 50 slope factor be configurable?
+Is the transition point (0.02) always fixed or should it scale with the limit?
+Answer:
+Slope factor configurability
+• Expose “linear_slope_mul” in YAML (default 50).
+• Example:
+turnover_penalty:
+linear_slope_mul: 50
+
+Transition point
+• Link it to “limit”: use 0.02 limit (i.e. 100 % of limit in quadratic zone).
+• Implementation: pivot = 1.0 * limit
+
+
+Turnover Calculation: 
+Question:
+Should turnover_ratio be calculated as:
+
+abs(traded_value) / portfolio_value (absolute), or
+traded_value / portfolio_value (signed)?
+
+Answer :  
+Use absolute value: abs(traded_value) / portfolio_value
+(risk cost is independent of side).
+
+Question: 
+Smart Huber Transition: You mentioned pivot = 1.0 * limit. So if limit = 0.02, the transition point is at excess = 0.02 (which matches the hardcoded value). This means the quadratic zone is always exactly equal to the limit value, correct?
+Answer:
+ Correct – quadratic zone width equals the limit value.
+Example: limit 0.02 ⇒ quadratic for excess ∈ [0, 0.02].
+If you later change limit, zone scales automatically.
+
+Question: 
+Penalty stacking?
+Answer:
+ Replace any older turnover-penalty logic; keep one coherent
+algorithm to avoid double-charging.
+
+
+PHASE 3 – PROFESSIONAL RISK MANAGEMENT (8–12 H, MED-HIGH RISK)
+Objective: instate institutional-grade draw-down and volatility discipline.
+
+CONFIG CHANGES
+
+
+risk_management:
+    max_daily_drawdown_pct: 0.05
+    max_consecutive_drawdown_steps: 60     # about one trading hour
+    halt_on_breach: true
+
+risk:
+    penalty_lambda: 0.001                  # mild volatility penalty
+    target_sigma: 0.15                     # placeholder for future vol-targeting
+
+
+CODE – risk_manager.py
+
+• Track current_drawdown and consecutive_drawdown_steps.
+• Terminate episode when both conditions met.
+• Reset counter to 0 once draw-down < limit.
+
+
+UNIT TESTS
+
+• Simulate incremental draw-down and confirm termination at step 61.  
+• Confirm no termination when draw-down stays below limit.
+
+SUCCESS CRITERIA
+
+• 90 % of episodes end with max DD < 5 %.  
+• 30-episode rolling Sharpe > 0.70 by end of phase.  
+• Training remains stable (no early death loops).
+
+
+CLARYFING HINTS :
+Question:
+Risk Manager Integration: Should the new risk_manager.py be:
+A separate component class, or
+Integrated into the existing environment?
+Answer :
+• Create separate class RiskManager, inject into env via wrapper.
+• Keeps concerns isolated and unit-testable.
+
+Question
+Termination Logic: When both drawdown conditions are met, should the episode:
+Terminate immediately with a large penalty, or
+Terminate gracefully with current reward?
+Answer
+Termination handling
+• Terminate immediately and return current reward WITHOUT extra penalty.
+• Rationale: draw-down is already the cost; avoid double-penalising which skews
+learning signals.
+
+Question:
+RiskManager Wrapper: Should the RiskManager wrapper be:
+Applied in the training config (wrapping the base environment), or
+Integrated into the environment factory/creation process?
+Answer:
+Apply in env-factory layer (EnvAgent).
+• Every caller (training, evaluation, live) gets identical risk
+behaviour automatically.
+• Keep config flag use_risk_wrapper to disable for quick tests.
+
+Question:
+Drawdown Calculation: Should the drawdown be calculated from:
+Start of episode portfolio value, or
+Daily high-water mark (rolling maximum)?
+Answer:
+ Use daily high-water mark (rolling max from session start).
+• Matches professional risk desks; resets at start of each session.
+
+
+
+
+
+PHASE 4 – CURRICULUM-DRIVEN EXCELLENCE (12–24 H, HIGH RISK)
+Objective: staged learning where advancement requires real profitability.
+
+CURRICULUM CONFIG
+
+curriculum:
+    enabled: true
+    progression_metric: sharpe_ratio
+    stages:
+      - name: Conservative
+        target_turnover: 0.008
+        min_episodes: 20
+        advancement_threshold:
+          sharpe_ratio: 0.5
+      - name: Balanced
+        target_turnover: 0.015
+        min_episodes: 30
+        advancement_threshold:
+          sharpe_ratio: 1.0
+      - name: Professional
+        target_turnover: 0.020
+        min_episodes: 50
+        advancement_threshold:
+          sharpe_ratio: 1.5
+
+
+SCHEDULER LOGIC
+
+• After each episode append episode_metrics (Sharpe, reward, DD, etc.).  
+• should_advance_stage(): average Sharpe of last 5 episodes > threshold.  
+• should_downgrade_stage(): average Sharpe of last 10 episodes < 0.8 × threshold.  
+• When advancing: update env.hourly_turnover_cap accordingly.
+
+
+SUCCESS CRITERIA
+
+• Agent naturally progresses through stages within 1 M timesteps.  
+• At final stage: 3-month walk-forward Sharpe ≥ 1.5, DD ≤ 4 %.
+
+
+CLARYFING HINTS :
+Question:
+Stage Progression: When advancing stages, should:
+
+The model weights be preserved (continue training), or
+Should we optionally save checkpoints at each stage?
+Answer:
+Model weights on stage advance
+• Continue training in-place.
+• Optional: save checkpoint when stage changes for later analysis.
+Question:
+Downgrade Handling: If performance degrades and we downgrade a stage, should:
+
+The turnover limits revert immediately, or
+Gradually transition back?
+Answer :
+• Revert turnover limits immediately (single step) – simpler, deterministic.
+• Log an INFO line: “Stage Downgrade – reverted cap from 2 % to 1.5 %”.
+
+Question:
+Curriculum Metrics Storage: Should episode metrics be:
+Stored in memory (list/deque), or
+Persisted to disk (CSV/JSON) for analysis?
+Answer:
+ Keep in-memory deque (len 100) for live gating and
+append each episode summary to metrics_phaseN.csv for later analysis.
+• In memory ensures speed, CSV ensures auditability.
+
+Question:
+Stage Transition Logging: When stages change, should I:
+Log to both console and TensorBoard, or
+Just console logging?
+Answer:
+ Log to both console (logger.info) and TensorBoard scalar
+curriculum/stage. Console for CI logs, TensorBoard for visual.
+
+
+
+
+
+
+PHASE 5 – PRODUCTION OPTIMISATION (24 H+, HIGH RISK)
+Objective: integrate position sizing, regime awareness, and professional metrics.
+
+KEY FEATURES
+
+Regime detection (low/high vol, trending/ranging) → regime code in observation.
+
+Kelly position sizing:
+
+ kelly_fraction = min(max_kelly_fraction,
+                      expected_return / variance)
+ position_size  = kelly_fraction * equity_scaling_factor
+
+• expected_return estimated with 30-bar exponential moving average of PnL.
+• variance estimated as 30-bar EW variance.
+
+Additional metrics in evaluator:
+
+ information_ratio (vs SPY intraday returns)
+ calmar_ratio     (annual return / abs(max_drawdown))
+
+
+
+SUCCESS CRITERIA
+
+• Sharpe ≥ 2.0 for 60-day out-of-sample set.  
+• Max DD ≤ 3 %.  
+• Information ratio ≥ 1.5.  
+• Calmar ≥ 3.0.  
+  (All computed on back-test with 5 equity symbols, not single NVDA.)
+
+CLARYFING HINTS :
+Question:
+Kelly Sizing: The Kelly fraction calculation requires expected_return / variance. Should:
+
+Negative expected returns result in zero position size, or
+Use absolute values with direction handling?
+Answer:
+Kelly sizing with negative expected_return
+• If expected_return <= 0: use position_size = 0 (flat).
+• Sign handling: size direction is sign(expected_return), so negative expectation
+implies flat, not short.
+
+Question:
+Multi-Symbol Testing: For Phase 5 success criteria testing on 5 symbols:
+
+Should this be sequential (one symbol at a time), or
+Parallel training on mixed symbol data?
+Answer:
+Multi-symbol testing strategy
+• Train sequentially per symbol first (NVDA, AAPL, …) to validate generalisation.
+• After each passes Phase-5 metrics, move to mixed-symbol curriculum (single
+env that randomly switches symbols each episode). Parallel training only after
+mixed-symbol version is stable.
+
+
+
+
+PHASE 6 – MARKET REGIME MASTERY (ONGOING)
+Objective: continuous adaptation across regimes.
+
+IMPLEMENTATION SKETCH
+
+• MarketRegimeDetector returns one-hot vector of four regimes.  
+• Observation augmented with regime bits.  
+• Optional: have separate policy heads per regime with soft attention.  
+• Track performance degradation between regimes; adjust training sample weights.
+
+
+SUCCESS CRITERIA
+
+• Performance degradation between regimes < 5 % in all key metrics.  
+• Overall system meets Target Performance Profile at top of this file.
+
+
+CROSS-PHASE INFRA TASKS
+• Expand data coverage to AAPL, MSFT, GOOGL, AMZN in addition to NVDA.
+• Add rolling metric monitor that writes CSV every 1 000 steps:
+timestep, episode, avg_reward, sharpe_30, max_dd_30, entropy, turnover
+• Write pytest cases for every new function (NaN guard, smart_huber, risk checks).
+• Maintain CHANGELOG.txt with one-line entry per commit.
+
+
+
+METRIC THRESHOLDS SUMMARY
+Phase 1 – reward 5-15 k, entropy >-0.3, exp_variance >0.8
+Phase 2 – daily turnover 0.5×-3× cap, win_rate >40 %
+Phase 3 – Sharpe >0.7, max DD <4 %
+Phase 4 – Sharpe >1.5, stable across stages
+Phase 5 – Sharpe >2.0, DD <3 %, IR >1.5, Calmar >3.0
+Phase 6 – metrics stable across regimes, degradation <5 %
+
+
+CLARYFING HINTS :
+
+General Implementation Questions
+Question:
+Testing Strategy: 
+Should I:
+Implement unit tests as I go (preferred), or
+Implement all features first, then add tests?
+Answer:
+• Implement tests AS YOU GO. Each new function/class gets a quick pytest file
+within 30 minutes of coding. Saves debugging time later.
+
+Question:
+Configuration Management: Should each phase have:
+
+Its own config file (e.g., phase1_config.yaml), or
+Modify the existing emergency_fix_orchestrator_gpu.yaml?
+Answer:
+• Create one master config file per phase:
+config/phase1.yaml, phase2.yaml, …
+• Emergency file stays untouched; easier diff/rollback.
+
+
+Question:
+ If a phase fails, should I:
+
+Automatically revert to previous phase config, or
+Stop and wait for manual intervention?
+Answer:
+On automated CI run: if phase-N tests fail, stop pipeline and keep previous
+phase deployed. Do not auto-revert file copies (git checkout previous tag
+is one command). Manual decision required before re-run.
+
+Question:
+Rolling Metrics CSV: The plan mentions writing CSV every 1,000 steps. Should this be:
+A separate monitoring thread/process, or
+Integrated into the training loop?
+Answer:
+ Integrate into training loop every 1 000 env steps (same thread);
+overhead negligible vs GPU. Extra thread risks race conditions.
+
+Question:
+CHANGELOG.txt: Should this be:
+Automatically generated from git commits, or
+Manually maintained with curated entries?
+Answer: 
+ Manual, curated entry per phase (“Phase-2: added Smart-Huber”).
+Auto-generated git logs tend to be noisy.
+
+Question:
+Phase Success Validation: When checking success criteria (e.g., "Episode reward range stabilizes between 5k and 15k"), should I:
+Run a fixed number of episodes (e.g., 10) and check all meet criteria, or
+Use a rolling window approach (e.g., last 20 episodes average)?
+Answer:
+ Rolling window (last 20 episodes) gives stability, avoids outlier
+failures. Automate check after each episode once episodes_completed >= 20.
+
+Question:
+Unit Test Coverage: For the pytest requirement, should I aim for:
+100% line coverage of new code, or
+Focus on critical mathematical functions (penalties, risk calculations)?
+Answer:
+Aim for >90 % line coverage of new core math functions
+(penalties, risk, Kelly, curriculum logic). UI/logger glue may stay
+untested. Focus on correctness paths, not branches of trivial code.
+
+
