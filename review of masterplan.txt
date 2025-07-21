@@ -1,0 +1,91 @@
+
+────────────────────────────────────────────────────────
+GENERAL VERDICT
+────────────────────────────────────────────────────────
+• Vision, scope and control gates are first-class. The document sets an institutional bar that is credible.
+• The phased structure is logical, but complexity per phase is very high – Phase-2 onward will require multi-disciplinary sub-teams (execution research, risk, infra, DevOps) to hit time boxes.
+• Risk management and governance sections align with hedge-fund best practice; however, several mechanisms are over-specified relative to current codebase maturity. Expect slip unless scope is pruned or extra headcount added.
+• Nothing fundamentally blocks execution. With the amendments below I give a conditional green-light.
+
+────────────────────────────────────────────────────────
+CROSS-CUTTING CONCERNS
+────────────────────────────────────────────────────────
+
+DEPENDENCY SNOWBALL
+– Phases 2–6 assume new engines (GARCH, Almgren-Chriss, Brinson-Fachler, meta-learning, etc.). These pull in heavy external libs (arch, cvxpy, statsmodels, torchmeta, etc.). Resolve licensing and GPU/CPU build compatibility upfront.
+– Budget at least two weeks for reproducible Docker images and CI pipeline upgrades.
+
+DATA QUALITY / LATENCY
+– Advanced micro-structure metrics (order-book depth, tick-size signals) are not present in current 1-minute TRADES cache. You must secure a depth-of-book feed (Nanotick / Polygon / Refinitiv) before Phase 2, or refactor Phase 2 goals.
+– Stress tests referencing 2010 flash-crash require sub-second bars; plan for separate, larger storage tier.
+
+METRICS STORAGE & OBSERVABILITY
+– You propose real-time health, drift, risk and attribution metrics. Current code logs to local CSV and tensorboard; that is insufficient. Spin up a time-series database (Prometheus, InfluxDB or TimescaleDB) and Grafana dashboards by Phase 1 to prevent re-plumbing later.
+
+MODEL GOVERNANCE
+– The approval workflow lists “risk_officer_approval”. Today no role is defined. Formalise RACI and assign names to every gate or the process will stall.
+– Tagging with semantic versioning is fine, but add GitHub release automation + signed artefacts to satisfy audit trails.
+
+TEST COVERAGE TARGETS
+– Document states “institutional-grade”. Regulators often expect 80 %+ line coverage for risk and pricing libs. Commit to 75 % overall and 100 % for math primitives (penalty curves, VaR, Kelly sizing) – realistic yet defensible.
+
+────────────────────────────────────────────────────────
+PHASE-SPECIFIC NOTES
+────────────────────────────────────────────────────────
+
+PHASE 0
+✓ Excellent – add SHA-256 checksum generation to the metadata script so artefact integrity can be verified automatically.
+
+PHASE 1
+• Reward_scaling of 0.02 raises max episode reward target to 25 k. Ensure EarlyStoppingCallback’s plateau detection threshold scales accordingly (otherwise premature stop).
+• Observation_consistency_check will need batch sanity test: sample N=128 random env resets, pass through both train and eval wrappers, assert identical dtype/shape and +/-1e-6 tolerance. Script not yet referenced – include it.
+
+PHASE 2
+• Almgren-Chriss constants (0.314159, 0.1) are placeholders. Calibrate using historical TAQ data; otherwise the impact term will dwarf spread costs.
+• Turnover_penalty capacity scaling references volatility but not ADV; institutional desks cap flow versus ADV. Add adv_scaling_factor to config.
+• Cost_as_pct_trade logging is good – stream this to the metrics DB.
+
+PHASE 3
+• Multiple VaR engines are planned. Start with Historical (fast) and Parametric; postpone EVT until tail sample size is adequate (>1000 daily pnl points).
+• Circuit breakers: “consecutive_losses: 5” should be parameterised by average loss magnitude; five tiny losses should not halt trading.
+
+PHASE 4
+• Walk-forward tester requires frozen data splits. Define explicit calendar months to avoid leakage.
+• Consecutive_passing_episodes counts can be gamed if episode length varies. Lock episode length or normalise metrics per bar.
+• Statistical_significance t-test assumes independence – not strictly valid with overlapping trades. Consider block bootstrap.
+
+PHASE 5
+• Enhanced_Kelly_position_sizer uses expected_return from “signal_strength”. Specify exact estimator (e.g., EWMA 60-bar mean of model Q-values). Without this, sizer will be unstable.
+• Correlation_adjustment: implement using incremental Ledoit-Wolf shrinkage to keep covariance matrix invertible in real time.
+• Backtesting validation periods overlap (in_sample ends 2023-06-30, oos_1 begins 2023-07-01 – good). Add three-month “burn-in” between train and test to reduce memory effects in LSTM states.
+
+PHASE 6
+• Regime detection feature list is ambitious; sentiment classifier alone is a multi-quarter project. For MVP, implement volatility and trend regimes only, keep placeholders for others.
+• Continuous_online_learning conflicts with model governance (frozen models). Require a sandbox flag: online = true only in paper environment until risk signs off.
+• Alert False Positive Rate <2 % is aggressive; median industry is 5–10 %. Suggest initial target 5 %, tighten later.
+
+────────────────────────────────────────────────────────
+TIMELINE & RESOURCING
+────────────────────────────────────────────────────────
+• Phase-1 can still fit 4-6 hours if tasks are parallel: one engineer on code, one on config, one on metrics validation.
+• Phase-2 realistic effort: 1–2 engineers × 2 weeks; market impact calibration alone is non-trivial.
+• Phase-3 to Phase-5 will each over-run unless you allocate at least 4 FTEs (quant dev, data engineer, infra SRE, quant researcher).
+
+────────────────────────────────────────────────────────
+RECOMMENDED ADJUSTMENTS BEFORE APPROVAL
+────────────────────────────────────────────────────────
+
+Split Phase-2 into 2a (spread + fixed fees + basic capacity penalty) and 2b (full Almgren-Chriss with liquidity decay), gate separately.
+
+Defer EVT VaR and sentiment regime classifiers to post-Phase-5 backlog.
+
+Add an “Infra Phase” parallel track to deploy metrics DB, Docker build pipeline, secret management and CI linting.
+
+Define a single source-of-truth YAML schema, load with pydantic-based validator, fail fast on unknown keys.
+
+Insert an explicit human sign-off checklist after every phase, stored in governance/phase_X_approval.yaml with digital signatures.
+
+────────────────────────────────────────────────────────
+FINAL CALL
+────────────────────────────────────────────────────────
+With the five adjustments above, I approve the plan to move into Phase-0 execution. This roadmap is bold but achievable if scope is sequenced judiciously and resourcing is increased in Phases 2–5. Continuous communication between quant research, engineering, and risk will be critical – schedule twice-weekly design reviews.
