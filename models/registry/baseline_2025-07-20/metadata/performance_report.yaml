@@ -1,0 +1,62 @@
+baseline_performance:
+  date_generated: "2025-07-21T00:00:00Z"
+  model_source: "RECURRENTPPO_2025-07-18_10-40-19"
+  evaluation_period: "2024-01-01 to 2024-01-31"
+  
+  returns:
+    total_return_pct: 1.28
+    annualized_return_pct: 15.36
+    
+  risk_metrics:
+    sharpe_ratio: -2.23
+    max_drawdown_pct: 2.64
+    volatility_annualized_pct: 45.2
+    var_95_pct: -0.89
+    expected_shortfall_95_pct: -1.24
+    
+  trading_metrics:
+    turnover_ratio_daily: 5.90
+    num_trades: 307
+    total_bars: 20000
+    avg_trade_duration_bars: 65.1
+    win_rate_pct: 34.25
+    
+  execution_metrics:
+    slippage_estimate_bps: 2.5
+    market_impact_estimate_bps: 1.8
+    
+  model_diagnostics:
+    entropy_final: -0.12
+    explained_variance: 0.99
+    policy_gradient_norm: 0.0034
+    training_timesteps: 150000
+    
+  institutional_assessment:
+    overall_grade: "STABLE_BUT_SUBOPTIMAL"
+    
+    strengths:
+      - "Training stability: 7 consecutive completed episodes"
+      - "High explained variance (0.99) indicates strong value function learning"
+      - "Reasonable drawdown control (2.64% < 5% institutional threshold)"
+      - "Complete infrastructure working (TensorBoard, evaluation, model saving)"
+      
+    critical_weaknesses:
+      - "Negative Sharpe ratio (-2.23) indicates poor risk-adjusted returns"
+      - "Low win rate (34.25%) suggests weak predictive signal"
+      - "High turnover (5.9x daily) creates significant transaction costs"
+      - "Policy entropy collapse (-0.12) indicates lack of exploration"
+      - "Reward scaling disconnected from reality (950k vs 50k portfolio)"
+      
+    institutional_compliance:
+      sharpe_ratio_requirement: "FAIL (target ≥ 1.0, actual -2.23)"
+      max_drawdown_requirement: "PASS (target ≤ 5%, actual 2.64%)"
+      turnover_requirement: "FAIL (target ≤ 2x, actual 5.9x)"
+      win_rate_requirement: "FAIL (target ≥ 50%, actual 34.25%)"
+      
+    production_readiness: "NOT_READY"
+    recommended_action: "PROCEED_WITH_PHASE_1_REALITY_GROUNDING"
+    
+  checksums:
+    model_sha256: "b4dcce699cc09855ccb819be30e254602b6413dc64deb20a86186058e294bf04"
+    config_sha256: "eca41869bc6fce2854f603ec41d5e7e8f5efcce8a4db3282a10817c26e71f838"
+    metadata_generated_at: "2025-07-21T00:00:00Z"

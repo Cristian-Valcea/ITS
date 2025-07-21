@@ -1,0 +1,297 @@
+# 🚨 EMERGENCY FIX Configuration - Based on main_config_orchestrator_gpu_fixed.yaml
+# This configuration enables the emergency reward function fix to address DQN overtrading
+
+data_augmentation:
+  noise_injection: false  # Disable to reduce complexity during fix
+  noise_level: 0.02
+  random_scaling: false   # Disable to reduce complexity during fix
+  scale_max: 1.02
+  scale_min: 0.98
+  window_size: 60
+  window_slicing: false
+
+ibkr_conn:
+  host: 127.0.0.1
+  port: 7497
+  clientId: 103
+  timeout: 30
+  use_cache: true
+  cache_duration_minutes: 5
+  simulation_mode: true
+
+data_preprocessing:
+  impute_missing: true
+  normalize: false
+
+feature_store:
+  force_duckdb: true  # Skip PostgreSQL for training jobs
+
+environment:
+  initial_capital: 50000.0
+  log_trades_in_env: true
+  position_sizing_pct_capital: 0.25
+  equity_scaling_factor: 0.02
+  reward_scaling: 1.0  # Simplified scaling
+  trade_cooldown_steps: 0  # Remove cooldown for emergency fix
+  max_episode_steps: 20000  # Safety limit to prevent data boundary issues
+  
+  # 🚨 DISABLE ALL PENALTY SYSTEMS - Basic trading only
+  use_emergency_reward_fix: false          # DISABLE emergency fix (causes over-penalization)
+  use_turnover_penalty: false              # DISABLE sophisticated turnover penalty system
+  emergency_transaction_cost_pct: 0.0001  # 0.01% instead of 0.1%
+  emergency_holding_bonus: 0.05           # REDUCED bonus to prevent gaming
+  
+  # 🎯 TURNOVER PENALTY CONFIGURATION (FIRST-ORDER FIX: Toned-down targets)
+  turnover_target_ratio: 0.005            # REDUCED: Start with 0.5% normalized turnover
+  turnover_weight_factor: 0.001           # PRACTICAL: 0.1% of NAV → gentle intraday penalties
+  turnover_curve_sharpness: 25.0          # Curve steepness
+  turnover_penalty_type: "softplus"       # Smooth penalty curve
+  
+  # 🎯 PPO-SPECIFIC REWARD SCALING (Disable during stabilization)
+  ppo_reward_scaling: false                # Disable PPO reward scaling to prevent distortion
+  ppo_scale_factor: 1.0                   # No scaling during debug
+  
+  # 🎓 CURRICULUM LEARNING: Progressive turnover targets (emergency version)
+  curriculum:
+    enabled: true
+    stages:
+      - target_ratio: 0.005         # Stage 1: Very conservative (0.5% turnover)
+        min_episodes: 15
+        reward_threshold: null      # No threshold for first stage
+      - target_ratio: 0.01          # Stage 2: Still conservative (1% turnover)
+        min_episodes: 30
+        reward_threshold: 0.0       # Must break even
+      - target_ratio: 0.02          # Stage 3: Moderate activity (2% turnover)
+        min_episodes: 45
+        reward_threshold: 25.0      # Must show some profit
+  
+  # NEW: Reward profitable trading
+  reward_profitable_trades: true          # Reward good trades
+  profitability_bonus_factor: 0.5         # Bonus for profitable trades (was 0.1)
+  
+  # Reduced transaction costs
+  transaction_cost_pct: 0.0001  # 10x reduction from 0.001 to 0.0001
+  
+  # Disable action change penalty during emergency fix
+  action_change_penalty_factor: 0.0  # Disable to simplify reward
+  
+  # INTELLIGENT reward shaping
+  turnover_bonus_threshold: 1.5        # Allow reasonable trading
+  turnover_bonus_factor: 0.005         # INCREASED bonus for efficient trading
+  
+  # NEW: Smart trading incentives
+  profit_per_trade_threshold: 0.001     # Minimum profit per trade to get bonus
+  smart_trading_bonus: 0.1              # Bonus for profitable, low-frequency trading
+  
+  # 🚨 DISABLE KYLE LAMBDA - Remove market impact simulation
+  kyle_lambda_fills:
+    enable_kyle_lambda_fills: false  # DISABLED for emergency fix
+    
+  # 🚨 DISABLE ADVANCED REWARD SHAPING - Simplified reward only
+  advanced_reward_config:
+    enabled: false  # DISABLED for emergency fix
+    
+    # All enhanced reward systems disabled
+    enhanced_reward_system:
+      enabled: false
+      
+    lagrangian_constraint:
+      enabled: false
+      
+    sharpe_adjusted_reward:
+      enabled: false
+      
+    cvar_rl:
+      enabled: false
+
+evaluation:
+  data_duration_for_fetch: 5 D
+  metrics:
+  - total_return_pct
+  - sharpe_ratio
+  - max_drawdown_pct
+  - num_trades
+  - turnover_ratio_period
+  - win_rate_pct
+  
+  # Simplified rolling backtest
+  rolling_backtest:
+    enabled: false  # Disable for emergency fix validation
+
+feature_engineering:
+  # Simplified feature set for emergency fix
+  lookback_window: 5  # Reduced from 15 to 5
+  
+  # Basic features only
+  features:
+  - RSI
+  - EMA
+  - VWAP
+  - Time
+  
+  # Simplified observation features
+  observation_feature_cols:
+  - rsi_14
+  - ema_10
+  - ema_20
+  - vwap
+  - hour_sin
+  - hour_cos
+  
+  # Simplified feature scaling
+  feature_cols_to_scale:
+  - rsi_14
+  - ema_10
+  - ema_20
+  - vwap
+  - hour_sin
+  - hour_cos
+  
+  # Feature configurations
+  ema:
+    windows:
+    - 10
+    - 20
+  rsi:
+    window: 14
+  time_features:
+    include_hour: true
+    include_minute: false
+    include_day_of_week: false
+    include_month: false
+    include_quarter: false
+    include_year: false
+    use_cyclical_encoding: true
+
+logging:
+  level: INFO
+  log_to_file: true
+  log_file_path: logs/emergency_fix_orchestrator_gpu.log
+  max_file_size_mb: 50
+  backup_count: 5
+
+monitoring:
+  # Simplified monitoring for emergency fix
+  tensorboard_frequency: 100
+  enable_custom_scalars: true
+  
+  # Reduced monitoring complexity
+  audit_frequency: 10000
+  audit_sample_size: 500
+  weak_reward_threshold: 0.001
+  
+  # Basic monitoring features
+  track_q_variance: true
+  track_lagrangian_lambda: false  # Disabled
+  track_reward_components: true
+  buffer_size: 1000
+
+orchestrator:
+  data_dir: data/raw_emergency_fix
+  feature_dir: data/processed_emergency_fix
+  model_dir: models/emergency_fix
+  reports_dir: reports/emergency_fix
+  run_evaluation: true
+  run_training: true
+  save_model: true
+  save_reports: true
+
+risk:
+  # DISABLE risk features during stabilization
+  include_risk_features: false  # DISABLE to fix observation space mismatch
+  vol_window: 60
+  penalty_lambda: 0.05          # ENABLE moderate volatility penalty
+  target_sigma: 0.015           # Target 1.5% daily volatility (realistic)
+  dd_limit: 0.50                # DISABLED limit (50%)
+  eval_dd_limit: 0.50           # DISABLED evaluation limit
+  
+  # 🚨 DISABLE FUNCTIONAL REWARD SHAPING
+  reward_shaping:
+    enabled: false  # DISABLED for emergency fix
+    
+  # Disable advanced reward shaping
+  advanced_reward_shaping:
+    enabled: false  # DISABLED for emergency fix
+
+risk_management:
+  max_daily_drawdown_pct: 0.15  # Increase to 15% during stabilization
+  # 🚨 INTELLIGENT TURNOVER CONTROLS (Encourage smart trading)
+  hourly_turnover_cap: 0.5              # FIRST-ORDER FIX: Start very low (was 2.0)
+  terminate_on_turnover_breach: false    # ALLOW LEARNING instead of termination
+  turnover_penalty_factor: 0.0           # DISABLE all turnover penalties
+  turnover_termination_threshold_multiplier: 3.0  # More forgiving
+  # Enhanced turnover enforcement - INTELLIGENT
+  turnover_exponential_penalty_factor: 0.0    # DISABLE exponential penalties
+  turnover_termination_penalty_pct: 0.02     # REDUCED to 2% penalty
+
+training:
+  # 🚨 KEEP RecurrentPPO but with simplified parameters
+  algorithm: RecurrentPPO
+  
+  # LSTM POLICY CONFIGURATION for temporal sequence modeling
+  policy: MlpLstmPolicy
+  policy_kwargs:
+    net_arch: [64, 64]  # Smaller network
+    activation_fn: ReLU
+    lstm_hidden_size: 32  # Smaller LSTM
+    n_lstm_layers: 1
+  
+  # PPO HYPERPARAMETERS optimized for emergency fix
+  learning_rate: 0.0001
+  n_steps: 128  # Smaller steps
+  batch_size: 32
+  n_epochs: 4
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  clip_range_vf: null
+  normalize_advantage: True  # Keep advantage normalization
+  ent_coef: 0.01
+  vf_coef: 0.05  # REDUCED: From 0.5 to 0.05 to prevent critic explosion
+  max_grad_norm: 0.5
+  use_sde: False
+  sde_sample_freq: -1
+  target_kl: null
+  
+  # Much longer training for emergency fix learning
+  total_timesteps: 150000  # MASSIVELY INCREASED from 25,000 to 150,000
+  max_episodes: 100        # INCREASED to allow more episodes
+  max_training_time_minutes: 120  # INCREASED time limit to 2 hours
+  
+  # LSTM-SPECIFIC TRAINING PARAMETERS
+  lstm_states_saving: True
+  sequence_length: 5  # Match lookback_window
+  
+  # Early stopping for emergency fix - VERY PATIENT
+  early_stopping:
+    patience: 50              # DOUBLED from 25 to 50
+    min_improvement: 0.001    # REDUCED from 0.005 to 0.001 (0.1% instead of 0.5%)
+    check_freq: 2000          # INCREASED from 1000 to 2000
+    verbose: true
+    min_episodes_before_stopping: 30  # DOUBLED from 15 to 30
+  
+  # Model saving
+  save_freq: 5000
+  save_replay_buffer: false
+  tensorboard_log: logs/tensorboard
+  verbose: 1
+  
+  # GPU settings
+  device: auto
+  gpu_memory_fraction: 0.6  # Reduced memory usage
+  mixed_precision: false  # Disable for stability
+
+# 🚨 EMERGENCY FIX VALIDATION CRITERIA
+emergency_fix_validation:
+  target_metrics:
+    max_daily_turnover: 3.0  # Should be < 3x daily
+    min_sharpe_ratio: 0.0    # Should be > 0.0
+    max_drawdown_pct: 0.10   # Should be < 10%
+    min_win_rate: 0.45       # Should be > 45%
+  
+  success_criteria:
+    - "Daily turnover drops below 3x"
+    - "Sharpe ratio improves to positive"
+    - "Agent completes episodes without hitting drawdown caps"
+    - "Transaction costs reduce by >80%"
+    - "Reward trend shows improvement over training"
