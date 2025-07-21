@@ -1,0 +1,123 @@
+# PHASE 2A: BASIC TRANSACTION COST REALITY
+# Objective: Implement realistic but simple transaction costs before advanced microstructure
+# Expected Impact: Daily turnover 1.0x-3.0x (from 5.9x baseline), realistic cost structure
+
+# Inherit Phase 1 foundation
+extends: "phase1_reality_grounding.yaml"
+
+environment:
+  initial_capital: 50000.0
+  reward_scaling: 0.02  # Maintain Phase 1 scaling
+  
+  # Institutional safeguards (maintained)
+  max_position_size_pct: 0.95
+  min_cash_reserve_pct: 0.05
+  
+  # Transaction cost integration
+  enable_transaction_costs: true
+  cost_model_type: "basic_institutional"
+
+# Transaction cost configuration (addressing team feedback)
+transaction_costs:
+  enabled: true
+  model_type: "basic_institutional"
+  
+  # Simple but realistic cost structure
+  fixed_costs:
+    commission_per_trade: 0.50  # Institutional brokerage commission
+    
+  proportional_costs:
+    spread_cost_bps: 1.0      # 1 basis point spread cost
+    exchange_fees_bps: 0.1    # Exchange fees (realistic)
+    
+  # Basic capacity-aware penalty (no Almgren-Chriss yet)
+  capacity_penalty:
+    enabled: true
+    daily_capacity_pct: 0.02   # 2% of capital per day is "free"
+    penalty_curve: "quadratic" # Simple x^2 above capacity
+    penalty_weight: 0.0001     # Gentle cost coefficient
+    max_penalty_pct_trade: 0.3 # Never charge >30% of trade value (production feedback)
+    
+  # ADV scaling (addressing team feedback) 
+  adv_scaling:
+    enabled: true
+    adv_scaling_factor: 1.5    # Capacity scales with average daily volume
+    adv_lookback_days: 20      # 20-day ADV calculation
+    min_adv_threshold: 100000  # Minimum ADV to apply scaling
+    
+  # Cost metrics streaming (addressing production feedback)
+  metrics_streaming:
+    enabled: true
+    stream_frequency: "every_trade"
+    include_breakdown: true
+    cost_as_pct_trade: true    # Log cost as percentage of trade value
+
+# Risk configuration (maintained from Phase 1)
+risk:
+  include_risk_features: true
+  penalty_lambda: 0.0  # Still pure observation mode
+  dd_limit: 0.50
+  
+  # Enhanced risk feature set (from Phase 1)
+  risk_features:
+    - portfolio_heat_ratio
+    - concentration_ratio  
+    - drawdown_velocity
+    - var_breach_indicator
+    - correlation_breakdown
+    - transaction_cost_ratio  # NEW: Add cost impact to risk features
+
+# Validation (enhanced from Phase 1)
+validation:
+  observation_consistency_check: true
+  reward_bounds_check: true
+  nan_guard_strict: true
+  
+  # Enhanced bounds for transaction costs
+  reward_bounds:
+    min_reward: -3000  # Allow for higher costs
+    max_reward: 5000   # Maintain upper bound
+    alert_threshold: 0.95
+    
+  # Transaction cost validation
+  cost_validation:
+    max_cost_per_trade_pct: 0.5  # 50% of trade value maximum
+    max_daily_cost_pct: 0.05     # 5% of portfolio daily maximum
+    alert_on_high_costs: true
+
+# Model validation (from Phase 1, updated features)
+model_validation:
+  enforce_compatibility: true
+  expected_observation_features: 12  # 11 from Phase 1 + 1 new cost feature
+  check_frequency: "initialization"
+
+# Logging and monitoring (enhanced)
+logging:
+  level: "INFO"
+  transaction_cost_logs: true
+  cost_breakdown_logs: true
+  adv_scaling_logs: true
+  capacity_penalty_logs: true
+  
+# Phase 2A success criteria
+success_criteria:
+  daily_turnover_range: [1.0, 3.0]     # Target range (from 5.9x baseline)
+  transaction_cost_pct_range: [0.05, 0.12]  # 5-12 basis points per trade
+  win_rate_threshold: 0.45             # Maintain >45% win rate
+  cost_metrics_streaming: 1.0          # 100% uptime for metrics
+  episode_reward_range: [6000, 18000]  # Allow for cost impact
+  
+# Testing configuration
+testing:
+  cost_engine_tests: true
+  capacity_penalty_tests: true
+  adv_scaling_tests: true
+  integration_tests: true
+  performance_tests: true
+
+# Production readiness checks
+production_checks:
+  cost_calculation_performance: true
+  metrics_streaming_reliability: true
+  safeguard_integration: true
+  backward_compatibility: true
