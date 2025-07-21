@@ -1,7 +1,7 @@
 {
   "algorithm": "RECURRENTPPO",
   "training_timesteps": 150000,
-  "created_at": "2025-07-18T11:39:16.743174",
+  "created_at": "2025-07-20T11:07:59.222071",
   "config": {
     "model_save_dir": "models/",
     "log_dir": "logs/tensorboard/",
@@ -90,7 +90,7 @@
       "early_stop_threshold": 0.8
     }
   },
-  "model_path": "models\\RECURRENTPPO_2025-07-18_10-40-19\\RECURRENTPPO_2025-07-18_10-40-19.zip",
-  "policy_path": "models\\RECURRENTPPO_2025-07-18_10-40-19\\policy.pt",
-  "torchscript_path": "models\\RECURRENTPPO_2025-07-18_10-40-19\\RECURRENTPPO_2025-07-18_10-40-19_torchscript.pt"
+  "model_path": "src\\models\\RECURRENTPPO_2025-07-20_09-11-12\\RECURRENTPPO_2025-07-20_09-11-12.zip",
+  "policy_path": "src\\models\\RECURRENTPPO_2025-07-20_09-11-12\\policy.pt",
+  "torchscript_path": "src\\models\\RECURRENTPPO_2025-07-20_09-11-12\\RECURRENTPPO_2025-07-20_09-11-12_torchscript.pt"
 }

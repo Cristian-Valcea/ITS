@@ -1,21 +1,21 @@
 baseline_performance:
   date_generated: "2025-07-21T00:00:00Z"
-  model_source: "RECURRENTPPO_2025-07-18_10-40-19"
+  model_source: "RECURRENTPPO_2025-07-20_09-11-12"
   evaluation_period: "2024-01-01 to 2024-01-31"
   
   returns:
-    total_return_pct: 1.28
+    total_return_pct: 1.2778
     annualized_return_pct: 15.36
     
   risk_metrics:
-    sharpe_ratio: -2.23
-    max_drawdown_pct: 2.64
+    sharpe_ratio: -2.2288
+    max_drawdown_pct: 2.6427
     volatility_annualized_pct: 45.2
     var_95_pct: -0.89
     expected_shortfall_95_pct: -1.24
     
   trading_metrics:
-    turnover_ratio_daily: 5.90
+    turnover_ratio_daily: 5.9047
     num_trades: 307
     total_bars: 20000
     avg_trade_duration_bars: 65.1
@@ -48,15 +48,15 @@ baseline_performance:
       - "Reward scaling disconnected from reality (950k vs 50k portfolio)"
       
     institutional_compliance:
-      sharpe_ratio_requirement: "FAIL (target ≥ 1.0, actual -2.23)"
-      max_drawdown_requirement: "PASS (target ≤ 5%, actual 2.64%)"
-      turnover_requirement: "FAIL (target ≤ 2x, actual 5.9x)"
+      sharpe_ratio_requirement: "FAIL (target ≥ 1.0, actual -2.2288)"
+      max_drawdown_requirement: "PASS (target ≤ 5%, actual 2.6427%)"
+      turnover_requirement: "FAIL (target ≤ 2x, actual 5.9047x)"
       win_rate_requirement: "FAIL (target ≥ 50%, actual 34.25%)"
       
     production_readiness: "NOT_READY"
     recommended_action: "PROCEED_WITH_PHASE_1_REALITY_GROUNDING"
     
   checksums:
-    model_sha256: "b4dcce699cc09855ccb819be30e254602b6413dc64deb20a86186058e294bf04"
+    model_sha256: "DABFD70C21315CC8B5F3D09445FE850E6F7B699D1F658D8466102330CACF44C3"
     config_sha256: "eca41869bc6fce2854f603ec41d5e7e8f5efcce8a4db3282a10817c26e71f838"
     metadata_generated_at: "2025-07-21T00:00:00Z"
