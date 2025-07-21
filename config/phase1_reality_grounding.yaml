@@ -1,0 +1,68 @@
+# PHASE 1: REALITY GROUNDING FOUNDATION
+# Objective: Fix reward scaling disconnection while maintaining system stability
+# Expected Impact: Episode rewards 8k-19k (realistic scale), proper observation consistency
+
+environment:
+  initial_capital: 50000.0
+  reward_scaling: 0.02  # Conservative scaling: 950k → 19k (addressing team feedback)
+  
+  # Institutional safeguards
+  max_position_size_pct: 0.95  # Never go more than 95% long/short
+  min_cash_reserve_pct: 0.05   # Always maintain 5% cash buffer
+  
+  # EarlyStoppingCallback threshold scaling (addressing team feedback)
+  early_stopping:
+    patience: 20
+    min_delta: 100  # Scaled from 5 to match new reward scale (19k * 0.005 ≈ 100)
+    plateau_threshold: 500  # 19k * 0.025 = 475, rounded to 500
+    
+risk:
+  include_risk_features: true
+  penalty_lambda: 0.0  # Pure observation mode - no penalties yet
+  dd_limit: 0.50       # Effectively disabled for Phase 1
+  
+  # Enhanced risk feature set (institutional standard)
+  risk_features:
+    - portfolio_heat_ratio      # Current risk / Risk budget
+    - concentration_ratio       # Single position concentration  
+    - drawdown_velocity         # Rate of drawdown acceleration
+    - var_breach_indicator      # Boolean: Are we breaching VaR?
+    - correlation_breakdown     # Correlation regime shift detector
+    
+validation:
+  observation_consistency_check: true  # Ensure train/eval identical
+  reward_bounds_check: true           # Alert on extreme rewards
+  nan_guard_strict: true              # Zero tolerance for NaN values
+  
+  # Batch sanity test (addressing team feedback)
+  consistency_test:
+    sample_size: 128
+    tolerance: 1e-6
+    test_frequency: "every_1000_steps"
+    
+  # Reward bounds for institutional validation
+  reward_bounds:
+    min_reward: -2000  # Reasonable loss limit
+    max_reward: 5000   # Reasonable gain limit
+    alert_threshold: 0.95  # Alert if within 5% of bounds
+
+# Model compatibility validation
+model_validation:
+  enforce_compatibility: true
+  expected_observation_features: 11  # 6 base + 5 risk features
+  check_frequency: "initialization"
+  
+# Logging and monitoring
+logging:
+  level: "INFO"
+  reward_scaling_logs: true
+  consistency_test_logs: true
+  safeguard_violation_logs: true
+  
+# Phase 1 success criteria
+success_criteria:
+  episode_reward_range: [8000, 19000]
+  entropy_floor: -0.25
+  explained_variance_threshold: 0.85
+  observation_consistency_rate: 0.99
+  nan_incidents_tolerance: 0
