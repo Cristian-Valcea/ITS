@@ -47,7 +47,7 @@ def create_sample_data_with_dates():
     
     # Generate synthetic data
     np.random.seed(42)
-    n_samples = 1000
+    n_samples = 50000  # 🚀 PRODUCTION: Full dataset for 50K training (50 episodes × 1000 steps)
     
     # Create datetime index
     start_date = datetime(2024, 1, 1, 9, 30)  # Market open
@@ -96,7 +96,7 @@ def create_fast_recovery_config():
     config['risk']['dynamic_lambda_schedule'] = True  # Enable dynamic lambda
     config['risk']['lambda_start'] = 1500.0  # 🔧 FINAL-CALIBRATION: Maintain ~5% penalty ceiling after 0.07 scaling
     config['risk']['lambda_end'] = 7500.0    # 🔧 FINAL-CALIBRATION: Keep penalty ceiling after reward scaling change
-    config['risk']['lambda_schedule_steps'] = 15000  # 🎯 ENGINEERING: Linear increase over 15k steps
+    config['risk']['lambda_schedule_steps'] = 50000  # 🚀 PRODUCTION: Linear increase over full 50k steps
     # 🔧 REWARD-CALIBRATION: Bring ep_rew_mean into single digits so penalties matter
     config['environment']['reward_scaling'] = 0.07  # 🔧 FINAL-CALIBRATION: Target ep_rew_mean 4-6 band (was 0.1)
     # 🔧 THRASH-FIX: Make thrash loop painful until it learns
@@ -144,8 +144,8 @@ def create_fast_recovery_config():
         'normalize_advantage': True,  # Step 2: Normalize advantages
         'max_grad_norm': 0.5,
         'verbose': 1,
-        'tensorboard_log': 'logs/tensorboard_phase1_15k',   # 🎯 ENGINEERING: 15K validation directory
-        'total_timesteps': 15000,  # 🎯 ENGINEERING: Smart 15K validation run
+        'tensorboard_log': 'logs/tensorboard_phase1_50k',   # 🚀 PRODUCTION: 50K run directory
+        'total_timesteps': 50000,  # 🚀 PRODUCTION: Full 50K training run
     }
     
     logger.info("🔧 COMPREHENSIVE TRAINING-VS-REALITY FIX APPLIED:")
@@ -296,13 +296,13 @@ def run_fast_recovery_training():
     logger.info("✅ Step 3: Input-dim-correct policy created")
     logger.info("✅ Step 4: Drawdown killer relaxed")
     logger.info("✅ Step 5: Entropy coefficient raised to 0.02")
-    logger.info("✅ Step 7: TensorBoard logging enabled (phase1_15k)")
+    logger.info("✅ Step 7: TensorBoard logging enabled (phase1_50k)")
     
-    # Step 4: Engineering validation training (15000 steps)
-    logger.info("🎯 Starting 15K ENGINEERING VALIDATION (smart incremental approach)...")
+    # Step 4: Full production training (50000 steps)
+    logger.info("🚀 Starting 50K PRODUCTION TRAINING (full-scale deployment)...")
     logger.info("=" * 60)
-    logger.info("🎯 VALIDATION TRAINING CRITERIA (PRECISION-CALIBRATED SYSTEM):")
-    logger.info("   - Complete 15,000 timesteps")
+    logger.info("🎯 PRODUCTION TRAINING CRITERIA (PRECISION-CALIBRATED SYSTEM):")
+    logger.info("   - Complete 50,000 timesteps")
     logger.info("   - ep_rew_mean ≈ 4–6 (🔧 FINAL-CALIBRATION: 0.07 scaling target band)")
     logger.info("   - Entropy > -0.4 (exploration)")
     logger.info("   - explained_variance ≥ 0.10 (A11: critic learning improved)")
@@ -430,7 +430,7 @@ def run_fast_recovery_training():
                 # Restore original stdout
                 sys.stdout = original_stdout
         
-        logger.info("✅ 15K ENGINEERING VALIDATION COMPLETED SUCCESSFULLY!")
+        logger.info("✅ 50K PRODUCTION TRAINING COMPLETED SUCCESSFULLY!")
         
         # Save model
         model_path = "models/phase1_fast_recovery_model"
