@@ -107,6 +107,7 @@ class IntradayTradingEnv(gym.Env):
                  # Action change penalty to discourage ping-ponging
                  action_change_penalty_factor: float = 2.5, # L2 penalty factor for action changes (INCREASED to stop ping-ponging)
                  max_same_action_repeat: int = 3, # Maximum consecutive same actions before penalty (abort 0→2→0 spirals)
+                 same_action_penalty_factor: float = 0.2, # Penalty factor per extra repeat (dollars per extra repeat)
                  # Reward shaping parameters
                  turnover_bonus_threshold: float = 0.8, # Bonus when turnover < 80% of cap
                  turnover_bonus_factor: float = 0.001, # Bonus amount per step when under threshold
@@ -212,6 +213,7 @@ class IntradayTradingEnv(gym.Env):
         self.turnover_termination_penalty_pct = turnover_termination_penalty_pct
         self.action_change_penalty_factor = action_change_penalty_factor
         self.max_same_action_repeat = max_same_action_repeat
+        self.same_action_penalty_factor = same_action_penalty_factor
         self.turnover_bonus_threshold = turnover_bonus_threshold
         self.turnover_bonus_factor = turnover_bonus_factor
         
@@ -1505,9 +1507,10 @@ class IntradayTradingEnv(gym.Env):
             self.same_action_count += 1
             # Apply penalty if exceeding max_same_action_repeat
             if self.same_action_count >= self.max_same_action_repeat:
-                same_action_penalty = 0.02 * self.reward_scaling  # Fixed penalty for excessive repetition
+                extra_repeats = self.same_action_count - self.max_same_action_repeat + 1
+                same_action_penalty = self.same_action_penalty_factor * extra_repeats * self.reward_scaling
                 reward -= same_action_penalty
-                self.logger.info(f"🔄 [SameActionPenalty] Step {self.current_step}, Action {action} repeated {self.same_action_count} times, Penalty: ${same_action_penalty:.2f}")
+                self.logger.info(f"🔄 [SameActionPenalty] Step {self.current_step}, Action {action} repeated {self.same_action_count} times, Penalty: ${same_action_penalty:.2f} (factor: {self.same_action_penalty_factor}, extra: {extra_repeats})")
         else:
             self.same_action_count = 0  # Reset counter on action change
         

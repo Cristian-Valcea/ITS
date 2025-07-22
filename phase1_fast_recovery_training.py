@@ -94,15 +94,16 @@ def create_fast_recovery_config():
     config['risk']['terminate_on_hard'] = False  # Phase 1: No termination
     config['risk']['penalty_lambda'] = 2500.0  # Static fallback - overridden by dynamic schedule
     config['risk']['dynamic_lambda_schedule'] = True  # Enable dynamic lambda
-    config['risk']['lambda_start'] = 1200.0  # 🔧 PENALTY-BALANCE: Keep single spike ≤ 0.05 (was 600.0)
-    config['risk']['lambda_end'] = 6000.0    # 🔧 PENALTY-BALANCE: Fewer triggers but controlled spikes (was 4000.0)
+    config['risk']['lambda_start'] = 1500.0  # 🔧 FINAL-CALIBRATION: Maintain ~5% penalty ceiling after 0.07 scaling
+    config['risk']['lambda_end'] = 7500.0    # 🔧 FINAL-CALIBRATION: Keep penalty ceiling after reward scaling change
     config['risk']['lambda_schedule_steps'] = 25000  # Linear increase over 25k steps
     # 🔧 REWARD-CALIBRATION: Bring ep_rew_mean into single digits so penalties matter
-    config['environment']['reward_scaling'] = 0.1  # Reduce from 0.3 to 0.1 for single-digit rewards
+    config['environment']['reward_scaling'] = 0.07  # 🔧 FINAL-CALIBRATION: Target ep_rew_mean 4-6 band (was 0.1)
     # 🔧 THRASH-FIX: Make thrash loop painful until it learns
     config['environment']['action_change_penalty_factor'] = 5.0  # Make the loop painful (was 2.5)
-    config['environment']['trade_cooldown_steps'] = 8  # ~10min at 1-min bars for price drift (was 5)
+    config['environment']['trade_cooldown_steps'] = 10  # 🔧 FINAL-CALIBRATION: Absorb higher BUY volume surge (was 8)
     config['environment']['max_same_action_repeat'] = 2  # 🔧 SPIRAL-ABORT: Stop 0→2→0 spirals early (was 3)
+    config['environment']['same_action_penalty_factor'] = 0.2  # 🔧 SPIRAL-PENALTY: $0.20 per extra repeat
     config['risk']['dd_baseline_reset_enabled'] = True  # Enable DD baseline reset
     config['risk']['dd_recovery_threshold_pct'] = 0.005  # +0.5% recovery threshold
     config['risk']['purgatory_escape_threshold_pct'] = 0.03  # 🔧 BASELINE-RESET-GUARD: +3% meaningful climb (was 1.5%)
@@ -161,15 +162,16 @@ def create_fast_recovery_config():
     logger.info("   🛡️ BASELINE-RESET GUARD:")
     logger.info(f"      - Purgatory escape threshold: {config['risk'].get('purgatory_escape_threshold_pct', 'N/A'):.1%} (was 1.5%) - meaningful climb")
     logger.info("   📊 PENALTY BALANCE:")
-    logger.info(f"      - Lambda range: {config['risk'].get('lambda_start', 'N/A')} → {config['risk'].get('lambda_end', 'N/A')} (spike ≤ 0.05)")
+    logger.info(f"      - Lambda range: {config['risk'].get('lambda_start', 'N/A')} → {config['risk'].get('lambda_end', 'N/A')} (≈5% penalty ceiling)")
     logger.info(f"      - Soft DD limit: {config['risk']['soft_dd_pct']:.1%}")
     logger.info(f"      - EOD flat penalty: {config['risk'].get('end_of_day_flat_penalty', 'N/A')}")
     logger.info("   🚨 TENSORBOARD ALERTS:")
     logger.info(f"      - Lambda multiplier > 6")
     logger.info(f"      - Soft DD consecutive > 50")
-    logger.info(f"   - Reward scaling: {config['environment']['reward_scaling']} (🔧 CALIBRATED: was 0.3)")
+    logger.info(f"   - Reward scaling: {config['environment']['reward_scaling']} (🔧 FINAL-CALIBRATION: target 4-6 ep_rew_mean)")
     logger.info(f"   - Entropy coefficient: {config['training']['ent_coef']} (🔧 CALIBRATED: was 0.05)")
     logger.info(f"   - Max same action repeat: {config['environment']['max_same_action_repeat']} (🔧 SPIRAL-ABORT)")
+    logger.info(f"   - Same action penalty factor: {config['environment']['same_action_penalty_factor']} (🔧 SPIRAL-PENALTY)")
     logger.info(f"   - Network architecture: {config['training']['policy_kwargs']['net_arch']}")
     logger.info(f"   - LSTM hidden size: {config['training']['policy_kwargs']['lstm_hidden_size']}")
     logger.info(f"   - TensorBoard log: {config['training']['tensorboard_log']}")
@@ -223,6 +225,7 @@ def run_fast_recovery_training():
         trade_cooldown_steps=config['environment'].get('trade_cooldown_steps', 5),
         action_change_penalty_factor=config['environment'].get('action_change_penalty_factor', 2.5),
         max_same_action_repeat=config['environment'].get('max_same_action_repeat', 3),
+        same_action_penalty_factor=config['environment'].get('same_action_penalty_factor', 0.2),
         # 🛡️ BASELINE-RESET-GUARD: Add purgatory escape threshold
         purgatory_escape_threshold_pct=config['risk'].get('purgatory_escape_threshold_pct', 0.015)
     )
@@ -300,7 +303,7 @@ def run_fast_recovery_training():
     logger.info("=" * 60)
     logger.info("🎯 UPDATED SMOKE TEST CRITERIA (COMPREHENSIVE TRAINING-VS-REALITY FIX):")
     logger.info("   - Complete 5,000 timesteps")
-    logger.info("   - ep_rew_mean ≈ 0–4 (SYMBOLIC bonuses: 0.01×2×1000 = ~20 max)")
+    logger.info("   - ep_rew_mean ≈ 4–6 (🔧 FINAL-CALIBRATION: 0.07 scaling target band)")
     logger.info("   - Entropy > -0.4 (exploration)")
     logger.info("   - explained_variance ≥ 0.10 (A11: critic learning improved)")
     logger.info("   - penalty_frequency < 20% (A7': action change penalty = 5.0 PAINFUL)")
@@ -381,7 +384,7 @@ def run_fast_recovery_training():
                             logger.info(f"📋 Actual env type: {type(actual_env)}")
                             
                             # Check parameters in actual environment
-                            for k in ['action_change_penalty_factor', 'trade_cooldown_steps', 'purgatory_escape_threshold_pct', 'max_same_action_repeat']:
+                            for k in ['action_change_penalty_factor', 'trade_cooldown_steps', 'purgatory_escape_threshold_pct', 'max_same_action_repeat', 'same_action_penalty_factor']:
                                 value = getattr(actual_env, k, 'NOT_FOUND')
                                 logger.info(f'⚙️  actual_env.{k}: {value}')
                         else:
