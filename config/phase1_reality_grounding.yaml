@@ -4,7 +4,7 @@
 
 environment:
   initial_capital: 50000.0
-  reward_scaling: 0.3  # 🔄 PHASE1-FIX: raised from 0.1 → 0.3
+  reward_scaling: 0.07  # 🔧 FINAL-CALIBRATION: Target ep_rew_mean 4-6 band
   
   # Institutional safeguards
   max_position_size_pct: 0.95  # Never go more than 95% long/short

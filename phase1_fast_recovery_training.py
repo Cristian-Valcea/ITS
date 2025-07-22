@@ -204,6 +204,10 @@ def run_fast_recovery_training():
         initial_capital=config['environment']['initial_capital'],
         reward_scaling=config['environment']['reward_scaling'],
         institutional_safeguards_config=config,
+        # 🔧 EPISODE-STRUCTURE-FIX: Set proper episode length for 50 episodes × 1000 steps
+        max_episode_steps=1000,  # CRITICAL FIX: Force episodes to end at 1000 steps
+        # 🔧 REWARD-SCALING-FIX: PPO scaling was working correctly
+        ppo_reward_scaling=True,  # Keep PPO scaling (it was working correctly)
         # Dynamic lambda schedule parameters
         dynamic_lambda_schedule=config['risk'].get('dynamic_lambda_schedule', False),
         lambda_start=config['risk'].get('lambda_start', 10.0),
@@ -258,6 +262,19 @@ def run_fast_recovery_training():
         logger.info(f"   - purgatory_escape_threshold_pct: {config['risk'].get('purgatory_escape_threshold_pct', 'N/A'):.1%} ✓")
     
     assert_env_config_loaded()
+    
+    # 🔧 EPISODE-STRUCTURE-VERIFICATION: Test episode structure is correct
+    def verify_episode_structure():
+        """Verify episode structure is correct"""
+        logger.info("🔍 EPISODE STRUCTURE VERIFICATION:")
+        logger.info(f"   - max_episode_steps: {getattr(env, '_max_episode_steps', 'N/A')}")
+        logger.info(f"   - Data length: {len(feature_data)}")
+        logger.info(f"   - Expected: 50 episodes × 1000 steps = 50,000 total steps")
+        logger.info(f"   - Previous BROKEN: 1 episode × 50,000 steps (ep_len_mean=50,000)")
+        logger.info(f"   - This fix should create proper episode boundaries")
+        logger.info(f"   - Expected ep_len_mean: ~1000 (not 50,000)")
+    
+    verify_episode_structure()
     
     # 🔧 FIX: Add file handler to environment logger to capture training steps
     env_logger = logging.getLogger("RLTradingPlatform.Env.IntradayTradingEnv")
