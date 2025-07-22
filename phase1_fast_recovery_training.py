@@ -96,7 +96,7 @@ def create_fast_recovery_config():
     config['risk']['dynamic_lambda_schedule'] = True  # Enable dynamic lambda
     config['risk']['lambda_start'] = 1500.0  # 🔧 FINAL-CALIBRATION: Maintain ~5% penalty ceiling after 0.07 scaling
     config['risk']['lambda_end'] = 7500.0    # 🔧 FINAL-CALIBRATION: Keep penalty ceiling after reward scaling change
-    config['risk']['lambda_schedule_steps'] = 25000  # Linear increase over 25k steps
+    config['risk']['lambda_schedule_steps'] = 15000  # 🎯 ENGINEERING: Linear increase over 15k steps
     # 🔧 REWARD-CALIBRATION: Bring ep_rew_mean into single digits so penalties matter
     config['environment']['reward_scaling'] = 0.07  # 🔧 FINAL-CALIBRATION: Target ep_rew_mean 4-6 band (was 0.1)
     # 🔧 THRASH-FIX: Make thrash loop painful until it learns
@@ -144,8 +144,8 @@ def create_fast_recovery_config():
         'normalize_advantage': True,  # Step 2: Normalize advantages
         'max_grad_norm': 0.5,
         'verbose': 1,
-        'tensorboard_log': 'logs/tensorboard_phase1_fix1',  # Step 7: New run directory
-        'total_timesteps': 5000,   # Step 4: Short smoke test first
+        'tensorboard_log': 'logs/tensorboard_phase1_15k',   # 🎯 ENGINEERING: 15K validation directory
+        'total_timesteps': 15000,  # 🎯 ENGINEERING: Smart 15K validation run
     }
     
     logger.info("🔧 COMPREHENSIVE TRAINING-VS-REALITY FIX APPLIED:")
@@ -296,13 +296,13 @@ def run_fast_recovery_training():
     logger.info("✅ Step 3: Input-dim-correct policy created")
     logger.info("✅ Step 4: Drawdown killer relaxed")
     logger.info("✅ Step 5: Entropy coefficient raised to 0.02")
-    logger.info("✅ Step 7: TensorBoard logging enabled (phase1_fix1)")
+    logger.info("✅ Step 7: TensorBoard logging enabled (phase1_15k)")
     
-    # Step 4: Short smoke test (5000 steps)
-    logger.info("🧪 Starting 5k smoke test (1-day sprint tuning)...")
+    # Step 4: Engineering validation training (15000 steps)
+    logger.info("🎯 Starting 15K ENGINEERING VALIDATION (smart incremental approach)...")
     logger.info("=" * 60)
-    logger.info("🎯 UPDATED SMOKE TEST CRITERIA (COMPREHENSIVE TRAINING-VS-REALITY FIX):")
-    logger.info("   - Complete 5,000 timesteps")
+    logger.info("🎯 VALIDATION TRAINING CRITERIA (PRECISION-CALIBRATED SYSTEM):")
+    logger.info("   - Complete 15,000 timesteps")
     logger.info("   - ep_rew_mean ≈ 4–6 (🔧 FINAL-CALIBRATION: 0.07 scaling target band)")
     logger.info("   - Entropy > -0.4 (exploration)")
     logger.info("   - explained_variance ≥ 0.10 (A11: critic learning improved)")
@@ -430,7 +430,7 @@ def run_fast_recovery_training():
                 # Restore original stdout
                 sys.stdout = original_stdout
         
-        logger.info("✅ 5k smoke test completed successfully!")
+        logger.info("✅ 15K ENGINEERING VALIDATION COMPLETED SUCCESSFULLY!")
         
         # Save model
         model_path = "models/phase1_fast_recovery_model"
