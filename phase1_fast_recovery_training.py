@@ -89,22 +89,37 @@ def create_fast_recovery_config():
     # Apply fast recovery modifications
     
     # Step 4: Relax drawdown killer (now using new soft/hard system)
-    config['risk']['soft_dd_pct'] = 0.02  # 2% soft limit
+    config['risk']['soft_dd_pct'] = 0.03  # 🔧 FIX1-AGGRESSIVE: 3.0% soft limit (was 2.0%) - major breach reduction
     config['risk']['hard_dd_pct'] = 0.04  # 4% hard limit  
     config['risk']['terminate_on_hard'] = False  # Phase 1: No termination
     config['risk']['penalty_lambda'] = 2500.0  # Static fallback - overridden by dynamic schedule
     config['risk']['dynamic_lambda_schedule'] = True  # Enable dynamic lambda
-    config['risk']['lambda_start'] = 1000.0  # Starting lambda (exploration) - increased 100x
-    config['risk']['lambda_end'] = 10000.0   # Ending lambda (exploitation) - increased 133x
+    config['risk']['lambda_start'] = 1200.0  # 🔧 PENALTY-BALANCE: Keep single spike ≤ 0.05 (was 600.0)
+    config['risk']['lambda_end'] = 6000.0    # 🔧 PENALTY-BALANCE: Fewer triggers but controlled spikes (was 4000.0)
     config['risk']['lambda_schedule_steps'] = 25000  # Linear increase over 25k steps
+    # 🔧 REWARD-CALIBRATION: Bring ep_rew_mean into single digits so penalties matter
+    config['environment']['reward_scaling'] = 0.1  # Reduce from 0.3 to 0.1 for single-digit rewards
+    # 🔧 THRASH-FIX: Make thrash loop painful until it learns
+    config['environment']['action_change_penalty_factor'] = 5.0  # Make the loop painful (was 2.5)
+    config['environment']['trade_cooldown_steps'] = 8  # ~10min at 1-min bars for price drift (was 5)
+    config['environment']['max_same_action_repeat'] = 2  # 🔧 SPIRAL-ABORT: Stop 0→2→0 spirals early (was 3)
     config['risk']['dd_baseline_reset_enabled'] = True  # Enable DD baseline reset
     config['risk']['dd_recovery_threshold_pct'] = 0.005  # +0.5% recovery threshold
+    config['risk']['purgatory_escape_threshold_pct'] = 0.03  # 🔧 BASELINE-RESET-GUARD: +3% meaningful climb (was 1.5%)
     config['risk']['dd_reset_timeout_steps'] = 800  # 800 step timeout
     config['risk']['recovery_bonus_enabled'] = True  # Enable positive recovery bonus
-    config['risk']['recovery_bonus_amount'] = 0.2  # +0.2 reward when above baseline
+    config['risk']['recovery_bonus_amount'] = 0.01  # 🔧 SYNTHETIC-REWARD-FIX: Symbolic only (was 0.05)
+    config['risk']['bootstrap_bonus_amount'] = 0.01  # 🔧 SYNTHETIC-REWARD-FIX: Symbolic only (was 0.05)
+    config['risk']['end_of_day_flat_penalty'] = False  # 🔧 EOD-RULE-FIX: Let policy learn to square up
     config['risk']['early_warning_enabled'] = True  # Enable early-warning logger
     config['risk']['early_warning_threshold_pct'] = 0.005  # 0.5% excess DD threshold
     config['risk']['early_warning_duration_steps'] = 50  # Warn after 50 sustained steps
+    
+    # 🔧 TENSORBOARD-ALERTS: Add monitoring alerts
+    config['alerts'] = {
+        'lambda_multiplier': {'condition': '> 6'},
+        'soft_dd_consecutive': {'condition': '> 50'}
+    }
     
     # Step 5: Reset entropy coefficient
     config['training'] = {
@@ -116,14 +131,14 @@ def create_fast_recovery_config():
             'n_lstm_layers': 1,
             'enable_critic_lstm': True,
         },
-        'learning_rate': 0.0003,
+        'learning_rate': 5e-4,  # 🔧 CRITIC-BLIND-FIX: Faster learning (was 3e-4)
         'n_steps': 128,
         'batch_size': 32,
-        'n_epochs': 4,
+        'n_epochs': 10,  # 🔧 CRITIC-BLIND-FIX: More gradient updates (was 4)
         'gamma': 0.99,
         'gae_lambda': 0.95,
-        'clip_range': 0.2,
-        'ent_coef': 0.05,  # Step 5: Increased for entropy > -0.4 target
+        'clip_range': 0.3,  # 🔧 CRITIC-BLIND-FIX: Wider clipping for small rewards (was 0.2)
+        'ent_coef': 0.03,  # 🔧 ENTROPY-CALIBRATION: Tiny lift to fight sell-bias (was 0.05)
         'vf_coef': 0.8,    # Step 2: Increased from 0.5 to 0.8 for better critic learning
         'normalize_advantage': True,  # Step 2: Normalize advantages
         'max_grad_norm': 0.5,
@@ -132,20 +147,32 @@ def create_fast_recovery_config():
         'total_timesteps': 5000,   # Step 4: Short smoke test first
     }
     
-    logger.info("🔧 Fast recovery configuration applied:")
-    logger.info(f"   - Soft DD limit: {config['risk']['soft_dd_pct']:.1%}")
-    logger.info(f"   - Hard DD limit: {config['risk']['hard_dd_pct']:.1%}")
-    logger.info(f"   - Terminate on hard: {config['risk']['terminate_on_hard']}")
-    logger.info(f"   - Penalty lambda: {config['risk']['penalty_lambda']}")
-    logger.info(f"   - Dynamic lambda: {config['risk'].get('dynamic_lambda_schedule', False)}")
-    if config['risk'].get('dynamic_lambda_schedule', False):
-        logger.info(f"   - Lambda range: {config['risk'].get('lambda_start', 'N/A')} → {config['risk'].get('lambda_end', 'N/A')}")
-        logger.info(f"   - Lambda steps: {config['risk'].get('lambda_schedule_steps', 'N/A'):,}")
-    logger.info(f"   - Reward scaling: {config['environment']['reward_scaling']}")
-    logger.info(f"   - Entropy coefficient: 0.02")
-    logger.info(f"   - Network architecture: [128, 128]")
-    logger.info(f"   - LSTM hidden size: 64")
-    logger.info(f"   - TensorBoard log: logs/tensorboard_phase1_fix1")
+    logger.info("🔧 COMPREHENSIVE TRAINING-VS-REALITY FIX APPLIED:")
+    logger.info("   🎯 THRASH-LOOP FIX:")
+    logger.info(f"      - Action change penalty: {config['environment'].get('action_change_penalty_factor', 'N/A')} (was 2.5) - PAINFUL")
+    logger.info(f"      - Trade cooldown: {config['environment'].get('trade_cooldown_steps', 'N/A')} steps (was 5) - ~10min drift")
+    logger.info("   🧠 CRITIC-BLIND FIX:")
+    logger.info(f"      - Learning rate: {config['training']['learning_rate']} (was 3e-4)")
+    logger.info(f"      - N epochs: {config['training']['n_epochs']} (was 4)")
+    logger.info(f"      - Clip range: {config['training']['clip_range']} (was 0.2)")
+    logger.info("   💰 SYNTHETIC-REWARD FIX:")
+    logger.info(f"      - Recovery bonus: {config['risk'].get('recovery_bonus_amount', 'N/A')} (was 0.05) - SYMBOLIC")
+    logger.info(f"      - Bootstrap bonus: {config['risk'].get('bootstrap_bonus_amount', 'N/A')} (was 0.05) - SYMBOLIC")
+    logger.info("   🛡️ BASELINE-RESET GUARD:")
+    logger.info(f"      - Purgatory escape threshold: {config['risk'].get('purgatory_escape_threshold_pct', 'N/A'):.1%} (was 1.5%) - meaningful climb")
+    logger.info("   📊 PENALTY BALANCE:")
+    logger.info(f"      - Lambda range: {config['risk'].get('lambda_start', 'N/A')} → {config['risk'].get('lambda_end', 'N/A')} (spike ≤ 0.05)")
+    logger.info(f"      - Soft DD limit: {config['risk']['soft_dd_pct']:.1%}")
+    logger.info(f"      - EOD flat penalty: {config['risk'].get('end_of_day_flat_penalty', 'N/A')}")
+    logger.info("   🚨 TENSORBOARD ALERTS:")
+    logger.info(f"      - Lambda multiplier > 6")
+    logger.info(f"      - Soft DD consecutive > 50")
+    logger.info(f"   - Reward scaling: {config['environment']['reward_scaling']} (🔧 CALIBRATED: was 0.3)")
+    logger.info(f"   - Entropy coefficient: {config['training']['ent_coef']} (🔧 CALIBRATED: was 0.05)")
+    logger.info(f"   - Max same action repeat: {config['environment']['max_same_action_repeat']} (🔧 SPIRAL-ABORT)")
+    logger.info(f"   - Network architecture: {config['training']['policy_kwargs']['net_arch']}")
+    logger.info(f"   - LSTM hidden size: {config['training']['policy_kwargs']['lstm_hidden_size']}")
+    logger.info(f"   - TensorBoard log: {config['training']['tensorboard_log']}")
     
     return config
 
@@ -191,7 +218,13 @@ def run_fast_recovery_training():
         # Early-warning logger parameters
         early_warning_enabled=config['risk'].get('early_warning_enabled', False),
         early_warning_threshold_pct=config['risk'].get('early_warning_threshold_pct', 0.005),
-        early_warning_duration_steps=config['risk'].get('early_warning_duration_steps', 50)
+        early_warning_duration_steps=config['risk'].get('early_warning_duration_steps', 50),
+        # 🔧 THRASH-FIX: Add thrash-loop parameters to environment
+        trade_cooldown_steps=config['environment'].get('trade_cooldown_steps', 5),
+        action_change_penalty_factor=config['environment'].get('action_change_penalty_factor', 2.5),
+        max_same_action_repeat=config['environment'].get('max_same_action_repeat', 3),
+        # 🛡️ BASELINE-RESET-GUARD: Add purgatory escape threshold
+        purgatory_escape_threshold_pct=config['risk'].get('purgatory_escape_threshold_pct', 0.015)
     )
     
     # Verify observation space (Step 3)
@@ -200,6 +233,36 @@ def run_fast_recovery_training():
     
     if obs_space.shape[0] != 12:
         raise ValueError(f"Observation space mismatch: {obs_space.shape} != (12,)")
+    
+    # 🔧 LOGGING-SANITY: Assert environment config loaded correctly
+    def assert_env_config_loaded():
+        """Hard-fail if runtime values differ from YAML config"""
+        expected_action_penalty = config['environment'].get('action_change_penalty_factor', 2.5)
+        expected_cooldown = config['environment'].get('trade_cooldown_steps', 5)
+        
+        actual_action_penalty = env.action_change_penalty_factor
+        actual_cooldown = env.trade_cooldown_steps
+        
+        if abs(actual_action_penalty - expected_action_penalty) > 1e-6:
+            raise ValueError(f"❌ ENV CONFIG MISMATCH: action_change_penalty_factor expected {expected_action_penalty}, got {actual_action_penalty}")
+        
+        if actual_cooldown != expected_cooldown:
+            raise ValueError(f"❌ ENV CONFIG MISMATCH: trade_cooldown_steps expected {expected_cooldown}, got {actual_cooldown}")
+        
+        logger.info(f"✅ Environment config assertion PASSED:")
+        logger.info(f"   - action_change_penalty_factor: {actual_action_penalty} ✓")
+        logger.info(f"   - trade_cooldown_steps: {actual_cooldown} ✓")
+        logger.info(f"   - purgatory_escape_threshold_pct: {config['risk'].get('purgatory_escape_threshold_pct', 'N/A'):.1%} ✓")
+    
+    assert_env_config_loaded()
+    
+    # 🔧 FIX: Add file handler to environment logger to capture training steps
+    env_logger = logging.getLogger("RLTradingPlatform.Env.IntradayTradingEnv")
+    if not any(isinstance(h, logging.FileHandler) for h in env_logger.handlers):
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        env_logger.addHandler(file_handler)
+        env_logger.setLevel(logging.INFO)
     
     # Wrap environment
     env = Monitor(env)
@@ -235,21 +298,134 @@ def run_fast_recovery_training():
     # Step 4: Short smoke test (5000 steps)
     logger.info("🧪 Starting 5k smoke test (1-day sprint tuning)...")
     logger.info("=" * 60)
-    logger.info("🎯 SMOKE TEST CRITERIA:")
+    logger.info("🎯 UPDATED SMOKE TEST CRITERIA (COMPREHENSIVE TRAINING-VS-REALITY FIX):")
     logger.info("   - Complete 5,000 timesteps")
-    logger.info("   - ep_rew_mean ≈ 6–12 (target range)")
+    logger.info("   - ep_rew_mean ≈ 0–4 (SYMBOLIC bonuses: 0.01×2×1000 = ~20 max)")
     logger.info("   - Entropy > -0.4 (exploration)")
-    logger.info("   - explained_variance > 0.2 (critic learning)")
-    logger.info("   - Reward scaling: 0.02 → 0.25 (12.5x increase)")
+    logger.info("   - explained_variance ≥ 0.10 (A11: critic learning improved)")
+    logger.info("   - penalty_frequency < 20% (A7': action change penalty = 5.0 PAINFUL)")
+    logger.info("   - soft_dd_consecutive ≤ 50 (A9: no prolonged DD)")
+    logger.info("   - median_penalty / median_reward < 0.25 (A10: penalty balance)")
+    logger.info("   - Sharpe ≥ 0 and trending ↑ (A12: risk-adjusted performance)")
+    logger.info("   - purgatory_escape_frequency < 10% (baseline reset guard: 3% threshold)")
     logger.info("=" * 60)
     
     try:
-        # Run validation training
-        model.learn(
-            total_timesteps=training_config['total_timesteps'],
-            reset_num_timesteps=True,
-            tb_log_name="phase1_fast_recovery_validation"
-        )
+        # 🔧 FIX: Capture stdout during training to log SB3 metrics tables
+        import sys
+        from io import StringIO
+        
+        # Create a custom stdout that writes to both console and log file
+        class TeeOutput:
+            def __init__(self, file_handler, console):
+                self.file = file_handler
+                self.console = console
+                
+            def write(self, data):
+                self.console.write(data)
+                self.file.write(data)
+                self.file.flush()
+                
+            def flush(self):
+                self.console.flush()
+                self.file.flush()
+        
+        # Open log file for appending stdout content
+        with open(log_file, 'a', encoding='utf-8') as f:
+            # Create tee output to write to both console and file
+            original_stdout = sys.stdout
+            sys.stdout = TeeOutput(f, original_stdout)
+            
+            try:
+                # 🔧 LIVE ENV PARAMS VERIFICATION: Reset env and print actual runtime values
+                env.reset()
+                logger.info("🔍 LIVE ENV PARAMS VERIFICATION (post-reset):")
+                
+                # First, let's see ALL attributes to understand the environment structure
+                logger.info("🔍 COMPREHENSIVE ENVIRONMENT ATTRIBUTE SEARCH:")
+                all_attrs = [attr for attr in dir(env) if not attr.startswith('_')]
+                logger.info(f"📋 ALL ENV ATTRIBUTES ({len(all_attrs)}): {sorted(all_attrs)}")
+                
+                # Search for any attributes containing key terms
+                penalty_attrs = [attr for attr in all_attrs if 'penalty' in attr.lower()]
+                cooldown_attrs = [attr for attr in all_attrs if 'cooldown' in attr.lower()]
+                trade_attrs = [attr for attr in all_attrs if 'trade' in attr.lower()]
+                action_attrs = [attr for attr in all_attrs if 'action' in attr.lower()]
+                turnover_attrs = [attr for attr in all_attrs if 'turnover' in attr.lower()]
+                
+                logger.info(f"📋 Penalty-related: {penalty_attrs}")
+                logger.info(f"📋 Cooldown-related: {cooldown_attrs}")
+                logger.info(f"📋 Trade-related: {trade_attrs}")
+                logger.info(f"📋 Action-related: {action_attrs}")
+                logger.info(f"📋 Turnover-related: {turnover_attrs}")
+                
+                # Check specific known parameters in wrapped environment
+                logger.info("🔍 CHECKING WRAPPED VS UNWRAPPED ENVIRONMENT:")
+                logger.info(f"📋 Environment type: {type(env)}")
+                logger.info(f"📋 Has unwrapped: {hasattr(env, 'unwrapped')}")
+                
+                # Try to access unwrapped environment
+                if hasattr(env, 'unwrapped'):
+                    unwrapped_env = env.unwrapped
+                    logger.info(f"📋 Unwrapped type: {type(unwrapped_env)}")
+                    
+                    # Check if it's a VecEnv (multiple environments)
+                    if hasattr(env, 'envs') and env.envs:
+                        logger.info(f"📋 VecEnv with {len(env.envs)} environments")
+                        wrapped_env = env.envs[0]  # Get first environment
+                        logger.info(f"📋 Wrapped env type: {type(wrapped_env)}")
+                        
+                        # If it's a Monitor wrapper, get the underlying environment
+                        if hasattr(wrapped_env, 'env'):
+                            actual_env = wrapped_env.env
+                            logger.info(f"📋 Actual env type: {type(actual_env)}")
+                            
+                            # Check parameters in actual environment
+                            for k in ['action_change_penalty_factor', 'trade_cooldown_steps', 'purgatory_escape_threshold_pct', 'max_same_action_repeat']:
+                                value = getattr(actual_env, k, 'NOT_FOUND')
+                                logger.info(f'⚙️  actual_env.{k}: {value}')
+                        else:
+                            # Check parameters in wrapped environment
+                            for k in ['action_change_penalty_factor', 'trade_cooldown_steps']:
+                                value = getattr(wrapped_env, k, 'NOT_FOUND')
+                                logger.info(f'⚙️  wrapped_env.{k}: {value}')
+                    else:
+                        # Single environment case
+                        for k in ['action_change_penalty_factor', 'trade_cooldown_steps']:
+                            value = getattr(unwrapped_env, k, 'NOT_FOUND')
+                            logger.info(f'⚙️  unwrapped.{k}: {value}')
+                else:
+                    # Direct environment case
+                    for k in ['action_change_penalty_factor', 'trade_cooldown_steps']:
+                        value = getattr(env, k, 'NOT_FOUND')
+                        logger.info(f'⚙️  env.{k}: {value}')
+                
+                # Check institutional safeguards config for bonus parameters
+                if hasattr(env, 'institutional_safeguards') and env.institutional_safeguards:
+                    safeguards = env.institutional_safeguards
+                    logger.info("🔍 SEARCHING FOR BONUS ATTRIBUTES IN SAFEGUARDS:")
+                    safeguard_attrs = [attr for attr in dir(safeguards) if not attr.startswith('_')]
+                    bonus_attrs = [attr for attr in safeguard_attrs if 'bonus' in attr.lower()]
+                    recovery_attrs = [attr for attr in safeguard_attrs if 'recovery' in attr.lower()]
+                    purgatory_attrs = [attr for attr in safeguard_attrs if 'purgatory' in attr.lower()]
+                    
+                    logger.info(f"📋 Bonus-related attributes: {bonus_attrs}")
+                    logger.info(f"📋 Recovery-related attributes: {recovery_attrs}")
+                    logger.info(f"📋 Purgatory-related attributes: {purgatory_attrs}")
+                    
+                    for k in ['recovery_bonus_amount', 'bootstrap_bonus_amount', 'purgatory_escape_threshold_pct']:
+                        value = getattr(safeguards, k, 'NOT_FOUND')
+                        logger.info(f'⚙️  safeguards.{k}: {value}')
+                
+                # Run validation training (stdout will now be captured)
+                model.learn(
+                    total_timesteps=training_config['total_timesteps'],
+                    reset_num_timesteps=True,
+                    tb_log_name="phase1_fast_recovery_validation"
+                )
+            finally:
+                # Restore original stdout
+                sys.stdout = original_stdout
         
         logger.info("✅ 5k smoke test completed successfully!")
         

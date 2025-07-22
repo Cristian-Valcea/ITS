@@ -106,6 +106,7 @@ class IntradayTradingEnv(gym.Env):
                  volume_data: pd.Series = None, # Optional volume data for better impact modeling
                  # Action change penalty to discourage ping-ponging
                  action_change_penalty_factor: float = 2.5, # L2 penalty factor for action changes (INCREASED to stop ping-ponging)
+                 max_same_action_repeat: int = 3, # Maximum consecutive same actions before penalty (abort 0→2→0 spirals)
                  # Reward shaping parameters
                  turnover_bonus_threshold: float = 0.8, # Bonus when turnover < 80% of cap
                  turnover_bonus_factor: float = 0.001, # Bonus amount per step when under threshold
@@ -138,6 +139,7 @@ class IntradayTradingEnv(gym.Env):
                  dd_baseline_reset_enabled: bool = False, # Enable DD baseline reset
                  dd_recovery_threshold_pct: float = 0.005, # +0.5% equity recovery threshold
                  dd_reset_timeout_steps: int = 800, # Reset baseline after 800 steps regardless
+                 purgatory_escape_threshold_pct: float = 0.015, # Purgatory escape threshold as % of baseline (1.5% default)
                  # Positive recovery bonus
                  recovery_bonus_enabled: bool = False, # Enable positive recovery bonus
                  recovery_bonus_amount: float = 0.2, # Bonus reward when excess DD < 0 (above baseline)
@@ -209,6 +211,7 @@ class IntradayTradingEnv(gym.Env):
         self.turnover_exponential_penalty_factor = turnover_exponential_penalty_factor
         self.turnover_termination_penalty_pct = turnover_termination_penalty_pct
         self.action_change_penalty_factor = action_change_penalty_factor
+        self.max_same_action_repeat = max_same_action_repeat
         self.turnover_bonus_threshold = turnover_bonus_threshold
         self.turnover_bonus_factor = turnover_bonus_factor
         
@@ -266,13 +269,14 @@ class IntradayTradingEnv(gym.Env):
         self.dd_baseline_reset_enabled = dd_baseline_reset_enabled
         self.dd_recovery_threshold_pct = dd_recovery_threshold_pct
         self.dd_reset_timeout_steps = dd_reset_timeout_steps
+        self.purgatory_escape_threshold_pct = purgatory_escape_threshold_pct
         # DD baseline tracking variables (initialized in reset())
         self.dd_baseline_value = None
         self.dd_baseline_step = None
         self.steps_since_dd_baseline = 0
         if self.dd_baseline_reset_enabled:
             self.logger.info(f"🔄 Enhanced DD baseline reset enabled:")
-            self.logger.info(f"   Method 1: Purgatory escape when equity > baseline + soft_dd × {BASELINE_RESET_BUFFER_FACTOR:.1f}")
+            self.logger.info(f"   Method 1: Purgatory escape when equity > baseline + {self.purgatory_escape_threshold_pct:.1%}")
             self.logger.info(f"   Method 2: Flat timeout after {BASELINE_RESET_FLAT_STEPS} steps")
             self.logger.info(f"   Method 3: Legacy recovery at +{dd_recovery_threshold_pct:.1%} equity gain")
         
@@ -1001,6 +1005,7 @@ class IntradayTradingEnv(gym.Env):
         self.action_counter = Counter()
         self.position_history = []  # Reset position tracking
         self.previous_action = 1  # Reset to HOLD action for new episode
+        self.same_action_count = 0  # Reset same action counter
 
         # Reset fill simulator
         if self.enable_kyle_lambda_fills and self.fill_simulator:
@@ -1494,6 +1499,18 @@ class IntradayTradingEnv(gym.Env):
                 log_level = logging.INFO if action_change_penalty > 0.1 else logging.DEBUG
                 self.logger.log(log_level, f"🔄 [ActionChangePenalty] Step {self.current_step}, Action {self.previous_action}→{action}, Penalty: ${action_change_penalty:.2f} (factor: {self.action_change_penalty_factor})")
         
+        # Track same action repeats and apply penalty for excessive repetition
+        same_action_penalty = 0.0
+        if action == self.previous_action:
+            self.same_action_count += 1
+            # Apply penalty if exceeding max_same_action_repeat
+            if self.same_action_count >= self.max_same_action_repeat:
+                same_action_penalty = 0.02 * self.reward_scaling  # Fixed penalty for excessive repetition
+                reward -= same_action_penalty
+                self.logger.info(f"🔄 [SameActionPenalty] Step {self.current_step}, Action {action} repeated {self.same_action_count} times, Penalty: ${same_action_penalty:.2f}")
+        else:
+            self.same_action_count = 0  # Reset counter on action change
+        
         # Update previous action for next step
         self.previous_action = action
         
@@ -1579,8 +1596,8 @@ class IntradayTradingEnv(gym.Env):
                                  (self.portfolio_value - self.dd_baseline_value) / self.dd_baseline_value * 100)
                 
                 # Calculate recovery threshold for monitoring
-                soft_dd_buffer = self.dd_baseline_value * soft_limit * BASELINE_RESET_BUFFER_FACTOR
-                recovery_threshold = self.dd_baseline_value + soft_dd_buffer
+                purgatory_escape_buffer = self.dd_baseline_value * self.purgatory_escape_threshold_pct
+                recovery_threshold = self.dd_baseline_value + purgatory_escape_buffer
                 self.logger.record('baseline/recovery_threshold', recovery_threshold)
                 self.logger.record('baseline/distance_to_escape', 
                                  (recovery_threshold - self.portfolio_value) / self.portfolio_value * 100)
@@ -1637,9 +1654,9 @@ class IntradayTradingEnv(gym.Env):
         
         # Enhanced DD baseline reset logic: Escape DD purgatory
         if self.dd_baseline_reset_enabled and self.dd_baseline_value is not None:
-            # Method 1: Reset when equity > baseline + soft_dd/2 (escape purgatory)
-            soft_dd_buffer = self.dd_baseline_value * soft_limit * BASELINE_RESET_BUFFER_FACTOR
-            recovery_threshold = self.dd_baseline_value + soft_dd_buffer
+            # Method 1: Reset when equity > baseline + purgatory_escape_threshold (escape purgatory)
+            purgatory_escape_buffer = self.dd_baseline_value * self.purgatory_escape_threshold_pct
+            recovery_threshold = self.dd_baseline_value + purgatory_escape_buffer
             recovery_met = self.portfolio_value > recovery_threshold
             
             # Method 2: Reset after N flat steps (prevent permanent purgatory)

@@ -4,7 +4,7 @@
 
 environment:
   initial_capital: 50000.0
-  reward_scaling: 0.3  # 🔄 PHASE1-FIX: raised from 0.1 → 0.3
+  reward_scaling: 0.1  # Increased to 0.1 to compete with penalty scale
   
   # Institutional safeguards
   max_position_size_pct: 0.95  # Never go more than 95% long/short
@@ -23,8 +23,8 @@ risk:
   penalty_lambda: 2500.0  # Static fallback - overridden by dynamic schedule
   # Dynamic penalty lambda schedule
   dynamic_lambda_schedule: true
-  lambda_start: 300.0     # 🔄 PHASE1-FIX: lower entry penalty
-  lambda_end: 3000.0      # 🔄 PHASE1-FIX: keep 10× span but cut absolute max
+  lambda_start: 1000.0    # Starting lambda (exploration phase) - increased 100x
+  lambda_end: 10000.0     # Ending lambda (exploitation phase) - increased 133x
   lambda_schedule_steps: 25000  # Linear increase over 25k steps
   
   # DD baseline reset mechanism
@@ -105,12 +105,3 @@ success_criteria:
   explained_variance_threshold: 0.85
   observation_consistency_rate: 0.99
   nan_incidents_tolerance: 0
-
-# ---------------------------------------------------------------------
-# 🔄 PHASE1-FIX 2025-07-22
-# Changes for reward-penalty rebalance
-#   • reward_scaling: 0.1 → 0.3   (3× reward amplitude)
-#   • lambda_start  : 1000 → 300  (≈3.3× softer)
-#   • lambda_end    : 10000 → 3000(≈3.3× softer high cap)
-# Expect penalties ≤25 % of gross reward, ep_rew_mean ≥--trend upward to ≥15 by 15 k steps.
-# ---------------------------------------------------------------------

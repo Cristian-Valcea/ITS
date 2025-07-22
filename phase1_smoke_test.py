@@ -32,7 +32,7 @@ def test_phase1_config_loading():
             config = yaml.safe_load(f)
             
         # Verify key Phase 1 parameters
-        assert config['environment']['reward_scaling'] == 0.08, f"Expected reward_scaling 0.08 (tuned for ep_rew_mean > +40), got {config['environment']['reward_scaling']}"
+        assert config['environment']['reward_scaling'] == 0.3, f"Expected reward_scaling 0.3 (PHASE1-FIX: 3× reward boost), got {config['environment']['reward_scaling']}"
         assert config['environment']['initial_capital'] == 50000.0, f"Expected initial_capital 50000.0, got {config['environment']['initial_capital']}"
         assert config['success_criteria']['episode_reward_range'] == [8000, 19000], f"Expected episode_reward_range [8000, 19000], got {config['success_criteria']['episode_reward_range']}"
         
