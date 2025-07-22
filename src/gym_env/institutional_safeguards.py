@@ -33,6 +33,13 @@ class InstitutionalSafeguards:
         # Reward scaling
         self.reward_scaling = config.get('environment', {}).get('reward_scaling', 1.0)
         
+        # Step 1: New DD limits from config
+        risk_config = config.get('risk', {})
+        self.soft_dd_pct = risk_config.get('soft_dd_pct', 0.02)  # 2%
+        self.hard_dd_pct = risk_config.get('hard_dd_pct', 0.04)  # 4%
+        self.terminate_on_hard = risk_config.get('terminate_on_hard', False)  # Phase 1: No termination
+        self.penalty_lambda = risk_config.get('penalty_lambda', 5.0)  # Step 3: Normalized penalty
+        
         # Monitoring
         self.violation_history = deque(maxlen=1000)
         self.reward_history = deque(maxlen=1000)
@@ -49,6 +56,10 @@ class InstitutionalSafeguards:
         logger.info(f"  - Position limit: {self.max_position_size:.1%}")
         logger.info(f"  - Cash reserve: {self.min_cash_reserve:.1%}")
         logger.info(f"  - Reward scaling: {self.reward_scaling}")
+        logger.info(f"  - Soft DD limit: {self.soft_dd_pct:.1%}")
+        logger.info(f"  - Hard DD limit: {self.hard_dd_pct:.1%}")
+        logger.info(f"  - Terminate on hard: {self.terminate_on_hard}")
+        logger.info(f"  - Penalty lambda: {self.penalty_lambda}")
         
     def validate_step_output(self, observation: np.ndarray, reward: float, 
                            done: bool, info: Dict[str, Any]) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
@@ -125,6 +136,15 @@ class InstitutionalSafeguards:
         })
         
         return observation, reward, done, info
+    
+    def _terminate_on_production_dd(self, drawdown_pct: float) -> bool:
+        """Production-only termination logic for hard DD breaches."""
+        # Only terminate in production phase
+        if self.config.get("phase") == "production":
+            if drawdown_pct > self.hard_dd_pct:
+                logger.error(f"🚨 PRODUCTION DD TERMINATION! Drawdown: {drawdown_pct:.2%} > Hard Limit: {self.hard_dd_pct:.2%}")
+                return True
+        return False
         
     def apply_reward_scaling(self, raw_reward: float, scaling_factor: float) -> float:
         """Apply reward scaling with bounds checking and monitoring."""

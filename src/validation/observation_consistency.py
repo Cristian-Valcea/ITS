@@ -52,14 +52,15 @@ class ObservationConsistencyValidator:
         
         try:
             for i in range(sample_size):
-                # Set identical random seed
+                # Set identical random seed for numpy
                 seed = np.random.randint(0, 1000000)
+                np.random.seed(seed)
                 
-                # Reset both environments with same seed
-                train_env.seed(seed)
-                eval_env.seed(seed)
-                
+                # Reset both environments
                 train_obs = train_env.reset()
+                
+                # Reset numpy seed again for eval env
+                np.random.seed(seed)
                 eval_obs = eval_env.reset()
                 
                 # Handle different observation formats
@@ -188,6 +189,33 @@ class ObservationConsistencyValidator:
             result['inf_positions'] = np.where(np.isinf(observation))
             
         return result
+        
+    def check_consistency(self, obs1: np.ndarray, obs2: np.ndarray) -> Dict[str, Any]:
+        """Simple consistency check between two observations."""
+        
+        # Shape consistency
+        shape_match = obs1.shape == obs2.shape
+        
+        # Dtype consistency  
+        dtype_match = obs1.dtype == obs2.dtype
+        
+        # Value consistency (within tolerance)
+        if shape_match and dtype_match:
+            value_diff = np.abs(obs1 - obs2)
+            max_diff = np.max(value_diff)
+            value_match = max_diff < self.tolerance
+        else:
+            value_match = False
+            max_diff = float('inf')
+            
+        return {
+            'consistent': shape_match and dtype_match and value_match,
+            'shape_match': shape_match,
+            'dtype_match': dtype_match,
+            'value_match': value_match,
+            'max_difference': max_diff,
+            'tolerance': self.tolerance
+        }
         
     def generate_consistency_report(self) -> Dict[str, Any]:
         """Generate comprehensive consistency report from test history."""

@@ -1,6 +1,10 @@
 # src/gym_env/intraday_trading_env.py
-import gymnasium as gym
-from gymnasium import spaces
+try:
+    import gymnasium as gym
+    from gymnasium import spaces
+except ImportError:
+    import gym
+    from gym import spaces
 import numpy as np
 from numpy.typing import NDArray  # for type hints
 import pandas as pd
@@ -13,12 +17,31 @@ import torch
 import torch.nn.functional as F
 from typing import Optional, Dict, Any, Tuple, List
 
+# --------------------------------------------------------------------------- #
+# λ-multiplier management: Sigmoid Risk Gain Schedule
+# --------------------------------------------------------------------------- #
+# λ = λ₀ · (1 + tanh(k · excess))
+# This provides smooth scaling: gentle for small breaches, aggressive for large ones
+SIGMOID_MAX_MULT     = 8.0       # Maximum multiplier (8× cap instead of brutal 20×)
+SIGMOID_STEEPNESS    = 150.0     # Controls sigmoid steepness (k parameter)
+LAMBDA_DECAY_FACTOR  = 0.99      # Time-based decay factor
+ABS_MAX_LAMBDA       = 500000.0  # Absolute ceiling to prevent base_lambda explosions
+
+# --------------------------------------------------------------------------- #
+# Baseline Reset Logic: Escape DD Purgatory
+# --------------------------------------------------------------------------- #
+BASELINE_RESET_BUFFER_FACTOR = 0.5   # Reset when equity > baseline + soft_dd/2
+BASELINE_RESET_FLAT_STEPS = 200      # Reset after N steps of flat performance
+
+
+
 try:
     from .kyle_lambda_fill_simulator import KyleLambdaFillSimulator, FillPriceSimulatorFactory
     from ..risk.advanced_reward_shaping import AdvancedRewardShaper
     from .enhanced_reward_system import EnhancedRewardCalculator
     from .components.turnover_penalty import TurnoverPenaltyCalculator, TurnoverPenaltyFactory
     from .components.curriculum_scheduler import CurriculumScheduler
+    from .institutional_safeguards import InstitutionalSafeguards
 except ImportError:
     # Fallback for direct execution
     import sys
@@ -28,6 +51,7 @@ except ImportError:
     from enhanced_reward_system import EnhancedRewardCalculator
     from components.turnover_penalty import TurnoverPenaltyCalculator, TurnoverPenaltyFactory
     from components.curriculum_scheduler import CurriculumScheduler
+    from institutional_safeguards import InstitutionalSafeguards
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from risk.advanced_reward_shaping import AdvancedRewardShaper
 
@@ -101,7 +125,26 @@ class IntradayTradingEnv(gym.Env):
                  ppo_reward_scaling: bool = True, # Enable PPO-friendly reward scaling
                  ppo_scale_factor: float = 1000.0, # Divide rewards by (portfolio_value / this factor)
                  # Curriculum learning
-                 curriculum: Dict[str, Any] = None # Curriculum learning configuration
+                 curriculum: Dict[str, Any] = None, # Curriculum learning configuration
+                 # Phase 1: Institutional safeguards
+                 institutional_safeguards_config: Dict[str, Any] = None, # Phase 1 safeguards configuration
+                 # Dynamic penalty lambda schedule
+                 dynamic_lambda_schedule: bool = False, # Enable dynamic lambda scheduling
+                 lambda_start: float = 10.0, # Starting lambda value
+                 lambda_end: float = 75.0, # Ending lambda value
+                 lambda_schedule_steps: int = 25000, # Steps over which to linearly increase lambda
+                 global_step_counter: int = 0, # Global step counter for lambda scheduling
+                 # DD baseline reset mechanism
+                 dd_baseline_reset_enabled: bool = False, # Enable DD baseline reset
+                 dd_recovery_threshold_pct: float = 0.005, # +0.5% equity recovery threshold
+                 dd_reset_timeout_steps: int = 800, # Reset baseline after 800 steps regardless
+                 # Positive recovery bonus
+                 recovery_bonus_enabled: bool = False, # Enable positive recovery bonus
+                 recovery_bonus_amount: float = 0.2, # Bonus reward when excess DD < 0 (above baseline)
+                 # Early-warning logger
+                 early_warning_enabled: bool = False, # Enable early-warning logger
+                 early_warning_threshold_pct: float = 0.005, # 0.5% excess DD threshold for warning
+                 early_warning_duration_steps: int = 50 # Warn if above threshold for > 50 steps
                  ):
         """
         Args:
@@ -193,6 +236,61 @@ class IntradayTradingEnv(gym.Env):
             if self.curriculum_scheduler.enabled:
                 self.turnover_target_ratio = self.curriculum_scheduler.get_current_target_ratio()
                 self.logger.info(f"🎓 Curriculum scheduler enabled - starting target: {self.turnover_target_ratio:.3f}")
+        
+        # Phase 1: Institutional Safeguards
+        self.institutional_safeguards = None
+        if institutional_safeguards_config:
+            self.institutional_safeguards = InstitutionalSafeguards(institutional_safeguards_config)
+            self.logger.info("🛡️ Phase 1 Institutional Safeguards enabled")
+        
+        # Dynamic penalty lambda schedule with parameter validation
+        self.dynamic_lambda_schedule = dynamic_lambda_schedule
+        self.lambda_start = lambda_start
+        self.lambda_end = lambda_end
+        self.lambda_schedule_steps = lambda_schedule_steps
+        self.global_step_counter = global_step_counter
+        
+        # Parameter sanity checks
+        self._validate_lambda_parameters()
+        
+        # Advanced lambda scaling
+        self.current_lambda_multiplier = 1.0  # Exponential multiplier for breaches
+        self.lambda_reset_counter = 0  # Cool-down counter (unused in time-based decay)
+        # Note: Removed step-based reset counters - now using time-based decay
+        
+        # Comprehensive lambda system logging
+        if self.dynamic_lambda_schedule:
+            self._log_lambda_system_startup()
+        
+        # DD baseline reset mechanism
+        self.dd_baseline_reset_enabled = dd_baseline_reset_enabled
+        self.dd_recovery_threshold_pct = dd_recovery_threshold_pct
+        self.dd_reset_timeout_steps = dd_reset_timeout_steps
+        # DD baseline tracking variables (initialized in reset())
+        self.dd_baseline_value = None
+        self.dd_baseline_step = None
+        self.steps_since_dd_baseline = 0
+        if self.dd_baseline_reset_enabled:
+            self.logger.info(f"🔄 Enhanced DD baseline reset enabled:")
+            self.logger.info(f"   Method 1: Purgatory escape when equity > baseline + soft_dd × {BASELINE_RESET_BUFFER_FACTOR:.1f}")
+            self.logger.info(f"   Method 2: Flat timeout after {BASELINE_RESET_FLAT_STEPS} steps")
+            self.logger.info(f"   Method 3: Legacy recovery at +{dd_recovery_threshold_pct:.1%} equity gain")
+        
+        # Positive recovery bonus
+        self.recovery_bonus_enabled = recovery_bonus_enabled
+        self.recovery_bonus_amount = recovery_bonus_amount
+        if self.recovery_bonus_enabled:
+            self.logger.info(f"💰 Recovery bonus enabled: +{recovery_bonus_amount} reward when above baseline")
+        
+        # Early-warning logger
+        self.early_warning_enabled = early_warning_enabled
+        self.early_warning_threshold_pct = early_warning_threshold_pct
+        self.early_warning_duration_steps = early_warning_duration_steps
+        # Early-warning tracking variables (initialized in reset())
+        self.warning_excess_steps = 0
+        self.last_warning_step = -1000  # Prevent spam on first warning
+        if self.early_warning_enabled:
+            self.logger.info(f"⚠️ Early-warning logger enabled: >{early_warning_threshold_pct:.1%} excess for >{early_warning_duration_steps} steps")
         
         # Initialize turnover tracking
         self.total_traded_value = 0.0
@@ -420,6 +518,181 @@ class IntradayTradingEnv(gym.Env):
         )
         
         self.logger.info(f"🎯 Turnover penalty calculator initialized: {self.turnover_penalty_calculator}")
+
+    def _calculate_sigmoid_multiplier(self, excess_pct: float) -> float:
+        """
+        Calculate lambda multiplier using sigmoid gain schedule:
+        λ = λ₀ · (1 + tanh(k · excess))
+        
+        This provides smooth, continuous scaling:
+        - Small breaches: gentle increase
+        - Large breaches: aggressive scaling
+        - Natural cap at SIGMOID_MAX_MULT without brutal cliff
+        
+        Args:
+            excess_pct: Drawdown excess as decimal (e.g., 0.005 for 0.5%)
+            
+        Returns:
+            Multiplier value between 1.0 and SIGMOID_MAX_MULT
+        """
+        import math
+        
+        if excess_pct <= 0:
+            return 1.0  # No excess, no multiplier
+        
+        # Modified sigmoid formula for gentler scaling:
+        # Use tanh(k · excess) directly, but with offset to start at 1.0
+        # This gives more gradual scaling for small excesses
+        tanh_value = math.tanh(SIGMOID_STEEPNESS * excess_pct)
+        
+        # Scale tanh output [0, 1] to [1, SIGMOID_MAX_MULT]
+        # For small excess_pct, tanh ≈ k·excess_pct (linear approximation)
+        # This gives gentler initial scaling
+        multiplier = 1.0 + (SIGMOID_MAX_MULT - 1.0) * tanh_value
+        
+        return multiplier
+
+    def _get_current_penalty_lambda(self, excess_pct: float = 0.0) -> float:
+        """Calculate current penalty lambda with exponential scaling for breaches."""
+        if not self.dynamic_lambda_schedule:
+            # Use static lambda from institutional safeguards or fallback
+            if self.institutional_safeguards:
+                return self.institutional_safeguards.penalty_lambda
+            return 2500.0
+        
+        # Calculate base lambda from linear schedule (0.0 to 1.0)
+        progress = min(self.global_step_counter / self.lambda_schedule_steps, 1.0)
+        base_lambda = self.lambda_start + (self.lambda_end - self.lambda_start) * progress
+        
+        # Apply time-based decay first (gradual forgiveness)
+        old_multiplier = self.current_lambda_multiplier
+        self.current_lambda_multiplier = max(self.current_lambda_multiplier * LAMBDA_DECAY_FACTOR, 1.0)
+        
+        # Calculate sigmoid multiplier based on current excess
+        sigmoid_multiplier = self._calculate_sigmoid_multiplier(excess_pct)
+        
+        # Use the maximum of decayed multiplier and sigmoid multiplier
+        # This ensures we respond to current risk while maintaining memory of past breaches
+        self.current_lambda_multiplier = max(self.current_lambda_multiplier, sigmoid_multiplier)
+        
+        # Emit telemetry for multiplier changes
+        if hasattr(self.logger, 'record'):
+            self.logger.record('lambda/sigmoid_multiplier', sigmoid_multiplier)
+            self.logger.record('lambda/excess_pct', excess_pct * 100)
+            if sigmoid_multiplier > old_multiplier:
+                self.logger.record('lambda/multiplier_growth', (sigmoid_multiplier - old_multiplier) / old_multiplier)
+        
+        # Log significant changes
+        if abs(self.current_lambda_multiplier - old_multiplier) > 0.1:
+            if self.current_lambda_multiplier > old_multiplier:
+                self.logger.warning(
+                    f"🌊 Sigmoid lambda scaling: {old_multiplier:.2f}x → {self.current_lambda_multiplier:.2f}x "
+                    f"(excess: {excess_pct*100:.2f}%, sigmoid: {sigmoid_multiplier:.2f}x)"
+                )
+            elif old_multiplier > 2.0 and self.current_step % 500 == 0:
+                self.logger.info(f"⏳ Lambda decay: {old_multiplier:.2f}x → {self.current_lambda_multiplier:.2f}x (cooling down)")
+        
+        # Apply absolute ceiling protection
+        penalty_lambda = min(base_lambda * self.current_lambda_multiplier, ABS_MAX_LAMBDA)
+        
+        # Log if absolute ceiling is hit (this should be very rare)
+        if penalty_lambda == ABS_MAX_LAMBDA and base_lambda * self.current_lambda_multiplier > ABS_MAX_LAMBDA:
+            self.logger.error(
+                "🚨 ABSOLUTE LAMBDA CEILING HIT: %.0f (base=%.1f × mult=%.2fx = %.0f) → CAPPED at %.0f",
+                penalty_lambda, base_lambda, self.current_lambda_multiplier, 
+                base_lambda * self.current_lambda_multiplier, ABS_MAX_LAMBDA
+            )
+        
+        # Emit telemetry for TensorBoard monitoring
+        if hasattr(self.logger, 'record'):
+            self.logger.record('lambda/multiplier', self.current_lambda_multiplier)
+            self.logger.record('lambda/base_lambda', base_lambda)
+            self.logger.record('lambda/penalty_lambda', penalty_lambda)
+            self.logger.record('lambda/ceiling_hit', 1.0 if penalty_lambda == ABS_MAX_LAMBDA else 0.0)
+        
+        return penalty_lambda
+    
+    def _validate_lambda_parameters(self) -> None:
+        """Validate lambda schedule parameters and log warnings for suspicious values."""
+        if not self.dynamic_lambda_schedule:
+            return
+            
+        # Check for common configuration errors
+        issues = []
+        
+        if self.lambda_start <= 0:
+            issues.append(f"lambda_start={self.lambda_start} (should be > 0)")
+            
+        if self.lambda_end <= 0:
+            issues.append(f"lambda_end={self.lambda_end} (should be > 0)")
+            
+        if self.lambda_schedule_steps <= 0:
+            issues.append(f"lambda_schedule_steps={self.lambda_schedule_steps} (should be > 0)")
+            
+        if self.lambda_start > self.lambda_end:
+            issues.append(f"lambda_start ({self.lambda_start}) > lambda_end ({self.lambda_end}) - decreasing schedule")
+            
+        # Check for unrealistic values
+        if self.lambda_start > 100000:
+            issues.append(f"lambda_start={self.lambda_start} seems very high (typical: 1000-10000)")
+            
+        if self.lambda_end > 100000:
+            issues.append(f"lambda_end={self.lambda_end} seems very high (typical: 1000-10000)")
+            
+        if self.lambda_schedule_steps > 1000000:
+            issues.append(f"lambda_schedule_steps={self.lambda_schedule_steps} seems very high (typical: 10000-100000)")
+            
+        # Log issues
+        if issues:
+            self.logger.warning("⚠️ LAMBDA PARAMETER ISSUES DETECTED:")
+            for issue in issues:
+                self.logger.warning(f"   • {issue}")
+        else:
+            self.logger.info("✅ Lambda parameters validated successfully")
+    
+    def _log_lambda_system_startup(self) -> None:
+        """Log comprehensive lambda system configuration at startup."""
+        self.logger.info("=" * 60)
+        self.logger.info("🔧 LAMBDA PENALTY SYSTEM CONFIGURATION")
+        self.logger.info("=" * 60)
+        
+        # Basic schedule parameters
+        self.logger.info(f"📈 Dynamic Schedule: {self.lambda_start:.1f} → {self.lambda_end:.1f} over {self.lambda_schedule_steps:,} steps")
+        
+        # Calculate progression rate
+        if self.lambda_schedule_steps > 0:
+            total_change = self.lambda_end - self.lambda_start
+            change_per_1k_steps = (total_change / self.lambda_schedule_steps) * 1000
+            self.logger.info(f"📊 Progression Rate: {change_per_1k_steps:+.1f} per 1,000 steps")
+        
+        # Sigmoid scaling parameters
+        self.logger.info(f"🌊 Sigmoid Risk Gain: λ = λ₀ · (1 + tanh({SIGMOID_STEEPNESS:.0f} · excess))")
+        self.logger.info(f"🛡️ Sigmoid Cap: {SIGMOID_MAX_MULT:.1f}x maximum (smooth, not brutal)")
+        self.logger.info(f"🚨 Absolute Lambda Ceiling: {ABS_MAX_LAMBDA:,.0f} (ultimate safety limit)")
+        self.logger.info(f"⏳ Time Decay: {LAMBDA_DECAY_FACTOR:.3f} factor ({(1-LAMBDA_DECAY_FACTOR)*100:.1f}% per step)")
+        
+        # Calculate key timelines
+        import math
+        half_life = math.log(0.5) / math.log(LAMBDA_DECAY_FACTOR)
+        # Calculate sigmoid behavior examples
+        example_excesses = [0.001, 0.005, 0.01, 0.02]  # 0.1%, 0.5%, 1%, 2%
+        sigmoid_examples = [self._calculate_sigmoid_multiplier(exc) for exc in example_excesses]
+        
+        self.logger.info(f"⏱️ Decay Half-Life: {half_life:.0f} steps ({SIGMOID_MAX_MULT:.1f}x → {SIGMOID_MAX_MULT/2:.1f}x)")
+        self.logger.info(f"📈 Sigmoid Examples:")
+        for exc, mult in zip(example_excesses, sigmoid_examples):
+            self.logger.info(f"   {exc*100:.1f}% excess → {mult:.2f}x multiplier")
+        
+        # Current state
+        progress = min(self.global_step_counter / self.lambda_schedule_steps, 1.0) if self.lambda_schedule_steps > 0 else 0
+        current_base = self.lambda_start + (self.lambda_end - self.lambda_start) * progress
+        self.logger.info(f"🎯 Current State: Step {self.global_step_counter:,} ({progress:.1%} progress)")
+        self.logger.info(f"🎯 Current Base λ: {current_base:.1f} (multiplier: {self.current_lambda_multiplier:.2f}x)")
+        self.logger.info(f"🎯 Effective λ: {current_base * self.current_lambda_multiplier:.1f}")
+        
+        self.logger.info("=" * 60)
+    
+    # Note: Removed _update_lambda_reset_counter - now using time-based decay in _get_current_penalty_lambda
 
     def _calculate_turnover_penalty(self) -> float:
         """
@@ -769,6 +1042,23 @@ class IntradayTradingEnv(gym.Env):
         # Reset consecutive drawdown counter
         self.consecutive_drawdown_steps = 0
         
+        # Initialize DD baseline reset tracking
+        if self.dd_baseline_reset_enabled:
+            self.dd_baseline_value = self.initial_capital
+            self.dd_baseline_step = 0
+            self.steps_since_dd_baseline = 0
+            self.logger.debug(f"🔄 DD baseline initialized: ${self.dd_baseline_value:.2f} at step {self.dd_baseline_step}")
+        
+        # Initialize lambda scaling tracking
+        if self.dynamic_lambda_schedule:
+            self.current_lambda_multiplier = 1.0  # Reset multiplier each episode
+            # Note: No reset counter needed - using time-based decay
+        
+        # Initialize early-warning tracking
+        if self.early_warning_enabled:
+            self.warning_excess_steps = 0
+            self.last_warning_step = -1000  # Prevent spam on first warning
+        
         self.logger.debug(f"Environment reset. Initial portfolio value: {self.initial_capital:.2f}")
         return observation, info
 
@@ -786,6 +1076,10 @@ class IntradayTradingEnv(gym.Env):
 
 
     def step(self, action: int):
+        # Increment global step counter for dynamic lambda scheduling
+        if self.dynamic_lambda_schedule:
+            self.global_step_counter += 1
+        
         # Convert action to int if it's a single-element array or numpy scalar
         if isinstance(action, np.ndarray):
             if action.size == 1:
@@ -1246,39 +1540,191 @@ class IntradayTradingEnv(gym.Env):
 
         # --- Risk Management Checks ---
         terminated = False
-        # 1. Max Daily Drawdown (based on portfolio_value)
-        current_drawdown_pct = (self.start_of_day_portfolio_value - self.portfolio_value) / self.start_of_day_portfolio_value \
-                               if self.start_of_day_portfolio_value > 0 else 0
+        # Step 2: New soft/hard DD system with live penalties (no termination)
+        # Use DD baseline for drawdown calculation if enabled
+        if self.dd_baseline_reset_enabled and self.dd_baseline_value is not None:
+            dd_reference_value = self.dd_baseline_value
+            self.steps_since_dd_baseline += 1
+        else:
+            dd_reference_value = self.start_of_day_portfolio_value
         
-        if current_drawdown_pct > self.max_daily_drawdown_pct:
+        current_drawdown_pct = (dd_reference_value - self.portfolio_value) / dd_reference_value \
+                               if dd_reference_value > 0 else 0
+        
+        # Use institutional safeguards DD limits if available
+        if self.institutional_safeguards:
+            soft_limit = self.institutional_safeguards.soft_dd_pct
+            hard_limit = self.institutional_safeguards.hard_dd_pct
+            terminate_on_hard = self.institutional_safeguards.terminate_on_hard
+        else:
+            # Fallback to legacy limits
+            soft_limit = self.max_daily_drawdown_pct
+            hard_limit = self.max_daily_drawdown_pct * 1.25
+            terminate_on_hard = False
+        
+        # Note: Lambda decay now handled automatically in _get_current_penalty_lambda
+        
+        # Emit general drawdown telemetry (always recorded) - only if logger supports it
+        if hasattr(self.logger, 'record'):
+            self.logger.record('drawdown/current_pct', current_drawdown_pct * 100)
+            self.logger.record('drawdown/soft_limit_pct', soft_limit * 100)
+            self.logger.record('drawdown/hard_limit_pct', hard_limit * 100)
+            self.logger.record('drawdown/consecutive_steps', self.consecutive_drawdown_steps)
+            
+            # Baseline reset telemetry (always recorded if enabled)
+            if self.dd_baseline_reset_enabled and self.dd_baseline_value is not None:
+                self.logger.record('baseline/current_value', self.dd_baseline_value)
+                self.logger.record('baseline/steps_since_reset', self.steps_since_dd_baseline)
+                self.logger.record('baseline/portfolio_vs_baseline', 
+                                 (self.portfolio_value - self.dd_baseline_value) / self.dd_baseline_value * 100)
+                
+                # Calculate recovery threshold for monitoring
+                soft_dd_buffer = self.dd_baseline_value * soft_limit * BASELINE_RESET_BUFFER_FACTOR
+                recovery_threshold = self.dd_baseline_value + soft_dd_buffer
+                self.logger.record('baseline/recovery_threshold', recovery_threshold)
+                self.logger.record('baseline/distance_to_escape', 
+                                 (recovery_threshold - self.portfolio_value) / self.portfolio_value * 100)
+        
+        if current_drawdown_pct > soft_limit:
             self.consecutive_drawdown_steps += 1
-            self.logger.warning(f"Step {self.current_step}: Max daily drawdown breached! Drawdown: {current_drawdown_pct*100:.2f}%, Limit: {self.max_daily_drawdown_pct*100:.2f}%. Portfolio Value: {self.portfolio_value:.2f} (consecutive: {self.consecutive_drawdown_steps})")
             
-            # 🚨 EMERGENCY FIX: Multiple termination conditions to prevent infinite loops
-            severe_drawdown_threshold = self.max_daily_drawdown_pct * 1.25  # 1.25x the limit (was 1.5x)
-            
-            if (current_drawdown_pct > severe_drawdown_threshold or 
-                self.consecutive_drawdown_steps > self.max_consecutive_drawdown_steps):
+            if current_drawdown_pct > hard_limit:
+                # Step 2: Hard limit - severe penalty but NO termination for Phase 1
+                self.logger.warning(f"Step {self.current_step}: HARD DD breached! Drawdown: {current_drawdown_pct*100:.2f}%, Hard Limit: {hard_limit*100:.2f}%. Portfolio Value: {self.portfolio_value:.2f} (consecutive: {self.consecutive_drawdown_steps})")
                 
-                if current_drawdown_pct > severe_drawdown_threshold:
-                    self.logger.error(f"🚨 SEVERE DRAWDOWN TERMINATION! Drawdown: {current_drawdown_pct*100:.2f}% > {severe_drawdown_threshold*100:.2f}% (1.5x limit)")
-                else:
-                    self.logger.error(f"🚨 CONSECUTIVE DRAWDOWN TERMINATION! {self.consecutive_drawdown_steps} consecutive steps > {self.max_consecutive_drawdown_steps} limit")
+                # Step 2: Live reward penalty (no done=True)
+                drawdown_excess = current_drawdown_pct - hard_limit
+                # Get lambda with exponential scaling for this excess
+                penalty_lambda = self._get_current_penalty_lambda(drawdown_excess)
+                # Step 3: Quadratic penalty - mild at 2.1%, brutal past 3%
+                # NOTE: Don't apply reward_scaling to penalties - they should bite regardless of reward scale
+                hard_penalty = penalty_lambda * (drawdown_excess ** 2)
+                reward -= hard_penalty
                 
-                terminated = True
-                # Apply large termination penalty
-                severe_penalty = self.start_of_day_portfolio_value * 0.01  # 1% of starting value
-                reward -= severe_penalty
-                self.logger.error(f"🚨 Applied severe drawdown penalty: ${severe_penalty:.2f}")
+                # Emit telemetry for hard DD penalty
+                if hasattr(self.logger, 'record'):
+                    self.logger.record('penalties/hard_dd_penalty', hard_penalty)
+                    self.logger.record('penalties/hard_dd_excess_pct', drawdown_excess * 100)
+                self.logger.warning(f"Step {self.current_step}: Applied HARD DD penalty: {hard_penalty:.6f} "
+                                  f"(λ={penalty_lambda:.1f}, excess={drawdown_excess*100:.2f}%, excess²={drawdown_excess**2:.6f})")
+                
+                # Only terminate if explicitly configured (Phase 1: False)
+                if terminate_on_hard:
+                    terminated = True
+                    self.logger.error(f"🚨 HARD DD TERMINATION! (terminate_on_hard=True)")
+                    
             else:
-                # Apply drawdown penalty but keep episode alive for learning
-                drawdown_excess = current_drawdown_pct - self.max_daily_drawdown_pct
-                drawdown_penalty = drawdown_excess * self.start_of_day_portfolio_value * 0.001  # Small penalty factor
-                reward -= drawdown_penalty
-                self.logger.warning(f"Step {self.current_step}: Applied drawdown penalty: ${drawdown_penalty:.2f} (excess: {drawdown_excess*100:.2f}%)")
+                # Soft limit - regular penalty
+                self.logger.warning(f"Step {self.current_step}: Soft DD breached! Drawdown: {current_drawdown_pct*100:.2f}%, Soft Limit: {soft_limit*100:.2f}%. Portfolio Value: {self.portfolio_value:.2f} (consecutive: {self.consecutive_drawdown_steps})")
+                
+                drawdown_excess = current_drawdown_pct - soft_limit
+                # Get lambda with exponential scaling for this excess
+                penalty_lambda = self._get_current_penalty_lambda(drawdown_excess)
+                # Step 3: Quadratic penalty with 0.5x multiplier for soft limit
+                # NOTE: Don't apply reward_scaling to penalties - they should bite regardless of reward scale
+                soft_penalty = penalty_lambda * (drawdown_excess ** 2) * 0.5
+                reward -= soft_penalty
+                
+                # Emit telemetry for soft DD penalty
+                if hasattr(self.logger, 'record'):
+                    self.logger.record('penalties/soft_dd_penalty', soft_penalty)
+                    self.logger.record('penalties/soft_dd_excess_pct', drawdown_excess * 100)
+                self.logger.warning(f"Step {self.current_step}: Applied soft DD penalty: {soft_penalty:.6f} "
+                                  f"(λ={penalty_lambda:.1f}, excess={drawdown_excess*100:.2f}%, excess²={drawdown_excess**2:.6f})")
         else:
             # Reset consecutive drawdown counter when not in drawdown
             self.consecutive_drawdown_steps = 0
+        
+        # Enhanced DD baseline reset logic: Escape DD purgatory
+        if self.dd_baseline_reset_enabled and self.dd_baseline_value is not None:
+            # Method 1: Reset when equity > baseline + soft_dd/2 (escape purgatory)
+            soft_dd_buffer = self.dd_baseline_value * soft_limit * BASELINE_RESET_BUFFER_FACTOR
+            recovery_threshold = self.dd_baseline_value + soft_dd_buffer
+            recovery_met = self.portfolio_value > recovery_threshold
+            
+            # Method 2: Reset after N flat steps (prevent permanent purgatory)
+            timeout_met = self.steps_since_dd_baseline >= BASELINE_RESET_FLAT_STEPS
+            
+            # Method 3: Legacy recovery threshold (keep for compatibility)
+            equity_recovery = (self.portfolio_value - self.dd_baseline_value) / self.dd_baseline_value
+            legacy_recovery_met = equity_recovery >= self.dd_recovery_threshold_pct
+            
+            # Reset baseline if any condition is met
+            if recovery_met or timeout_met or legacy_recovery_met:
+                old_baseline = self.dd_baseline_value
+                old_step = self.dd_baseline_step
+                
+                # Determine reset reason
+                if recovery_met:
+                    reset_reason = "purgatory_escape"
+                    reason_detail = f"equity ${self.portfolio_value:.2f} > threshold ${recovery_threshold:.2f}"
+                elif timeout_met:
+                    reset_reason = "flat_timeout"
+                    reason_detail = f"{self.steps_since_dd_baseline} steps since baseline"
+                else:
+                    reset_reason = "legacy_recovery"
+                    reason_detail = f"{equity_recovery:.2%} recovery"
+                
+                self.dd_baseline_value = self.portfolio_value
+                self.dd_baseline_step = self.current_step
+                self.steps_since_dd_baseline = 0
+                
+                # Emit telemetry for baseline resets
+                if hasattr(self.logger, 'record'):
+                    self.logger.record('baseline/reset_triggered', 1.0)
+                    self.logger.record('baseline/reset_reason', 1.0 if reset_reason == "purgatory_escape" else 
+                                     2.0 if reset_reason == "flat_timeout" else 3.0)
+                    self.logger.record('baseline/old_baseline', old_baseline)
+                    self.logger.record('baseline/new_baseline', self.dd_baseline_value)
+                
+                self.logger.info(f"🔄 DD baseline RESET ({reset_reason}): ${old_baseline:.2f} → ${self.dd_baseline_value:.2f} "
+                               f"(step {old_step} → {self.dd_baseline_step}) - {reason_detail}")
+        
+        # Positive recovery bonus - reward when above baseline (excess DD < 0)
+        if self.recovery_bonus_enabled and self.dd_baseline_reset_enabled and self.dd_baseline_value is not None:
+            if current_drawdown_pct < 0:  # Portfolio value > baseline (recovery)
+                recovery_bonus = self.recovery_bonus_amount
+                reward += recovery_bonus
+                
+                # Log recovery bonus occasionally to avoid spam
+                if self.current_step % 100 == 0:  # Log every 100 steps
+                    recovery_pct = abs(current_drawdown_pct) * 100  # Convert to positive %
+                    self.logger.info(f"💰 Recovery bonus: +{recovery_bonus:.2f} (above baseline by {recovery_pct:.2f}%)")
+        
+        # Bootstrap recovery bonus - additional reward when DD < 1% (pulls policy toward flat)
+        if self.recovery_bonus_enabled and current_drawdown_pct < 0.01:  # Below 1% DD
+            bootstrap_bonus = self.recovery_bonus_amount * 0.5  # Half the regular bonus
+            reward += bootstrap_bonus
+            
+            # Log bootstrap bonus occasionally
+            if self.current_step % 200 == 0:  # Log every 200 steps
+                self.logger.info(f"🌱 Bootstrap bonus: +{bootstrap_bonus:.2f} (DD < 1%: {current_drawdown_pct*100:.2f}%)")
+        
+        # Early-warning logger - detect creeping risk
+        if self.early_warning_enabled:
+            # Calculate excess DD above soft limit (0.5% threshold)
+            if self.institutional_safeguards:
+                soft_limit = self.institutional_safeguards.soft_dd_pct
+            else:
+                soft_limit = self.max_daily_drawdown_pct
+            
+            excess_dd = current_drawdown_pct - soft_limit
+            
+            if excess_dd > self.early_warning_threshold_pct:
+                # Above warning threshold - increment counter
+                self.warning_excess_steps += 1
+                
+                # Issue warning if sustained for duration and not recently warned
+                if (self.warning_excess_steps >= self.early_warning_duration_steps and 
+                    self.current_step - self.last_warning_step > 200):  # Prevent spam (200 step cooldown)
+                    
+                    self.logger.warning(f"⚠️ EARLY WARNING: Excess DD {excess_dd*100:.2f}% sustained for {self.warning_excess_steps} steps "
+                                      f"(threshold: {self.early_warning_threshold_pct*100:.1f}%, duration: {self.early_warning_duration_steps})")
+                    self.last_warning_step = self.current_step
+            else:
+                # Below warning threshold - reset counter
+                if self.warning_excess_steps > 0:
+                    self.warning_excess_steps = 0
 
         # 2. Hourly Turnover Cap - BINDING ENFORCEMENT (More aggressive during emergency fix)
         if self.start_of_day_portfolio_value > 0:
@@ -1462,7 +1908,10 @@ class IntradayTradingEnv(gym.Env):
         self._episode_total_reward += scaled_reward
         
         # 🚨 FINAL SAFETY CHECK: Force termination if conditions are met
-        if not terminated and not truncated:
+        # Legacy final safety termination - DISABLED for Phase 1
+        # Phase 1 uses new soft/hard DD system with no termination
+        if not terminated and not truncated and hasattr(self, 'institutional_safeguards_config') and self.institutional_safeguards_config and self.institutional_safeguards_config.get("phase") == "production":
+            # Only apply final safety termination in production phase
             current_drawdown_pct = (self.start_of_day_portfolio_value - self.portfolio_value) / self.start_of_day_portfolio_value \
                                    if self.start_of_day_portfolio_value > 0 else 0
             severe_threshold = self.max_daily_drawdown_pct * 1.25
@@ -1476,6 +1925,12 @@ class IntradayTradingEnv(gym.Env):
                 safety_penalty = self.start_of_day_portfolio_value * 0.005  # 0.5% penalty
                 scaled_reward -= safety_penalty
                 self.logger.error(f"🚨 Applied final safety penalty: ${safety_penalty:.2f}")
+        
+        # Phase 1: Apply institutional safeguards validation
+        if self.institutional_safeguards:
+            observation, scaled_reward, terminated, info = self.institutional_safeguards.validate_step_output(
+                observation, scaled_reward, terminated, info
+            )
         
         return observation, scaled_reward, terminated, truncated, info
 

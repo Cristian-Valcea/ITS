@@ -40,6 +40,8 @@ try:
     from .interfaces.risk_advisor import RiskAdvisor, ProductionRiskAdvisor
     from .policies.sb3_policy import SB3Policy, SB3_AVAILABLE, SB3_ALGORITHMS
     from ..risk.risk_agent_v2 import RiskAgentV2
+    from ..models.compatibility_validator import ModelCompatibilityValidator
+    from ..validation.observation_consistency import ObservationConsistencyValidator
 except ImportError:
     # Fallback for direct execution
     import sys
@@ -52,6 +54,8 @@ except ImportError:
     from training.interfaces.risk_advisor import RiskAdvisor, ProductionRiskAdvisor
     from training.policies.sb3_policy import SB3Policy, SB3_AVAILABLE, SB3_ALGORITHMS
     from risk.risk_agent_v2 import RiskAgentV2
+    from models.compatibility_validator import ModelCompatibilityValidator
+    from validation.observation_consistency import ObservationConsistencyValidator
 
 
 class RiskPenaltyCallback(BaseCallback):
