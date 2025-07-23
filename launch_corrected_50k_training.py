@@ -35,7 +35,7 @@ def main():
     # Verify fixes are in place
     config_path = Path("config/phase1_reality_grounding.yaml")
     if config_path.exists():
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             config_content = f.read()
             if "reward_scaling: 0.07" in config_content:
                 print("✅ Config reward_scaling: 0.07 ✓")
@@ -45,7 +45,7 @@ def main():
     
     training_script = Path("phase1_fast_recovery_training.py")
     if training_script.exists():
-        with open(training_script, 'r') as f:
+        with open(training_script, 'r', encoding='utf-8') as f:
             script_content = f.read()
             if "max_episode_steps=1000" in script_content:
                 print("✅ Training script max_episode_steps: 1000 ✓")
