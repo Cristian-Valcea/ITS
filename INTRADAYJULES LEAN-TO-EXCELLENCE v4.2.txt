@@ -1,0 +1,760 @@
+# INTRADAYJULES LEAN-TO-EXCELLENCE MASTER PLAN v4.0
+## Provable Core → Monetizable Growth → Research Excellence
+
+*"Bridge-Build-Bolt-On: Prove Value, Then Innovate"*
+
+---
+
+# EXECUTIVE VISION REVISED
+>>> COMMENT (AI Reviewer):
+The narrative is strong—consider adding a one‑sentence OKR that quantifies the first
+6‑month objective (e.g., “generate ≥ $1k cumulative paper‑trading P&L with max 2 % drawdown”).
+
+**Mission**: Build a **provable, monetizable trading core** first, then systematically bolt on research-grade innovations after securing funding.
+
+**Strategy**: "Bridge-Build-Bolt-On" approach
+- **Bridge** (Weeks 1-5): Lean MVP with live P&L to impress management
+- **Build** (Weeks 6-10): Core trading excellence with proven risk management  
+- **Bolt-On** (Weeks 11-16): Research innovations funded by trading profits
+
+**Success Metrics**: 
+- Week 5 Gate Review: Live P&L curve, <2s latency, automated backtests
+- $1K/month profit unlocks $12K research budget
+- Zero security/compliance violations
+
+---
+
+# PHASE 0.5: LEAN MVP - PROVABLE CORE (Weeks 1-5)
+Goal:* have a reproducible Windows‑11 workstation that can run the entire stack end‑to‑end **offline**.
+
+## Foundation: Security-First Windows Workstation
+
+### **Week 1: Security & Environment Hardening**
+
+Great to see security first. Add a scheduled BitLocker recovery‑key rotation reminder
+and document driver rollback procedure in case CUDA updates break the stack.
+
+| Owner | Task | Acceptance test |
+|-------|------|-----------------|
+| Dev‑Ops Jr. | Enable **BitLocker**, TPM, BIOS password | `manage‑bde -status` shows “Percentage Encrypted: 100 %” |
+| Dev‑Ops Jr. | Install **WSL‑2 Ubuntu 22.04 + Nvidia 535+ driver** | `nvidia-smi` works inside WSL |
+| Dev‑Ops Jr. | Install **Docker Desktop** with WSL backend | `docker run hello-world` |
+
+
+
+```bash
+# Security Checklist (MANDATORY)
+✅ BitLocker full-disk encryption enabled
+✅ Hardware TPM activated  
+✅ Windows Defender real-time protection
+✅ WSL2 Ubuntu 22.04 with latest security patches
+✅ NVIDIA driver 535+ (stable, not beta)
+✅ Docker Desktop with WSL integration
+✅ AWS/GCP Secrets Manager stubs (unused but configured)
+```
+
+**Security Implementation**:
+```python
+# src/security/secrets_manager.py - COMPLIANCE FOUNDATION
+class LocalSecretsManager:
+    """Secure credential management for local development"""
+    
+    def __init__(self):
+        self.local_vault = self._init_local_vault()  # Encrypted local storage
+        self.cloud_stub = self._init_cloud_stub()    # Ready for cloud migration
+        
+    def get_secret(self, key):
+        """Get secret with automatic cloud failover when available"""
+        try:
+            if self.cloud_enabled:
+                return self.cloud_stub.get_secret(key)
+            else:
+                return self.local_vault.decrypt(key)
+        except Exception:
+            raise SecretAccessError(f"Failed to retrieve secret: {key}")
+            
+    def rotate_credentials(self):
+        """Automatic credential rotation (compliance requirement)"""
+        # Stub for now, implement when cloud-connected
+        pass
+```
+
+### **Week 2-3: Core Pipeline (Native First, Then Docker)**
+| Owner | Task | Acceptance test |
+|-------|------|-----------------|
+| Data Eng Jr. | Native **TimescaleDB** install (no docker yet). Create `ohlcv` table | `SELECT * FROM ohlcv LIMIT 5` returns rows |
+| Data Eng Jr. | Write Python loader that ingests *two symbols* (`AAPL`, `MSFT`) daily into Timescale | Cron job writes 390 bars / symbol |
+| Quant Jr. | Clone `IntradayTradingEnv`, run **PPO baseline** for 10 k steps on single symbol | `ep_len_mean ≈ 1 000`, no crash |
+| QA Jr. | Collect RAM & GPU utilisation numbers | Spreadsheet uploaded |
+
+```yaml
+# Week 2: Native installations (avoid Docker complexity initially)
+native_setup:
+  timescaledb: 
+    install: "sudo apt install timescaledb-2-postgresql-14"
+    config: "shared_buffers=4GB, work_mem=64MB"  # Conservative for 64GB system
+    
+  data_sources:
+    primary: "Interactive Brokers Gateway"
+    backup: "Yahoo Finance"
+    
+  storage:
+    raw_data: "D:\\trading_data\\raw"
+    processed: "D:\\trading_data\\processed" 
+    models: "D:\\trading_data\\models"
+```
+
+**Lean Data Pipeline**:
+```python
+# src/data/lean_data_manager.py - MINIMAL BUT ROBUST
+class LeanDataManager:
+    """Stripped-down data manager focused on core functionality"""
+    
+    def __init__(self):
+        self.ib_client = IBClient()  # Interactive Brokers
+        self.yahoo_backup = YahooBackup()
+        self.db = TimescaleDBClient()
+        
+    def get_live_quote(self, symbol='NVDA'):  # Single asset initially
+        """Get real-time quote with automatic failover"""
+        try:
+            quote = self.ib_client.get_quote(symbol)
+            self.log_data_quality(quote, source='IB')
+            return quote
+        except Exception as e:
+            self.logger.warning(f"IB failed: {e}, falling back to Yahoo")
+            return self.yahoo_backup.get_quote(symbol)
+            
+    def store_market_data(self, quote):
+        """Store in TimescaleDB with error handling"""
+        try:
+            self.db.insert_quote(quote)
+        except Exception as e:
+            self.logger.error(f"Database insert failed: {e}")
+            # Fallback to local file storage
+            self.store_to_file(quote)
+```
+
+--------------------------------------------------------------------
+PHASE 0.5   LEAN MVP **WITH DUAL‑TICKER PROTOTYPE**  (Weeks 3‑5)
+--------------------------------------------------------------------
+*Goal:* Paper‑trading loop on two equities, live P&L dashboard, management demo.
+
+**Week 3 – Dual‑ticker environment**
+
+* Extend `IntradayTradingEnv` so that **observation = concat(AAPL, MSFT features)**  
+  ‑ Quick‑and‑dirty: two envs wrapped by **Gymnasium `MultiAgentEnv`** helper.  
+* Adapt PPO model to **multi‑vector input** (11 features × 2 + position).  
+* Unit‑test: verify reward pipeline still smoke‑tests (range −40…100).
+
+## 
+```python
+# src/portfolio/dual_asset_manager.py - CAREFUL SCALING
+class DualAssetManager:
+    """Manage two assets (NVDA + AAPL) with correlation awareness"""
+    
+    def __init__(self):
+        self.nvda_model = self.load_model('NVDA')
+        self.aapl_model = self.load_model('AAPL')  # Train separately
+        self.correlation_tracker = CorrelationTracker()
+        
+    def generate_portfolio_signals(self):
+        """Generate signals for both assets with correlation adjustment"""
+        
+        # Individual signals
+        nvda_signal = self.nvda_model.get_signal()
+        aapl_signal = self.aapl_model.get_signal()
+        
+        # Current correlation
+        current_correlation = self.correlation_tracker.get_current_correlation('NVDA', 'AAPL')
+        
+        # Adjust signals if correlation is too high
+        if abs(current_correlation) > 0.8:  # Highly correlated
+            # Reduce position sizes to maintain diversification
+            nvda_signal['position_size'] *= 0.7
+            aapl_signal['position_size'] *= 0.7
+            
+        return {'NVDA': nvda_signal, 'AAPL': aapl_signal}
+```
+
+---
+
+
+
+### **Week 6: RL Environment + PPO Baseline**
+>>> COMMENT (AI Reviewer):
+Before nightly backtests, run a 500‑step smoke test with random actions to sanity‑check reward
+distribution and ensure no NaNs propagate into the learner.
+```python
+# src/trading/lean_trading_env.py - FOCUSED ON SINGLE ASSET
+class LeanTradingEnvironment:
+    """Minimal trading environment - single asset, basic features"""
+    
+    def __init__(self):
+        self.symbol = 'NVDA'  # Single asset focus
+        self.model = self.load_existing_model()  # Your 50K trained model
+        self.risk_guard = BasicRiskGuard()  # Simple but effective
+        
+    def step(self, action):
+        """Single step with essential risk checks"""
+        
+        # Get current market state
+        market_state = self.get_current_state()
+        
+        # Basic risk check (CRITICAL)
+        if not self.risk_guard.approve_trade(action, market_state):
+            action = 1  # Force HOLD if risk check fails
+            
+        # Execute trade (paper mode initially)
+        fill_result = self.execute_trade(action)
+        
+        # Calculate reward and new state
+        reward = self.calculate_reward(fill_result)
+        new_state = self.get_current_state()
+        
+        return new_state, reward, False, {'fill': fill_result}
+```
+
+**Basic Risk Guard** (Essential for management confidence):
+```python
+# src/risk/basic_risk_guard.py - SIMPLE BUT BULLETPROOF
+class BasicRiskGuard:
+    """Conservative risk controls for live trading"""
+    
+    def __init__(self):
+        self.max_position_size = 1000  # $1000 max position
+        self.daily_loss_limit = 50     # $50 daily loss limit  
+        self.total_drawdown_limit = 100 # $100 total drawdown limit
+        self.current_positions = {}
+        
+    def approve_trade(self, action, market_state):
+        """Conservative trade approval"""
+        
+        # Position size check
+        trade_value = self.calculate_trade_value(action, market_state)
+        if abs(trade_value) > self.max_position_size:
+            self.log_rejection("Position size exceeded", trade_value)
+            return False
+            
+        # Daily loss check
+        daily_pnl = self.get_daily_pnl()
+        if daily_pnl < -self.daily_loss_limit:
+            self.log_rejection("Daily loss limit hit", daily_pnl)
+            return False
+            
+        # Total drawdown check  
+        total_drawdown = self.get_total_drawdown()
+        if total_drawdown > self.total_drawdown_limit:
+            self.log_rejection("Total drawdown limit exceeded", total_drawdown)
+            return False
+            
+        return True  # Trade approved
+```
+
+### **Week 7: Paper Trading Loop (CRITICAL MILESTONE)**
+* Bring up **IBKR Gateway** in Docker (head‑less).  
+* Build a *mock* execution bridge that logs orders instead of sending.  
+* Implement minimal risk guard:  
+  ‑ `max_position = 100 shares / symbol`  
+  ‑ `daily_stop_loss = −2 %`  
+
+```python
+# src/trading/paper_trading_loop.py - END-TO-END VALIDATION
+class PaperTradingLoop:
+    """Complete paper trading cycle for management demo"""
+    
+    def __init__(self):
+        self.env = LeanTradingEnvironment()
+        self.model = self.load_trained_model()  # Your 50K model
+        self.ib_gateway = IBGateway(paper_mode=True)
+        self.metrics_db = TimescaleDBClient()
+        
+    def run_trading_session(self, duration_minutes=60):
+        """Run paper trading session with full logging"""
+        
+        session_results = []
+        start_time = datetime.utcnow()
+        
+        while (datetime.utcnow() - start_time).seconds < duration_minutes * 60:
+            
+            # Get market state
+            market_state = self.env.get_current_state()
+            
+            # Model prediction
+            action = self.model.predict(market_state)
+            
+            # Paper trade execution
+            fill = self.ib_gateway.paper_execute(action)
+            
+            # Log everything
+            trade_record = {
+                'timestamp': datetime.utcnow(),
+                'action': action,
+                'fill_price': fill['price'],
+                'fill_quantity': fill['quantity'],
+                'pnl': fill['pnl'],
+                'latency_ms': fill['latency_ms']
+            }
+            
+            session_results.append(trade_record)
+            self.metrics_db.insert_trade(trade_record)
+            
+            # Wait for next trading signal
+            time.sleep(30)  # 30-second intervals
+            
+        return self.analyze_session_results(session_results)
+```
+
+### **Week 8: Instrumentation & Management Demo**
+1. Wire **MLflow** tracking, push metrics after each episode.  
+2. Deploy **Grafana** dashboard: latency, equity curve, draw‑down.  
+3. Gate review & demo to management:  
+   * Live dual‑ticker paper account with < 2 s action latency.  
+   * 5‑day back‑test equity curve, Sharpe > 0.5.  
+   * Show “scaling path” slide (see Appendix A).
+```python
+# src/monitoring/lean_dashboard.py - MANAGEMENT-FOCUSED METRICS
+class LeanTradingDashboard:
+    """Simple but impressive dashboard for management review"""
+    
+    def generate_management_report(self):
+        """Generate executive summary for gate review"""
+        
+        # Core metrics management cares about
+        metrics = {
+            'profitability': {
+                'total_pnl': self.get_total_pnl(),
+                'daily_avg_pnl': self.get_daily_avg_pnl(),
+                'win_rate': self.calculate_win_rate(),
+                'largest_loss': self.get_largest_loss(),
+                'largest_win': self.get_largest_win()
+            },
+            
+            'risk_control': {
+                'max_drawdown': self.get_max_drawdown(),
+                'current_exposure': self.get_current_exposure(),
+                'risk_violations': self.count_risk_violations(),
+                'avg_holding_period': self.get_avg_holding_period()
+            },
+            
+            'system_performance': {
+                'avg_latency_ms': self.get_avg_latency(),
+                'uptime_percentage': self.get_uptime(),
+                'total_trades': self.get_trade_count(),
+                'execution_success_rate': self.get_execution_success_rate()
+            }
+        }
+        
+        # Generate executive summary
+        summary = f"""
+        TRADING SYSTEM PERFORMANCE REPORT
+        =================================
+        
+        📈 PROFITABILITY
+        • Total P&L: ${metrics['profitability']['total_pnl']:.2f}
+        • Win Rate: {metrics['profitability']['win_rate']:.1%}
+        • Daily Average: ${metrics['profitability']['daily_avg_pnl']:.2f}
+        
+        🛡️ RISK CONTROL  
+        • Max Drawdown: {metrics['risk_control']['max_drawdown']:.1%}
+        • Risk Violations: {metrics['risk_control']['risk_violations']} (Target: 0)
+        • Current Exposure: {metrics['risk_control']['current_exposure']:.1%}
+        
+        ⚡ SYSTEM PERFORMANCE
+        • Average Latency: {metrics['system_performance']['avg_latency_ms']:.0f}ms
+        • System Uptime: {metrics['system_performance']['uptime_percentage']:.1%}
+        • Execution Success: {metrics['system_performance']['execution_success_rate']:.1%}
+        """
+        
+        return summary, metrics
+```
+
+## **GATE REVIEW CRITERIA (Week 8 Checkpoint)**
+
+### ✅ **Technical Success Criteria**
+- [ ] Live P&L curve showing consistent performance over 5+ trading days
+- [ ] Average execution latency < 2 seconds (management requirement)
+- [ ] System uptime > 99% during trading hours
+- [ ] Zero risk limit violations
+- [ ] Automated backtesting pipeline producing repeatable results
+
+### ✅ **Business Success Criteria**  
+- [ ] Positive cumulative P&L (even $50 total counts as proof-of-concept)
+- [ ] Risk controls preventing any single loss > $25
+- [ ] Professional-grade monitoring dashboard
+- [ ] Clear path to scaling (Docker containers ready)
+- [ ] Security compliance checklist 100% complete
+
+### ✅ **Management Demo Package**
+```
+📁 Management Demo Folder
+├── 🎥 5-minute system demonstration video
+├── 📊 Executive performance report (PDF)  
+├── 📈 P&L curve visualization
+├── 🛡️ Risk control validation report
+├── 📋 Security & compliance checklist
+>>> COMMENT (AI Reviewer):
+Draft a minimal incident‑response runbook now—management loves seeing a prepared SOP even pre‑production.
+└── 🚀 Cloud scaling proposal (unlocked at $1K/month)
+```
+
+---
+
+# PHASE 1: PROVEN CORE EXPANSION (Weeks 9-13)  INTELLIGENT AGENT ENHANCEMENTS 
+*Unlocked after successful Gate Review*
+*Proceed even if management does not unlock PoC budget.*
+
+## **Week 9-10: Enhanced Risk Management**
+```python
+# src/risk/enhanced_risk_manager.py - INSTITUTIONAL GRADE
+class EnhancedRiskManager:
+    """Upgrade from BasicRiskGuard after proving core works"""
+    
+    def __init__(self):
+        self.var_calculator = VaRCalculator()
+        self.drawdown_monitor = DrawdownMonitor()
+        self.exposure_tracker = ExposureTracker()
+        
+    def comprehensive_risk_check(self, action, market_state, portfolio):
+        """Multi-layered risk assessment"""
+        
+        risk_metrics = {
+            'var_95': self.var_calculator.calculate_var(portfolio, confidence=0.95),
+            'current_drawdown': self.drawdown_monitor.get_current_drawdown(),
+            'concentration_risk': self.exposure_tracker.calculate_concentration(),
+            'leverage': self.calculate_current_leverage(portfolio)
+        }
+        
+        # Enhanced approval logic
+        if risk_metrics['var_95'] > 0.02:  # 2% VaR limit
+            return False, "VaR limit exceeded"
+            
+        if risk_metrics['current_drawdown'] > 0.03:  # 3% drawdown limit
+            return False, "Drawdown limit exceeded"
+            
+        return True, "Risk check passed"
+```
+
+## **Week 8-9: Execution Quality Enhancement**
+```python
+# src/execution/smart_execution.py - PROFESSIONAL EXECUTION
+class SmartExecutionEngine:
+    """Intelligent order execution after core is proven"""
+    
+    def __init__(self):
+        self.execution_history = []
+        self.market_analyzer = MarketMicrostructureAnalyzer()
+        
+    def execute_with_timing(self, target_position, symbol):
+        """Smart execution with market timing"""
+        
+        # Analyze current market conditions
+        market_conditions = self.market_analyzer.analyze_current_conditions(symbol)
+        
+        # Determine optimal execution strategy
+        if market_conditions['spread_percentile'] < 20:  # Tight spreads
+            return self.execute_immediately(target_position)
+        elif market_conditions['volume_surge'] > 2.0:  # High volume
+            return self.execute_with_patience(target_position)
+        else:
+            return self.execute_twap(target_position, time_window=300)  # 5-minute TWAP
+```
+
+## **Week 12-13: Multi-Asset Preparation**   This is not true 
+```python
+# src/portfolio/dual_asset_manager.py - CAREFUL SCALING
+class DualAssetManager:
+    """Manage two assets (NVDA + AAPL) with correlation awareness"""
+    
+    def __init__(self):
+        self.nvda_model = self.load_model('NVDA')
+        self.aapl_model = self.load_model('AAPL')  # Train separately
+        self.correlation_tracker = CorrelationTracker()
+        
+    def generate_portfolio_signals(self):
+        """Generate signals for both assets with correlation adjustment"""
+        
+        # Individual signals
+        nvda_signal = self.nvda_model.get_signal()
+        aapl_signal = self.aapl_model.get_signal()
+        
+        # Current correlation
+        current_correlation = self.correlation_tracker.get_current_correlation('NVDA', 'AAPL')
+        
+        # Adjust signals if correlation is too high
+        if abs(current_correlation) > 0.8:  # Highly correlated
+            # Reduce position sizes to maintain diversification
+            nvda_signal['position_size'] *= 0.7
+            aapl_signal['position_size'] *= 0.7
+            
+        return {'NVDA': nvda_signal, 'AAPL': aapl_signal}
+```
+
+---
+
+# PHASE 2: RESEARCH BOLT-ONS (Weeks 11-16)
+
+*Unlocked after $1K/month profit achievement*
+
+## **Week 11-12: Advanced Data Integration**
+```python
+# src/data/multimodal_data_manager.py - RESEARCH INNOVATION
+class MultiModalDataManager:
+    """NOW we add the research-grade features after proving profitability"""
+    
+    def __init__(self):
+        self.price_stream = LivePriceStream()
+        self.news_analyzer = SemanticNewsAnalyzer()  # BERT-based
+        self.sentiment_aggregator = SocialSentimentAggregator()
+        
+    def get_enhanced_market_state(self, symbol):
+        """Multi-modal state with performance validation"""
+        
+        # Start with proven price features
+        base_features = self.get_technical_features(symbol)
+        
+        # Add alternative data with performance tracking
+        enhanced_features = base_features.copy()
+        
+        try:
+            news_sentiment = self.news_analyzer.analyze_recent(symbol)
+            if self.validate_feature_quality(news_sentiment):
+                enhanced_features['news_sentiment'] = news_sentiment
+        except Exception as e:
+            self.logger.warning(f"News analysis failed: {e}")
+            
+        try:
+            social_buzz = self.sentiment_aggregator.get_momentum(symbol)
+            if self.validate_feature_quality(social_buzz):
+                enhanced_features['social_sentiment'] = social_buzz
+        except Exception as e:
+            self.logger.warning(f"Social sentiment failed: {e}")
+            
+        return enhanced_features
+```
+
+## **Week 13-14: Meta-Learning & Adaptation**
+```python
+# src/agents/meta_learning_agent.py - CUTTING-EDGE RESEARCH
+class MetaLearningTradingAgent:
+    """MAML-inspired adaptation - now that we have proven base performance"""
+    
+    def __init__(self, base_model):
+        self.base_model = base_model  # Your proven profitable model
+        self.meta_optimizer = MetaOptimizer()
+        self.regime_detector = RegimeDetector()
+        
+    def adapt_to_regime_change(self, new_market_data, k_shot=10):
+        """Rapid adaptation with safety controls"""
+        
+        # Only adapt if current model performance is degrading
+        recent_performance = self.evaluate_recent_performance()
+        if recent_performance['sharpe'] > 0.5:  # Still performing well
+            return self.base_model  # Don't fix what isn't broken
+            
+        # Safe adaptation with rollback capability
+        adapted_model = self.meta_optimizer.adapt(
+            self.base_model,
+            new_data=new_market_data,
+            k_shots=k_shot
+        )
+        
+        # Validate adapted model before deployment
+        if self.validate_adapted_model(adapted_model):
+            return adapted_model
+        else:
+            return self.base_model  # Rollback to proven model
+```
+
+## **Week 15-16: Automated Research Pipeline**
+```python
+# src/research/automated_research_pipeline.py - INNOVATION ENGINE
+class AutomatedResearchPipeline:
+    """Automated hypothesis generation - funded by trading profits"""
+    
+    def __init__(self):
+        self.hypothesis_generator = HypothesisGenerator()
+        self.experiment_runner = ExperimentRunner()
+        self.performance_validator = PerformanceValidator()
+        
+    def run_research_cycle(self):
+        """Generate and test new trading hypotheses"""
+        
+        # Generate hypotheses based on recent market patterns
+        market_anomalies = self.detect_market_anomalies()
+        hypotheses = self.hypothesis_generator.generate(market_anomalies)
+        
+        # Test hypotheses with rigorous validation
+        for hypothesis in hypotheses:
+            experiment_result = self.experiment_runner.test_hypothesis(hypothesis)
+            
+            # Only implement if statistically significant improvement
+            if experiment_result['p_value'] < 0.05 and experiment_result['sharpe_improvement'] > 0.1:
+                self.implement_improvement(hypothesis, experiment_result)
+                
+        return self.generate_research_report()
+```
+
+---
+
+# MIGRATION & SCALING TRIGGERS
+
+## **Revised Trigger System** (Addressing Team Feedback)
+```python
+# src/scaling/migration_triggers.py - REALISTIC THRESHOLDS
+class MigrationTriggerSystem:
+>>> COMMENT (AI Reviewer):
+Consider dual triggers: (a) ≥ 75 % GPU utilization sustained for 2 hours, OR (b) training wall‑time
+> 18 h per 50 k steps—whichever comes first.
+    """Practical triggers for cloud migration"""
+    
+    def check_migration_triggers(self):
+        """Check multiple trigger conditions"""
+        
+        triggers = {
+            # Primary trigger (unchanged)
+            'profit_trigger': self.monthly_profit > 1000,
+            
+            # Compute triggers (added based on team feedback)
+            'cpu_utilization': self.avg_cpu_usage > 0.85,
+            'gpu_utilization': self.avg_gpu_usage > 0.90,  
+            'training_time': self.avg_training_time > 14400,  # 4 hours (not 24)
+            'episode_throughput': self.episodes_per_hour < 100,
+            
+            # Memory/storage triggers
+            'memory_pressure': self.memory_usage > 0.80,
+            'disk_space': self.available_disk_space < 100_000_000_000,  # 100GB
+            
+            # Business triggers
+            'asset_count': len(self.active_assets) > 3,  # More conservative
+            'uptime_requirement': self.required_uptime > 0.995
+        }
+        
+        triggered = {name: condition for name, condition in triggers.items() if condition}
+        
+        if triggered:
+            return self.generate_migration_plan(triggered)
+        return None
+```
+
+---
+
+# SECURITY & COMPLIANCE FRAMEWORK
+
+## **Data Protection & Compliance**
+```python
+# src/security/compliance_manager.py - MANDATORY IMPLEMENTATION
+class ComplianceManager:
+    """Handle data protection and regulatory compliance"""
+    
+    def __init__(self):
+        self.data_encryption = DataEncryption()
+        self.audit_logger = AuditLogger()
+        self.access_control = AccessControl()
+        
+    def ensure_data_protection(self):
+        """GDPR/FINMA compliance checks"""
+        
+        compliance_checklist = {
+            'data_encryption_at_rest': self.verify_encryption_at_rest(),
+            'data_encryption_in_transit': self.verify_encryption_in_transit(),
+            'access_logging': self.verify_access_logging(),
+            'data_retention_policy': self.verify_retention_policy(),
+            'right_to_erasure': self.implement_data_deletion(),
+            'credential_rotation': self.implement_credential_rotation()
+        }
+        
+        # All items must pass for compliance
+        compliance_status = all(compliance_checklist.values())
+        
+        if not compliance_status:
+            failed_items = [k for k, v in compliance_checklist.items() if not v]
+            raise ComplianceError(f"Compliance failures: {failed_items}")
+            
+        return compliance_checklist
+        
+    def rotate_credentials_weekly(self):
+        """Automatic weekly credential rotation"""
+        
+        credentials_to_rotate = [
+            'broker_api_key',
+            'database_password', 
+            'grafana_admin_password',
+            'encryption_keys'
+        ]
+        
+        for credential in credentials_to_rotate:
+            new_credential = self.generate_secure_credential()
+            self.update_credential(credential, new_credential)
+            self.audit_logger.log_credential_rotation(credential)
+```
+
+---
+
+# IMMEDIATE ACTION PLAN (Next 48 Hours)
+
+### **Your Priority Tasks**
+1. 🔒 **Security Setup**: BitLocker + Hardware TPM + Windows hardening
+2. 🐧 **WSL2 Installation**: Ubuntu 22.04 with security patches
+3. 🐳 **Docker Desktop**: With WSL integration enabled
+4. 📊 **IB Account**: Paper trading account setup and gateway testing
+
+### **Team Task Assignments** (Revised Scope)
+```
+Week 1-5 Team Focus:
+├── DevOps Lead: Security hardening + Docker setup
+├── Data Engineer: TimescaleDB + data pipeline
+├── Quant Developer: Basic risk controls + backtesting
+└── Full Stack: Simple dashboard + monitoring
+
+Week 6+ Research Tracks (Post Gate Review):
+├── Research Track A: Alternative data integration  
+├── Research Track B: Advanced ML architectures
+├── Research Track C: Market microstructure
+└── Research Track D: Automated research pipeline
+```
+
+### **Claude's Week 1 Tasks**
+1. 🔐 **Security Framework**: Design compliance architecture
+2. 📈 **Lean Trading Environment**: Transform current gym environment
+3. 🛡️ **Basic Risk Guard**: Design conservative risk controls  
+4. 📊 **Management Dashboard**: Design executive reporting system
+
+---
+
+# SUCCESS METRICS BY PHASE
+
+### **Phase 0.5 (Weeks 1-5): Prove It Works**
+- ✅ Live paper trading generating consistent P&L
+- ✅ System latency < 2 seconds average
+- ✅ Zero security violations
+- ✅ Management demo impresses stakeholders
+
+### **Phase 1 (Weeks 6-10): Make It Excellent**
+- ✅ Enhanced risk management operational
+- ✅ Smart execution beating benchmarks
+- ✅ Multi-asset capability demonstrated
+- ✅ Monthly profit trending toward $1K
+
+### **Phase 2 (Weeks 11-16): Make It Revolutionary**
+- ✅ Research pipeline discovering new alpha
+- ✅ Meta-learning improving performance
+- ✅ Alternative data providing edge
+- ✅ $1K+ monthly profit achieved (cloud funding unlocked)
+
+---
+
+# COMPETITIVE ADVANTAGES
+
+This **Bridge-Build-Bolt-On** approach creates:
+
+1. **Management Confidence**: Proven core before expensive research
+2. **Risk Mitigation**: Security and compliance from day one  
+3. **Rapid Iteration**: Working system in 5 weeks, not 16
+4. **Funding Unlock**: Trading profits fund research innovations
+5. **Technical Leadership**: Eventually all the research features, but validated
+6. **Seamless Scaling**: Same architecture works locally and in cloud
+
+**This combines the best of both worlds**: your team's pragmatic execution focus with the innovative research vision. We prove the concept works, then we make it revolutionary. 🎯💰🚀
+
+Ready to build a system that impresses management AND advances the state of the art?
