@@ -93,6 +93,7 @@ class DualTickerTradingEnv(gym.Env):
                  initial_capital: float = 100000.0,
                  tc_bp: float = 1.0,              # 🔧 TRANSACTION COST BASIS POINTS
                  reward_scaling: float = 0.01,    # 🔧 REWARD SCALING (PPO-tuned)
+                 bar_size: str = '1min',          # 🔧 CONFIGURABLE BAR SIZE
                  max_daily_drawdown_pct: float = 0.02,
                  log_trades: bool = True,
                  **kwargs):
@@ -121,6 +122,10 @@ class DualTickerTradingEnv(gym.Env):
         
         # 🔧 CONFIGURABLE TRANSACTION COSTS
         self.tc_bp = tc_bp / 10000.0  # Convert basis points to decimal
+        
+        # 🔧 CONFIGURABLE BAR SIZE & SCALING
+        self.bar_size = bar_size
+        self.bars_per_day = self._calculate_bars_per_day(bar_size)
         
         # 🔧 REWARD SCALING (tuned for single-ticker PPO)
         self.reward_scaling = reward_scaling
@@ -350,6 +355,43 @@ class DualTickerTradingEnv(gym.Env):
         
         if len(self.trade_log) % 100 == 0:
             self.logger.info(f"Completed {len(self.trade_log)} trades, Portfolio: ${info['portfolio_value']:.2f}")
+    
+    def _calculate_bars_per_day(self, bar_size: str) -> int:
+        """Calculate bars per trading day based on bar size
+        
+        Args:
+            bar_size: Bar size string (e.g., '1min', '5min', '15min', '1h')
+            
+        Returns:
+            Number of bars per 6.5-hour trading day
+        """
+        # 6.5 hours = 390 minutes per trading day
+        trading_minutes_per_day = 390
+        
+        if bar_size == '1min':
+            return 390
+        elif bar_size == '5min':
+            return 78  # 390 / 5
+        elif bar_size == '15min':
+            return 26  # 390 / 15
+        elif bar_size == '30min':
+            return 13  # 390 / 30
+        elif bar_size == '1h':
+            return 7   # 390 / 60 (rounded up for partial hour)
+        else:
+            # Parse custom intervals (e.g., '2min', '10min')
+            import re
+            match = re.match(r'(\d+)(min|h)', bar_size)
+            if match:
+                value, unit = int(match.group(1)), match.group(2)
+                if unit == 'min':
+                    return trading_minutes_per_day // value
+                elif unit == 'h':
+                    return trading_minutes_per_day // (value * 60)
+            
+            # Default fallback
+            self.logger.warning(f"Unknown bar_size '{bar_size}', defaulting to 1min (390 bars/day)")
+            return 390
     
     def get_trade_log(self) -> List[Dict]:
         """Get complete trade log"""

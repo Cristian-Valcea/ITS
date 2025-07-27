@@ -54,9 +54,9 @@ services:
     restart: unless-stopped
 
 volumes:
-  timescale_data:  # Named volume for TimescaleDB data
-  redis_data:      # Named volume for Redis data
-  pgadmin_data:    # Named volume for pgAdmin data
+  timescale_data: {}  # Explicit named volume - prevents bind-mount mistakes
+  redis_data: {}   # Named volume for Redis data  
+  pgadmin_data: {} # Named volume for pgAdmin data
 
 networks:
   default:

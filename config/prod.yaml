@@ -1,0 +1,30 @@
+# Production Environment Configuration
+# High-frequency data for live trading
+
+data:
+  bar_size: "1min"  # 1-minute bars for production precision
+  symbols: ["NVDA", "MSFT"]
+  max_bars_per_session: 10000  # Full trading day capacity
+  
+data_quality:
+  missing_ratio_warn: 0.005  # 0.5% warning threshold (strict)
+  missing_ratio_fail: 0.01   # 1% failure threshold (live trading quality)
+  
+database:
+  chunk_time_interval: "1 hour"  # Optimized for high-frequency data
+  
+monitoring:
+  health_check_interval: 5   # seconds (frequent monitoring)
+  metrics_retention: "7 days"  # Extended retention for analysis
+
+ib_gateway:
+  host: "localhost"
+  port: 7497  # TWS Gateway paper trading port
+  client_id: 1
+  timeout: 30
+
+feeds:
+  primary: "alpha_vantage"
+  fallback: "yahoo_finance"
+  retry_attempts: 3
+  retry_delay: 5  # seconds

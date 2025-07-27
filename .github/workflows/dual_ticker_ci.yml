@@ -220,6 +220,15 @@ jobs:
           --cov-report=term-missing \
           --tb=short
           
+    - name: Run smoke tests with database pipeline
+      env:
+        TEST_DB_HOST: timescaledb
+        TEST_DB_PORT: 5432
+        DB_PASSWORD: testpass
+      run: |
+        echo "🧪 Running smoke tests including fixture→TimescaleDB pipeline..."
+        pytest tests/dual_ticker/test_smoke.py -v --tb=short
+        
     - name: Generate coverage report
       run: |
         pytest tests/gym_env/test_dual_ticker_env_enhanced.py \

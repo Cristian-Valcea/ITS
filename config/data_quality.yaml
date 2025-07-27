@@ -1,0 +1,49 @@
+# Data Quality Configuration
+# Configurable thresholds for data validation gates
+
+validation:
+  # Missing data thresholds
+  missing_ratio_warn: 0.02   # 2% - Log warning
+  missing_ratio_fail: 0.05   # 5% - Block pipeline (CI/training)
+  missing_ratio_live: 0.01   # 1% - Block live trading
+  
+  # OHLC validation
+  ohlc_validation_enabled: true
+  price_deviation_threshold: 0.20  # 20% max price jump between bars
+  
+  # Volume validation
+  volume_min_threshold: 1      # Minimum volume per bar
+  volume_zero_tolerance: 0.01  # 1% of bars can have zero volume
+  
+  # Technical indicators validation
+  rsi_bounds: [0, 100]         # RSI must be between 0-100
+  rsi_extreme_threshold: 0.05  # 5% of bars can be RSI > 95 or < 5
+  
+  # Time validation
+  timestamp_alignment_tolerance: 30  # seconds - max timestamp misalignment
+  bar_continuity_max_gap: 300       # seconds - max gap between bars (5 min)
+  
+  # Symbol-specific validation
+  symbols:
+    NVDA:
+      price_range: [100, 2000]    # Reasonable NVDA price range
+      volume_min: 1000            # Minimum daily volume
+    MSFT:
+      price_range: [50, 1000]     # Reasonable MSFT price range  
+      volume_min: 500             # Minimum daily volume
+
+# Quality gate behavior
+gates:
+  block_on_failure: true          # Block pipeline if validation fails
+  retry_attempts: 3               # Retry failed validations
+  retry_delay: 10                 # seconds between retries
+  
+  # Fallback behavior
+  enable_fallback_feeds: true     # Use Yahoo Finance if primary fails
+  fallback_quality_threshold: 0.10  # 10% missing data allowed for fallback
+  
+# Monitoring
+monitoring:
+  log_quality_metrics: true      # Log quality metrics to monitoring
+  alert_on_degradation: true     # Alert if quality degrades
+  quality_history_retention: 7   # days to keep quality history

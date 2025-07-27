@@ -55,19 +55,26 @@ class DualTickerDataAdapter:
     def load_training_data(self, 
                           start_date: str, 
                           end_date: str,
-                          symbols: List[str] = ['NVDA', 'MSFT']) -> Dict[str, Any]:
+                          symbols: List[str] = ['NVDA', 'MSFT'],
+                          bar_size: str = '1min') -> Dict[str, Any]:
         """
         Load aligned NVDA + MSFT data for training
+        
+        Args:
+            start_date: Start date for data loading
+            end_date: End date for data loading  
+            symbols: List of symbols to load (default NVDA, MSFT)
+            bar_size: Bar frequency ('1min', '5min', etc.)
         
         Returns:
             Dict with aligned features, prices, and shared trading_days index
         """
         
-        self.logger.info(f"🔧 Loading dual-ticker data: {symbols} from {start_date} to {end_date}")
+        self.logger.info(f"🔧 Loading dual-ticker data: {symbols} from {start_date} to {end_date} (bar_size={bar_size})")
         
         # Load individual asset data
-        nvda_data = self._load_asset_data('NVDA', start_date, end_date)
-        msft_data = self._load_asset_data('MSFT', start_date, end_date)
+        nvda_data = self._load_asset_data('NVDA', start_date, end_date, bar_size)
+        msft_data = self._load_asset_data('MSFT', start_date, end_date, bar_size)
         
         # 🔧 IMPLEMENT _align_timestamps NOW (catches vendor gaps Day 1)
         aligned_data = self._align_timestamps(nvda_data, msft_data)
@@ -84,12 +91,19 @@ class DualTickerDataAdapter:
             'feature_names': aligned_data['feature_names']  # 🔧 COLUMN ORDER VALIDATION
         }
     
-    def _load_asset_data(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-        """Load raw data for a single asset from TimescaleDB"""
+    def _load_asset_data(self, symbol: str, start_date: str, end_date: str, bar_size: str = '1min') -> pd.DataFrame:
+        """Load raw data for a single asset from TimescaleDB
+        
+        Args:
+            symbol: Asset symbol (NVDA, MSFT)
+            start_date: Start date
+            end_date: End date  
+            bar_size: Bar frequency - passed to aggregation logic if needed
+        """
         
         if self.db_config.get('mock_data', False):
             # Generate mock data for testing
-            return self._generate_mock_data(symbol, start_date, end_date)
+            return self._generate_mock_data(symbol, start_date, end_date, bar_size)
         
         try:
             # Connect to TimescaleDB
@@ -123,14 +137,29 @@ class DualTickerDataAdapter:
             self.logger.error(f"Failed to load {symbol} data: {e}")
             # Fallback to mock data
             self.logger.warning(f"Falling back to mock data for {symbol}")
-            return self._generate_mock_data(symbol, start_date, end_date)
+            return self._generate_mock_data(symbol, start_date, end_date, bar_size)
     
-    def _generate_mock_data(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-        """Generate mock market data for testing"""
+    def _generate_mock_data(self, symbol: str, start_date: str, end_date: str, bar_size: str = '1min') -> pd.DataFrame:
+        """Generate mock market data for testing
+        
+        Args:
+            symbol: Asset symbol  
+            start_date: Start date
+            end_date: End date
+            bar_size: Bar frequency for intraday data generation
+        """
         
         # Create date range (business days only)
         dates = pd.bdate_range(start=start_date, end=end_date, freq='D')
         n_days = len(dates)
+        
+        # Calculate bars per day based on bar_size
+        if bar_size == '1min':
+            bars_per_day = 390
+        elif bar_size == '5min':
+            bars_per_day = 78
+        else:
+            bars_per_day = 390  # Default fallback
         
         # Generate realistic price data
         np.random.seed(42 if symbol == 'NVDA' else 123)  # Reproducible but different

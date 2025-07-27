@@ -1,0 +1,18 @@
+# CI Environment Configuration
+# Fast execution for automated testing
+
+data:
+  bar_size: "5min"  # 5-minute bars for CI speed
+  symbols: ["NVDA", "MSFT"]
+  max_bars_per_test: 5  # Minimal data for fast CI
+  
+data_quality:
+  missing_ratio_warn: 0.02  # 2% warning threshold
+  missing_ratio_fail: 0.05  # 5% failure threshold (CI tolerant)
+  
+database:
+  chunk_time_interval: "1 day"  # Small chunks for testing
+  
+monitoring:
+  health_check_interval: 30  # seconds
+  metrics_retention: "1 hour"  # Short retention for CI

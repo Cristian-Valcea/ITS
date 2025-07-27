@@ -77,6 +77,24 @@ SELECT create_hypertable('portfolio_positions', 'timestamp',
     if_not_exists => TRUE
 );
 
+-- Current positions table for OMS (non-hypertable, current state only)
+CREATE TABLE IF NOT EXISTS current_positions (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(10) NOT NULL UNIQUE,
+    qty DECIMAL(12,4) NOT NULL DEFAULT 0,
+    avg_price DECIMAL(10,4),
+    market_value DECIMAL(12,4),
+    unrealized_pnl DECIMAL(12,4) DEFAULT 0,
+    last_updated TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Initialize with NVDA and MSFT positions (zero quantities)
+INSERT INTO current_positions (symbol, qty, avg_price) 
+VALUES 
+    ('NVDA', 0, NULL),
+    ('MSFT', 0, NULL)
+ON CONFLICT (symbol) DO NOTHING;
+
 -- Trading actions log
 CREATE TABLE IF NOT EXISTS trading_actions (
     id SERIAL PRIMARY KEY,

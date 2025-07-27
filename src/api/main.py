@@ -26,6 +26,7 @@ from datetime import datetime, timedelta
 from src.execution.orchestrator_agent import OrchestratorAgent
 from src.shared.duckdb_manager import close_all_duckdb_connections
 from src.shared.feature_store import reset_feature_store
+from src.api.monitoring import router as monitoring_router
 
 # Prometheus metrics endpoint support
 try:
@@ -598,9 +599,14 @@ async def ui_tasks_list(request: Request):
 # Mount routers
 app.include_router(router, prefix="/orchestrator")
 
+# Include dual-ticker monitoring endpoints
+app.include_router(monitoring_router)
+print("✅ Dual-ticker monitoring endpoints enabled at /monitoring/*")
+
 # Include FeatureStore monitoring endpoints if available
 if MONITORING_AVAILABLE:
-    app.include_router(monitoring_router, prefix="/api/v1")
+    from .monitoring_endpoints import monitoring_router as fs_monitoring_router
+    app.include_router(fs_monitoring_router, prefix="/api/v1")
     print("✅ FeatureStore monitoring endpoints enabled at /api/v1/monitoring/*")
 else:
     print("⚠️  FeatureStore monitoring endpoints not available")

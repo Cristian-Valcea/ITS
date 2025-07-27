@@ -1,0 +1,47 @@
+# config/environments/prod.yaml  
+# Configuration overrides for production environment
+
+# Production data settings
+bar_size: "1min"             # 390 bars/day for full granularity
+data_source: "ib_gateway"    # Interactive Brokers live data
+logging_level: "INFO"        # Standard production logging
+batch_size: 128             # Larger batches for throughput
+
+# Production environment settings
+environment:
+  test_mode: false
+  max_episode_steps: 1000     # Full trading day episodes
+  episode_timeout: 3600       # 1 hour timeout per episode
+
+# Production database settings  
+database:
+  host: "localhost"           # Local TimescaleDB instance
+  port: 5432
+  database: "intradayjules"
+  mock_data: false           # Use real market data only
+  connection_pool_size: 10   # Connection pooling for performance
+
+# Resource settings for production
+resources:
+  max_memory_mb: 8192        # 8GB memory allowance
+  max_cpu_cores: 8           # Full CPU utilization
+  
+# Performance requirements (production-grade)
+performance:
+  min_steps_per_sec: 100     # High performance requirement
+  max_data_load_time: 2      # 2 seconds max data loading
+  max_execution_latency: 500 # 500ms max trade execution latency
+
+# Risk management (production-only)
+risk:
+  max_position_size: 1000    # $1K max position per asset
+  daily_loss_limit: 50       # $50 daily loss limit  
+  max_drawdown_pct: 0.02     # 2% max drawdown
+  enable_circuit_breakers: true
+  
+# Monitoring & alerting (production-only)
+monitoring:
+  enable_prometheus: true
+  enable_grafana: true
+  alert_on_errors: true
+  alert_email: "admin@intradayjules.com"

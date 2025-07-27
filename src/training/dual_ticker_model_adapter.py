@@ -9,6 +9,7 @@ Implements sophisticated weight initialization and neutral action head setup.
 import torch
 import torch.nn as nn
 import numpy as np
+import pandas as pd
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
@@ -170,26 +171,45 @@ class DualTickerModelAdapter:
     def _build_model_config(self, config_override: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """Build model configuration from base model + overrides"""
         
-        # Start with proven hyperparameters from base model
+        # Start with proven hyperparameters from base model (50K training success)
         base_config = {
-            'learning_rate': 0.0001,
-            'n_steps': 128,
-            'batch_size': 32,
-            'n_epochs': 4,
-            'gamma': 0.99,
-            'gae_lambda': 0.95,
-            'clip_range': 0.2,
-            'ent_coef': 0.01,
-            'vf_coef': 0.5,
-            'max_grad_norm': 0.5,
+            # Core PPO parameters (proven from single-ticker training)
+            'learning_rate': 0.0001,         # Conservative LR for transfer learning
+            'n_steps': 128,                  # Episode buffer size
+            'batch_size': 32,                # Mini-batch size for SGD
+            'n_epochs': 4,                   # Policy updates per rollout
+            'gamma': 0.99,                   # Discount factor
+            'gae_lambda': 0.95,              # GAE parameter
+            'clip_range': 0.2,               # PPO clipping range
+            'ent_coef': 0.01,                # Entropy coefficient
+            'vf_coef': 0.5,                  # Value function coefficient
+            'max_grad_norm': 0.5,            # Gradient clipping
+            
+            # Enhanced policy architecture for dual-ticker
             'policy_kwargs': {
-                'net_arch': [64, 64],  # Same as successful single-ticker model
+                'net_arch': [64, 64],         # Same as successful single-ticker model
                 'activation_fn': torch.nn.ReLU,
-                'lstm_hidden_size': 32,
-                'n_lstm_layers': 1
+                'lstm_hidden_size': 32,       # Memory for sequence learning
+                'n_lstm_layers': 1,           # Single LSTM layer (proven)
+                'shared_layers_vf': [64],     # Shared value function layers
+                'enable_critic_lstm': True,   # LSTM in critic for better value estimates
+                'lstm_kwargs': {
+                    'dropout': 0.1,           # Regularization for generalization
+                    'batch_first': True
+                }
             },
+            
+            # Training configuration
             'verbose': 1,
-            'device': 'auto'
+            'device': 'auto',                # GPU if available
+            'seed': 42,                      # Reproducible training
+            
+            # Advanced training features
+            'use_sde': False,                # Deterministic policy for trading
+            'sde_sample_freq': -1,           # No stochastic exploration
+            'normalize_advantage': True,     # Better gradient stability
+            'target_kl': 0.01,               # Early stopping for policy updates
+            'stats_window_size': 100         # Rolling window for logging
         }
         
         # Extract config from base model metadata if available
@@ -497,6 +517,85 @@ class DualTickerModelAdapter:
         self.logger.info(f"📋 Saved metadata: {metadata_path}")
         
         return str(output_path)
+    
+    def create_production_training_config(self, 
+                                        target_timesteps: int = 200000,
+                                        enable_tensorboard: bool = True,
+                                        checkpoint_freq: int = 10000) -> Dict[str, Any]:
+        """
+        Create production-ready training configuration with advanced features
+        
+        Args:
+            target_timesteps: Total training timesteps (default 200K from plan)
+            enable_tensorboard: Enable TensorBoard logging
+            checkpoint_freq: Save checkpoints every N timesteps
+            
+        Returns:
+            Complete training configuration dictionary
+        """
+        
+        config = {
+            # Training schedule
+            'total_timesteps': target_timesteps,
+            'checkpoint_freq': checkpoint_freq,
+            'eval_freq': 5000,                    # Evaluate every 5K steps
+            'save_freq': checkpoint_freq,
+            
+            # Advanced callbacks
+            'callbacks': {
+                'early_stopping': {
+                    'enabled': True,
+                    'patience': 20000,            # Stop if no improvement for 20K steps
+                    'min_delta': 0.01,           # Minimum improvement threshold
+                    'monitor': 'episode_reward_mean'
+                },
+                'learning_rate_schedule': {
+                    'enabled': True,
+                    'schedule': 'linear',         # Linear decay from initial LR
+                    'final_lr_fraction': 0.1     # End at 10% of initial LR
+                },
+                'checkpoint_callback': {
+                    'enabled': True,
+                    'save_best_only': True,
+                    'monitor': 'episode_reward_mean',
+                    'mode': 'max'
+                }
+            },
+            
+            # TensorBoard integration
+            'tensorboard': {
+                'enabled': enable_tensorboard,
+                'log_dir': 'logs/tensorboard_dual_ticker',
+                'log_freq': 1000,               # Log every 1K steps
+                'write_graph': True,
+                'write_images': False           # Disable for performance
+            },
+            
+            # Performance monitoring
+            'performance_tracking': {
+                'target_episode_reward': 4.5,   # Target based on single-ticker success
+                'target_sharpe_ratio': 1.0,     # Minimum Sharpe for deployment
+                'max_drawdown_threshold': 0.05, # 5% max drawdown during training
+                'turnover_penalty_threshold': 10.0  # Prevent excessive trading
+            },
+            
+            # Model validation
+            'validation': {
+                'validate_every': 25000,        # Validate every 25K steps
+                'validation_episodes': 10,      # Episodes for validation
+                'require_improvement': True,    # Require validation improvement
+                'validation_env_config': {
+                    'bar_size': '1min',         # Production bar size for validation
+                    'initial_capital': 100000,
+                    'tc_bp': 1.0               # Production transaction costs
+                }
+            }
+        }
+        
+        self.logger.info(f"🎯 Production training config: {target_timesteps:,} timesteps")
+        self.logger.info(f"📊 Checkpoints every {checkpoint_freq:,} steps")
+        
+        return config
     
     def create_training_curriculum(self) -> Dict[str, Any]:
         """

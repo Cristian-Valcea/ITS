@@ -1,0 +1,31 @@
+# config/environments/ci.yaml
+# Configuration overrides for CI/testing environment
+
+# Fast execution settings for CI pipeline
+bar_size: "5min"         # 78 bars/day for lightning-fast tests
+data_source: "mock"      # Use mock data (no external dependencies)
+logging_level: "WARNING" # Reduce CI log noise
+batch_size: 32          # Smaller batches for memory efficiency
+
+# Testing-specific settings
+environment:
+  test_mode: true
+  max_episode_steps: 100  # Short episodes for fast CI
+  episode_timeout: 30     # 30 second timeout per episode
+
+# CI database settings
+database:
+  host: "timescaledb"     # GitHub Actions service container
+  port: 5432
+  database: "intradayjules_test"
+  mock_data: true         # Fallback to fixtures if DB unavailable
+
+# Resource limits for CI
+resources:
+  max_memory_mb: 1024     # 1GB memory limit
+  max_cpu_cores: 2        # 2-core GitHub runners
+  
+# Performance thresholds (CI-appropriate)
+performance:
+  min_steps_per_sec: 50   # Relaxed for CI environment
+  max_data_load_time: 5   # 5 seconds max data loading
