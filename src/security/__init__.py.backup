@@ -1,0 +1,104 @@
+# src/security/__init__.py
+"""
+Enhanced Security Module for IntradayJules Trading System
+
+This module provides enterprise-grade secrets management with:
+- Backend-agnostic architecture (local, cloud, HashiCorp Vault)
+- Argon2id key derivation for memory-hard security
+- Atomic operations with concurrency safety
+- TPM hardware binding support
+- Audit-grade logging and metrics
+- CLI tools for operations teams
+"""
+
+from .protocols import VaultBackend, SecretData, SecretMetadata
+from .advanced_secrets_manager import AdvancedSecretsManager, SecretsHelper
+from .encryption import HardenedEncryption
+from .backends.local_vault import LocalVaultBackend
+# ITS Integration Helper
+import os
+import asyncio
+import logging
+from typing import Optional, Dict, Any
+
+class ITSSecretsHelper:
+    """Simple helper for ITS components to access secrets securely."""
+    
+    def __init__(self, vault_path: str = "secrets.vault", master_password: Optional[str] = None):
+        if master_password is None:
+            master_password = os.getenv("ITS_MASTER_PASSWORD", "test123")
+        
+        self.backend = LocalVaultBackend(vault_path=vault_path, password=master_password)
+        self.manager = AdvancedSecretsManager(backend=self.backend, master_password=master_password)
+        self.logger = logging.getLogger("ITSSecretsHelper")
+    
+    def get_secret(self, key: str) -> Optional[str]:
+        """Get a secret value by key (synchronous wrapper)."""
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                secret_data = loop.run_until_complete(self.manager.read_secret(key))
+                return secret_data.get("value") if secret_data else None
+            finally:
+                loop.close()
+        except Exception as e:
+            self.logger.warning(f"Failed to get secret {key}: {e}")
+            return None
+    
+    def get_database_config(self) -> Dict[str, str]:
+        """Get database configuration with secure credentials."""
+        return {
+            "host": self.get_secret("pg_host") or "localhost",
+            "port": self.get_secret("pg_port") or "5432",
+            "database": self.get_secret("pg_database") or "featurestore_manifest",
+            "user": self.get_secret("pg_user") or "postgres",
+            "password": self.get_secret("pg_password") or ""
+        }
+    
+    def get_alert_config(self) -> Dict[str, str]:
+        """Get alerting configuration."""
+        return {
+            "pagerduty_key": self.get_secret("pagerduty_key"),
+            "slack_webhook": self.get_secret("slack_webhook_url"),
+            "slack_channel": self.get_secret("slack_channel") or "#trading-alerts"
+        }
+
+# Global instance
+_its_helper: Optional[ITSSecretsHelper] = None
+
+def get_its_secret(key: str) -> Optional[str]:
+    """Convenience function to get a secret value."""
+    global _its_helper
+    if _its_helper is None:
+        _its_helper = ITSSecretsHelper()
+    return _its_helper.get_secret(key)
+
+def get_database_config() -> Dict[str, str]:
+    """Convenience function to get database configuration."""
+    global _its_helper
+    if _its_helper is None:
+        _its_helper = ITSSecretsHelper()
+    return _its_helper.get_database_config()
+
+def get_alert_config() -> Dict[str, str]:
+    """Convenience function to get alert configuration."""
+    global _its_helper
+    if _its_helper is None:
+        _its_helper = ITSSecretsHelper()
+    return _its_helper.get_alert_config()
+
+__version__ = "2.0.0"
+__all__ = [
+    "VaultBackend",
+    "SecretData", 
+    "SecretMetadata",
+    "AdvancedSecretsManager",
+    "SecretsHelper",
+    "HardenedEncryption",
+    "LocalVaultBackend",
+    "ITSSecretsHelper",
+    "get_its_secret",
+    "get_database_config", 
+    "get_alert_config"
+]
