@@ -1,0 +1,423 @@
+# .github/workflows/dual_ticker_ci.yml
+name: Dual-Ticker System CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/gym_env/dual_ticker_*'
+      - 'src/training/dual_ticker_*'
+      - 'tests/gym_env/test_dual_ticker_*'
+      - '.github/workflows/dual_ticker_ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/gym_env/dual_ticker_*'
+      - 'src/training/dual_ticker_*'
+      - 'tests/gym_env/test_dual_ticker_*'
+
+jobs:
+  dual-ticker-tests:
+    runs-on: ubuntu-latest
+    
+    services:
+      timescaledb:
+        image: timescale/timescaledb:latest-pg14
+        env:
+          POSTGRES_DB: intradayjules
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client
+        
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-xdist pytest-asyncio
+        pip install psycopg2-binary  # For TimescaleDB connection
+        pip install black flake8 mypy  # Code quality tools
+        
+    - name: Code formatting check (Black)
+      run: |
+        echo "🎨 Checking code formatting..."
+        black --check --diff src/ tests/ || {
+          echo "❌ Code formatting issues found. Run: black src/ tests/"
+          exit 1
+        }
+        echo "✅ Code formatting looks good!"
+
+    - name: Linting check (Flake8)
+      run: |
+        echo "🔍 Running linting checks..."
+        flake8 src/ tests/ --max-line-length=100 --ignore=E203,W503 || {
+          echo "❌ Linting issues found. Fix the issues above."
+          exit 1
+        }
+        echo "✅ Linting checks passed!"
+
+    - name: Set memory limits for CI
+      run: |
+        # Limit memory usage to prevent OOM on CI runners
+        export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+        export OMP_NUM_THREADS=2
+        export MKL_NUM_THREADS=2
+        
+    - name: Wait for TimescaleDB Ready (15-line loop)
+      run: |
+        echo "⏳ Waiting for TimescaleDB to be ready..."
+        for i in {1..15}; do
+          if pg_isready -h timescaledb -U postgres -d postgres; then
+            echo "✅ TimescaleDB is ready! (attempt $i/15)"
+            break
+          fi
+          echo "🔄 TimescaleDB not ready yet... (attempt $i/15)"
+          sleep 3
+        done
+        
+        # Verify connection with actual query
+        echo "🔍 Testing database connection..."
+        PGPASSWORD=testpass psql -h timescaledb -U postgres -d postgres -c "SELECT version();" || {
+          echo "❌ Failed to connect to TimescaleDB"
+          exit 1
+        }
+        echo "✅ Database connection verified!"
+        
+    - name: Initialize TimescaleDB schema
+      run: |
+        echo "🗄️ Setting up test database schema..."
+        
+        # Create test database if it doesn't exist
+        PGPASSWORD=testpass psql -h timescaledb -U postgres -d postgres -c "
+          SELECT 'CREATE DATABASE intradayjules_test' 
+          WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'intradayjules_test')
+        " | grep -q "CREATE DATABASE" && {
+          PGPASSWORD=testpass psql -h timescaledb -U postgres -d postgres -c "CREATE DATABASE intradayjules_test;"
+        }
+        
+        # Apply our schema from 01_schema.sql
+        PGPASSWORD=testpass psql -h timescaledb -U postgres -d intradayjules_test -f sql/docker-entrypoint-initdb.d/01_schema.sql || {
+          echo "❌ Failed to initialize database schema"
+          exit 1
+        }
+        
+        # Verify schema
+        PGPASSWORD=testpass psql -h timescaledb -U postgres -d intradayjules_test -c "
+          SELECT table_name FROM information_schema.tables 
+          WHERE table_schema = 'public' AND table_name = 'dual_ticker_bars';
+        " | grep -q "dual_ticker_bars" || {
+          echo "❌ Schema verification failed"
+          exit 1
+        }
+        
+        echo "✅ Test database schema initialized successfully!"
+        
+    - name: Test TimescaleDB connectivity
+      run: |
+        python -c "
+        import psycopg2
+        from src.gym_env.dual_ticker_data_adapter import DualTickerDataAdapter
+        
+        # Test basic connection
+        conn = psycopg2.connect(
+          host='timescaledb',
+          port=5432,
+          database='intradayjules_test',
+          user='postgres',
+          password='testpass'
+        )
+        print('✅ TimescaleDB connection successful')
+        conn.close()
+        
+        # Test data adapter
+        db_config = {
+          'host': 'timescaledb',
+          'port': 5432,
+          'database': 'intradayjules_test',
+          'user': 'postgres',
+          'password': 'testpass'
+        }
+        
+        adapter = DualTickerDataAdapter(db_config)
+        result = adapter.test_schema_and_insert()
+        print(f'✅ Data adapter test: {result}')
+        assert result == True, 'Data adapter test failed'
+        "
+        
+    - name: Run dual-ticker environment tests
+      run: |
+        # Add pg_isready loop for local runner compatibility
+        echo "⏳ Waiting for TimescaleDB to be ready..."
+        for i in {1..30}; do
+          if pg_isready -h timescaledb -U postgres -d intradayjules_test; then
+            echo "✅ TimescaleDB is ready!"
+            break
+          fi
+          echo "⏳ Waiting for TimescaleDB... ($i/30)"
+          sleep 2
+        done
+        
+        pytest tests/gym_env/test_dual_ticker_env_enhanced.py::TestDualTickerEnvironmentEnhanced -q --maxfail=2 \
+          --cov=src/gym_env/dual_ticker_trading_env \
+          --cov-report=term-missing \
+          --tb=short
+          
+    - name: Run data adapter tests with TimescaleDB
+      env:
+        TEST_DB_HOST: timescaledb
+        TEST_DB_PORT: 5432
+        TEST_DB_NAME: intradayjules_test
+        TEST_DB_USER: postgres
+        TEST_DB_PASSWORD: testpass
+      run: |
+        pytest tests/gym_env/test_dual_ticker_env_enhanced.py::TestDualTickerDataAdapter -q --maxfail=2 \
+          --cov=src/gym_env/dual_ticker_data_adapter \
+          --cov-report=term-missing \
+          --tb=short
+          
+    - name: Run portfolio action space tests
+      run: |
+        pytest tests/gym_env/test_dual_ticker_env_enhanced.py::TestPortfolioActionSpace -q --maxfail=2 \
+          --cov=src/gym_env/portfolio_action_space \
+          --cov-report=term-missing \
+          --tb=short
+          
+    - name: Run model adapter tests
+      run: |
+        pytest tests/gym_env/test_dual_ticker_env_enhanced.py::TestDualTickerModelAdapter -q --maxfail=2 \
+          --cov=src/training/dual_ticker_model_adapter \
+          --cov-report=term-missing \
+          --tb=short
+          
+    - name: Generate coverage report
+      run: |
+        pytest tests/gym_env/test_dual_ticker_env_enhanced.py \
+          --cov=src/gym_env \
+          --cov=src/training/dual_ticker_model_adapter \
+          --cov-report=xml \
+          --cov-report=html \
+          --cov-report=term \
+          -n auto --dist loadfile
+          
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: dual-ticker
+        name: dual-ticker-coverage
+        fail_ci_if_error: true
+        
+    - name: Test integration with mock data
+      run: |
+        python -c "
+        import sys
+        sys.path.append('.')
+        from src.gym_env.dual_ticker_trading_env import DualTickerTradingEnv
+        from src.gym_env.dual_ticker_data_adapter import DualTickerDataAdapter
+        import pandas as pd
+        import numpy as np
+        
+        print('🔧 Testing full integration with mock data...')
+        
+        # Test data adapter with mock data
+        db_config = {'mock_data': True}
+        adapter = DualTickerDataAdapter(db_config)
+        data = adapter.load_training_data('2024-01-01', '2024-03-31')
+        
+        print(f'✅ Data loaded: {len(data[\"trading_days\"])} days')
+        print(f'✅ NVDA features: {data[\"nvda_features\"].shape}')
+        print(f'✅ MSFT features: {data[\"msft_features\"].shape}')
+        
+        # Test environment creation
+        env = DualTickerTradingEnv(**data)
+        obs, info = env.reset()
+        
+        print(f'✅ Environment created: obs shape {obs.shape}')
+        print(f'✅ Action space: {env.action_space}')
+        
+        # Test a few steps
+        for i in range(5):
+            action = env.action_space.sample()
+            obs, reward, done, info = env.step(action)
+            print(f'Step {i+1}: action={action}, reward={reward:.4f}, done={done}')
+            if done:
+                break
+        
+        print('✅ Full integration test passed')
+        "
+        
+    - name: Performance benchmark
+      run: |
+        python -c "
+        import time
+        import sys
+        sys.path.append('.')
+        from src.gym_env.dual_ticker_trading_env import DualTickerTradingEnv
+        from src.gym_env.dual_ticker_data_adapter import DualTickerDataAdapter
+        
+        print('🔧 Running performance benchmark...')
+        
+        # Load data
+        start_time = time.time()
+        db_config = {'mock_data': True}
+        adapter = DualTickerDataAdapter(db_config)
+        data = adapter.load_training_data('2024-01-01', '2024-12-31')
+        data_time = time.time() - start_time
+        
+        # Create environment
+        start_time = time.time()
+        env = DualTickerTradingEnv(**data)
+        env_time = time.time() - start_time
+        
+        # Run episode
+        start_time = time.time()
+        obs, _ = env.reset()
+        
+        steps = 0
+        while steps < 1000:
+            action = 4  # HOLD_BOTH (fastest action)
+            obs, reward, done, info = env.step(action)
+            steps += 1
+            if done:
+                break
+                
+        episode_time = time.time() - start_time
+        
+        print(f'📊 Performance Results:')
+        print(f'  Data loading: {data_time:.3f}s for {len(data[\"trading_days\"])} days')
+        print(f'  Environment creation: {env_time:.3f}s')
+        print(f'  Episode execution: {episode_time:.3f}s for {steps} steps')
+        print(f'  Steps per second: {steps/episode_time:.1f}')
+        
+        # Performance requirements (host-specific SLA)
+        # CI Ubuntu VM (2-core): more lenient thresholds
+        # Dev laptops with Docker+WSL may see ~70 steps/s
+        assert data_time < 10.0, f'Data loading too slow: {data_time:.3f}s > 10.0s'
+        assert env_time < 2.0, f'Environment creation too slow: {env_time:.3f}s > 2.0s'
+        assert steps/episode_time > 50, f'Episode execution too slow: {steps/episode_time:.1f} < 50 steps/sec (CI minimum)'
+        
+        # Log performance tier for reference
+        if steps/episode_time > 100:
+            print('🚀 High performance tier: >100 steps/sec')
+        elif steps/episode_time > 70:
+            print('✅ Good performance tier: >70 steps/sec (Docker+WSL typical)')
+        else:
+            print('⚠️  Basic performance tier: >50 steps/sec (CI minimum)')
+        
+        print('✅ Performance benchmark passed')
+        "
+        
+    - name: Archive test artifacts
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: dual-ticker-test-results
+        path: |
+          htmlcov/
+          coverage.xml
+          pytest-report.xml
+        retention-days: 30
+        
+    - name: Archive HTML coverage for reviewers
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: html-coverage-report
+        path: htmlcov/
+        retention-days: 14
+
+  compatibility-check:
+    runs-on: ubuntu-latest
+    needs: dual-ticker-tests
+    
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest
+        
+    - name: Test imports and basic functionality
+      run: |
+        python -c "
+        import sys
+        sys.path.append('.')
+        
+        # Test all imports work
+        from src.gym_env.dual_ticker_trading_env import DualTickerTradingEnv
+        from src.gym_env.dual_ticker_data_adapter import DualTickerDataAdapter
+        from src.gym_env.portfolio_action_space import PortfolioActionSpace
+        from src.training.dual_ticker_model_adapter import DualTickerModelAdapter
+        
+        print(f'✅ All imports successful on Python {sys.version}')
+        
+        # Test basic instantiation
+        action_space = PortfolioActionSpace()
+        assert len(action_space.action_matrix) == 9
+        
+        db_config = {'mock_data': True}
+        adapter = DualTickerDataAdapter(db_config)
+        
+        print(f'✅ Basic functionality test passed on Python {sys.version}')
+        "
+
+  notify-completion:
+    runs-on: ubuntu-latest
+    needs: [dual-ticker-tests, compatibility-check]
+    if: always()
+    
+    steps:
+    - name: Notify build status
+      run: |
+        if [[ "${{ needs.dual-ticker-tests.result }}" == "success" && "${{ needs.compatibility-check.result }}" == "success" ]]; then
+          echo "✅ All dual-ticker CI tests passed!"
+          echo "🚀 Days 1-2 implementation complete and validated"
+        else
+          echo "❌ Some tests failed:"
+          echo "  Dual-ticker tests: ${{ needs.dual-ticker-tests.result }}"
+          echo "  Compatibility check: ${{ needs.compatibility-check.result }}"
+          exit 1
+        fi

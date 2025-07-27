@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.14.2-pg14
+    container_name: intradayjules_timescaledb
+    environment:
+      POSTGRES_DB: intradayjules
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-testpass}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data  # Named volume for data persistence
+      - ./sql/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d intradayjules"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: intradayjules_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: intradayjules_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@intradayjules.com
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - timescaledb
+    profiles:
+      - tools  # Only start with: docker-compose --profile tools up
+    restart: unless-stopped
+
+volumes:
+  timescale_data:  # Named volume for TimescaleDB data
+  redis_data:      # Named volume for Redis data
+  pgadmin_data:    # Named volume for pgAdmin data
+
+networks:
+  default:
+    name: intradayjules_network
+    driver: bridge

@@ -1,0 +1,30 @@
+{
+  "created_at": "2025-07-27T13:20:05.086080",
+  "total_rows": 10,
+  "nvda_rows": 5,
+  "msft_rows": 5,
+  "time_range": {
+    "start": "2025-01-27T09:30:00+00:00",
+    "end": "2025-01-27T09:50:00+00:00",
+    "frequency": "5min"
+  },
+  "columns": [
+    "timestamp",
+    "symbol",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "rsi",
+    "ema_short",
+    "ema_long",
+    "vwap",
+    "hour_sin",
+    "hour_cos",
+    "minute_sin",
+    "minute_cos",
+    "day_of_week"
+  ],
+  "purpose": "CI smoke tests - fast execution"
+}

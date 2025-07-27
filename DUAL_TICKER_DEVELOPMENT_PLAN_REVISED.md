@@ -8,7 +8,7 @@
 
 ## 📋 EXECUTIVE SUMMARY
 
-**Objective**: Transform the proven single-asset NVDA foundation into a profitable dual-ticker (AAPL + MSFT) portfolio system for Week 8 management demo.
+**Objective**: Transform the proven single-asset NVDA foundation into a profitable dual-ticker (NVDA + MSFT) portfolio system for Week 8 management demo.
 
 **Strategy**: Stepwise complexity increase with realistic buffers, early monitoring, and quantitative success gates.
 
@@ -29,7 +29,7 @@
 ### 🎯 Target Transformation (Stepwise Approach)
 
 #### **Phase 1: Simple Dual-Positions (Week 3)**
-- **Assets**: AAPL + MSFT as independent positions
+- **Assets**: NVDA + MSFT as independent positions
 - **Observation**: 24 market features + 2 position states = 26 dimensions  
 - **Actions**: 9-action portfolio matrix (3x3 combinations)
 - **Risk**: Individual asset limits only (NO correlation features yet)
@@ -49,13 +49,13 @@
 ```python
 # Start SIMPLE - Two Independent Inventories
 observation_space = Box(low=-np.inf, high=np.inf, shape=(26,))
-# [aapl_rsi, aapl_ema, ..., aapl_position,  # 13 features
+# [nvda_rsi, nvda_ema, ..., nvda_position,  # 13 features
 #  msft_rsi, msft_ema, ..., msft_position]  # 13 features
 # NO correlation features initially
 
 action_space = Discrete(9)  # 3x3 matrix
 SIMPLE_ACTIONS = {
-    0: (-1, -1), 1: (-1, 0), 2: (-1, 1),  # AAPL actions
+    0: (-1, -1), 1: (-1, 0), 2: (-1, 1),  # NVDA actions
     3: (0, -1),  4: (0, 0),   5: (0, 1),   # with MSFT
     6: (1, -1),  7: (1, 0),   8: (1, 1)    # combinations
 }
@@ -68,7 +68,7 @@ observation_space = Box(low=-np.inf, high=np.inf, shape=(29,))
 # [previous 26 features] + [correlation, portfolio_beta, concentration_risk]
 
 portfolio_features = {
-    'correlation_aapl_msft': rolling_correlation(30),
+    'correlation_nvda_msft': rolling_correlation(30),
     'portfolio_beta': portfolio_beta_vs_spy(),
     'concentration_risk': max_asset_weight()
 }
@@ -81,7 +81,7 @@ portfolio_features = {
 class DataQualityGate:
     """Data validation BEFORE model training begins"""
     
-    def validate_dual_ticker_data(self, aapl_data, msft_data):
+    def validate_dual_ticker_data(self, nvda_data, msft_data):
         checks = {
             'timestamp_alignment': self.check_aligned_timestamps(),
             'missing_bars': self.check_missing_data_threshold(),
@@ -153,7 +153,7 @@ METRICS = {
 - Model architecture adaptation
 
 **👥 TEAM**:
-- Data ingestion pipeline (AAPL + MSFT)
+- Data ingestion pipeline (NVDA + MSFT)
 - **IB credentials setup** (0.5 day buffer for firewall/auth issues)
 - Data quality validation scripts
 
@@ -240,7 +240,7 @@ METRICS = {
 ```yaml
 # config/base_config.yaml
 dual_ticker_system:
-  assets: ["AAPL", "MSFT"]
+  assets: ["NVDA", "MSFT"]
   base_model: "models/phase1_fast_recovery_model"
   
   environment:
