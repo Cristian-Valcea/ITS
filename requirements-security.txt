@@ -1,0 +1,29 @@
+# Enhanced Security Module Dependencies
+# Install with: pip install -r requirements-security.txt
+
+# Core encryption and key derivation
+cryptography>=41.0.0
+argon2-cffi>=23.1.0
+
+# Cross-platform file locking
+portalocker>=2.8.0
+
+# Async file operations
+aiofiles>=23.2.0
+
+# Data validation
+pydantic>=2.0.0
+
+# CLI interface
+click>=8.1.0
+
+# HTTP client for Vault integration
+aiohttp>=3.8.0
+
+# Optional cloud integrations
+boto3>=1.28.0  # AWS Secrets Manager
+hvac>=1.2.0    # HashiCorp Vault client
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0

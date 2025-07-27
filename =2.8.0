@@ -1,0 +1,9 @@
+Collecting aiofiles
+  Downloading aiofiles-24.1.0-py3-none-any.whl.metadata (10 kB)
+Collecting portalocker
+  Downloading portalocker-3.2.0-py3-none-any.whl.metadata (8.7 kB)
+Downloading aiofiles-24.1.0-py3-none-any.whl (15 kB)
+Downloading portalocker-3.2.0-py3-none-any.whl (22 kB)
+Installing collected packages: portalocker, aiofiles
+
+Successfully installed aiofiles-24.1.0 portalocker-3.2.0

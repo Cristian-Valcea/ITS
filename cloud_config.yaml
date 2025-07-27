@@ -1,0 +1,72 @@
+# Multi-Cloud Secrets Configuration
+# This file defines backend configurations for different environments
+
+# Default configuration
+default:
+  backend: local
+  master_password_env: SECRETS_MASTER_PASSWORD
+
+# Development environment
+development:
+  backend: local
+  vault_path: "dev_secrets.vault"
+  master_password_env: DEV_SECRETS_PASSWORD
+
+# Staging environment (AWS)
+staging:
+  backend: aws
+  region: us-east-1
+  secret_prefix: "intraday-staging/"
+  boto_profile: "staging"
+  master_password_env: STAGING_SECRETS_PASSWORD
+
+# Production environment (AWS with failover to Azure)
+production:
+  primary:
+    backend: aws
+    region: us-east-1
+    secret_prefix: "intraday-prod/"
+    boto_profile: "production"
+    master_password_env: PROD_SECRETS_PASSWORD
+  
+  failover:
+    backend: azure
+    vault_url: "https://intraday-prod.vault.azure.net/"
+    secret_prefix: "intraday-"
+    tenant_id: "${AZURE_TENANT_ID}"
+    master_password_env: PROD_SECRETS_PASSWORD
+
+# Enterprise environment (HashiCorp Vault)
+enterprise:
+  backend: vault
+  vault_url: "https://vault.intraday.internal:8200"
+  secret_path: "intraday"
+  auth_method: "kubernetes"
+  role: "trading-app"
+  namespace: "trading"
+  master_password_env: ENTERPRISE_SECRETS_PASSWORD
+
+# Multi-region setup
+multi_region:
+  primary:
+    backend: aws
+    region: us-east-1
+    secret_prefix: "intraday/"
+    
+  regions:
+    - backend: aws
+      region: eu-west-1
+      secret_prefix: "intraday/"
+    - backend: aws
+      region: ap-southeast-1
+      secret_prefix: "intraday/"
+
+# Backup configuration
+backup:
+  enabled: true
+  backends:
+    - backend: local
+      vault_path: "backup_secrets.vault"
+    - backend: aws
+      region: us-west-2
+      secret_prefix: "intraday-backup/"

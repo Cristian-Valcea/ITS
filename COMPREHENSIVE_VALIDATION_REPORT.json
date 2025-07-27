@@ -1,0 +1,524 @@
+{
+  "analysis": {
+    "total_suites": 2,
+    "successful_suites": 1,
+    "suite_success_rate": 50.0,
+    "total_tests": 94,
+    "passed_tests": 94,
+    "failed_tests": 0,
+    "test_success_rate": 100.0,
+    "readiness_level": {
+      "level": "STAGING_READY",
+      "recommendation": "DEPLOY TO STAGING FIRST",
+      "confidence": "MEDIUM",
+      "exit_code": 2
+    },
+    "execution_time": 4.871862888336182
+  },
+  "suite_results": {
+    "Core_Secrets_Management": {
+      "suite_name": "Core_Secrets_Management",
+      "exit_code": 0,
+      "stdout": "\ud83d\udd27 Setting up test environment...\n\u2705 Test vault: /tmp/tmpzqw2wutp.vault\n\ud83d\udd0d EXHAUSTIVE SECRETS MANAGER VALIDATION\n================================================================================\n\u26a0\ufe0f  TRUST BUT VERIFY: Testing all claimed functionality\n================================================================================\n\n\ud83d\udccb PHASE 1 VALIDATION: Basic Components\n============================================================\n\u2705 PASS Phase1_Basic_Imports\n\u2705 PASS Phase1_Encryption_Works\n\u2705 PASS Phase1_Decryption_Works\n\u2705 PASS Phase1_Wrong_Password_Fails\n\u2705 PASS Phase1_Local_Store\n\u2705 PASS Phase1_Local_Retrieve\n\u2705 PASS Phase1_Local_List\n\u2705 PASS Phase1_Local_Delete\n\n\ud83d\udccb PHASE 2 VALIDATION: Protocol-Based Architecture\n============================================================\n\u2705 PASS Phase2_Protocol_store\n\u2705 PASS Phase2_Protocol_retrieve\n\u2705 PASS Phase2_Protocol_delete\n\u2705 PASS Phase2_Protocol_list_keys\n\u2705 PASS Phase2_Protocol_exists\n\u2705 PASS Phase2_Datetime_Serialization\n\u2705 PASS Phase2_Enum_Serialization\n\n\ud83d\udccb PHASE 3 VALIDATION: Multi-Cloud Backend Support\n============================================================\n\u2705 PASS Phase3_AWS_Backend_Import\n\u2705 PASS Phase3_Azure_Backend_Import\n\u2705 PASS Phase3_Vault_Backend_Import\n\u2705 PASS Phase3_CLI_Import\n\u2705 PASS Phase3_CLI_set_secret\n\u2705 PASS Phase3_CLI_get_secret\n\u2705 PASS Phase3_CLI_list_secrets\n\u2705 PASS Phase3_CLI_delete_secret\n\u2705 PASS Phase3_MultiCloud_Import\n\u2705 PASS Phase3_MultiCloud_Class\n\n\ud83d\udccb PHASE 4 VALIDATION: ITS Trading System Integration\n============================================================\n\u2705 PASS Phase4_ITS_Integration_Import\n\u2705 PASS Phase4_Database_Config\n\u2705 PASS Phase4_Secret_Fallback\n\u2705 PASS Phase4_DB_Config_Type\n\u2705 PASS Phase4_Alert_Config_Type\n\u2705 PASS Phase4_Alert_Config_Keys\n\n\ud83d\udccb ADVANCED VALIDATION: End-to-End Workflow\n============================================================\n\u2705 PASS E2E_Store_ib_api_key\n\u2705 PASS E2E_Store_db_password\n\u2705 PASS E2E_Store_slack_webhook\n\u2705 PASS E2E_Store_pagerduty_key\n\u2705 PASS E2E_Retrieve_ib_api_key\n\u2705 PASS E2E_Retrieve_db_password\n\u2705 PASS E2E_Retrieve_slack_webhook\n\u2705 PASS E2E_Retrieve_pagerduty_key\n\u2705 PASS E2E_Secret_Rotation\n\u2705 PASS E2E_Rotation_Verify\n\n\ud83d\udccb SECURITY VALIDATION: Vulnerability Testing\n============================================================\n\u2705 PASS Security_No_Deterministic_Encryption\n\u2705 PASS Security_Empty_String_Handling\n\u2705 PASS Security_Long_Password_Handling\n\n\ud83d\udccb PERFORMANCE VALIDATION: Speed and Efficiency\n============================================================\n\u2705 PASS Performance_Encryption_Speed\n\u2705 PASS Performance_Decryption_Speed\n\u2705 PASS Performance_Bulk_Operations\n\n================================================================================\n\ud83d\udcca COMPREHENSIVE VALIDATION REPORT\n================================================================================\n\ud83d\udcc8 SUMMARY:\n   Total Tests: 47\n   Passed: 47 \u2705\n   Failed: 0 \u274c\n   Success Rate: 100.0%\n\n\ud83d\udccb PHASE-BY-PHASE ANALYSIS:\n   \u2705 Phase1: 8/8 (100.0%)\n   \u2705 Phase2: 7/7 (100.0%)\n   \u2705 Phase3: 10/10 (100.0%)\n   \u2705 Phase4: 6/6 (100.0%)\n\n\ud83c\udfaf OVERALL ASSESSMENT:\n   \ud83c\udf89 ALL TESTS PASSED - System appears to be fully functional!\n\n\ud83d\udd75\ufe0f PROGRAMMER TRUST ASSESSMENT:\n   \u2705 TRUSTWORTHY - All claimed features are implemented and working\n\n\ud83d\udcbe Detailed report saved to: /home/cristian/IntradayTrading/ITS/EXHAUSTIVE_VALIDATION_REPORT.json\n",
+      "stderr": "",
+      "success": true,
+      "timestamp": 1753591824.481218,
+      "detailed_results": {
+        "total_tests": 47,
+        "passed": 47,
+        "failed": 0,
+        "success_rate": 100.0,
+        "results": {
+          "Phase1_Basic_Imports": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.6804557
+          },
+          "Phase1_Encryption_Works": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.803448
+          },
+          "Phase1_Decryption_Works": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.3090913
+          },
+          "Phase1_Wrong_Password_Fails": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4135017
+          },
+          "Phase1_Local_Store": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4175107
+          },
+          "Phase1_Local_Retrieve": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.41911
+          },
+          "Phase1_Local_List": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.419216
+          },
+          "Phase1_Local_Delete": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4206388
+          },
+          "Phase2_Protocol_store": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.420691
+          },
+          "Phase2_Protocol_retrieve": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4206927
+          },
+          "Phase2_Protocol_delete": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4206934
+          },
+          "Phase2_Protocol_list_keys": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4206946
+          },
+          "Phase2_Protocol_exists": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4206955
+          },
+          "Phase2_Datetime_Serialization": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4207268
+          },
+          "Phase2_Enum_Serialization": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4207277
+          },
+          "Phase3_AWS_Backend_Import": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4207323
+          },
+          "Phase3_Azure_Backend_Import": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4207342
+          },
+          "Phase3_Vault_Backend_Import": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.420736
+          },
+          "Phase3_CLI_Import": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4243865
+          },
+          "Phase3_CLI_set_secret": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4243896
+          },
+          "Phase3_CLI_get_secret": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4243908
+          },
+          "Phase3_CLI_list_secrets": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4243922
+          },
+          "Phase3_CLI_delete_secret": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.424393
+          },
+          "Phase3_MultiCloud_Import": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.43108
+          },
+          "Phase3_MultiCloud_Class": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4310844
+          },
+          "Phase4_ITS_Integration_Import": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4310892
+          },
+          "Phase4_Database_Config": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4323835
+          },
+          "Phase4_Secret_Fallback": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4325104
+          },
+          "Phase4_DB_Config_Type": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.432726
+          },
+          "Phase4_Alert_Config_Type": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4328554
+          },
+          "Phase4_Alert_Config_Keys": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4328573
+          },
+          "E2E_Store_ib_api_key": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.5386512
+          },
+          "E2E_Store_db_password": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.6450086
+          },
+          "E2E_Store_slack_webhook": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.7517486
+          },
+          "E2E_Store_pagerduty_key": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.8608384
+          },
+          "E2E_Retrieve_ib_api_key": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.9677694
+          },
+          "E2E_Retrieve_db_password": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.0746164
+          },
+          "E2E_Retrieve_slack_webhook": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.1805599
+          },
+          "E2E_Retrieve_pagerduty_key": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.2874415
+          },
+          "E2E_Secret_Rotation": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.3960516
+          },
+          "E2E_Rotation_Verify": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.5054274
+          },
+          "Security_No_Deterministic_Encryption": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.7246945
+          },
+          "Security_Empty_String_Handling": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.94223
+          },
+          "Security_Long_Password_Handling": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591823.154201
+          },
+          "Performance_Encryption_Speed": {
+            "passed": true,
+            "details": "Encryption took 108.79ms",
+            "timestamp": 1753591823.2630138
+          },
+          "Performance_Decryption_Speed": {
+            "passed": true,
+            "details": "Decryption took 105.58ms",
+            "timestamp": 1753591823.368611
+          },
+          "Performance_Bulk_Operations": {
+            "passed": true,
+            "details": "10 encryptions took 1.08s",
+            "timestamp": 1753591824.4477146
+          }
+        }
+      }
+    },
+    "Trading_System_Integration": {
+      "suite_name": "Trading_System_Integration",
+      "exit_code": 3,
+      "stdout": "\ud83d\udd27 Setting up trading integration test environment...\n\u2705 Trading test vault: /tmp/tmpviy68xsq.vault\n\ud83d\udd0d TRADING SYSTEM INTEGRATION VALIDATION\n================================================================================\n\u26a0\ufe0f  VERIFYING SECRETS <-> TRADING SYSTEM INTEGRATION\n================================================================================\n\n\ud83d\udccb ITS INTEGRATION: Core Component Imports\n============================================================\n\u2705 PASS ITS_Core_Imports\n\u2705 PASS ITS_Alert_Config_Import\n\u2705 PASS DB_Config_Structure\n\u2705 PASS DB_Config_Defaults\n\u2705 PASS DB_Config_Password\n\u2705 PASS DB_Connection_String\n\u2705 PASS Alert_Config_Structure\n\u2705 PASS Alert_Config_pagerduty_key\n\u2705 PASS Alert_Config_slack_channel\n\u2705 PASS Alert_Slack_Webhook_Format\n\n\ud83d\udccb TRADING CREDENTIALS: Management and Retrieval\n============================================================\n\u2705 PASS Store_Trading_ib_api_key\n\u2705 PASS Store_Trading_ib_username\n\u2705 PASS Store_Trading_ib_password\n\u2705 PASS Store_Trading_broker_api_key\n\u2705 PASS Store_Trading_alpha_vantage_key\n\u2705 PASS Store_Trading_yahoo_finance_key\n\u274c FAIL Retrieve_Trading_ib_api_key\n\u274c FAIL Retrieve_Trading_ib_username\n\u274c FAIL Retrieve_Trading_ib_password\n\u274c FAIL Retrieve_Trading_broker_api_key\n\u274c FAIL Retrieve_Trading_alpha_vantage_key\n\u274c FAIL Retrieve_Trading_yahoo_finance_key\n\u2705 PASS Trading_Missing_Secret\n\u2705 PASS DualTicker_Store_aapl_data_key\n\u2705 PASS DualTicker_Store_msft_data_key\n\u2705 PASS DualTicker_Store_portfolio_manager_key\n\u2705 PASS DualTicker_Store_dual_ticker_db_password\n\u2705 PASS DualTicker_Store_correlation_service_key\n\u274c FAIL DualTicker_Retrieve_aapl_data_key\n\u274c FAIL DualTicker_Retrieve_msft_data_key\n\u274c FAIL DualTicker_Retrieve_portfolio_manager_key\n\u274c FAIL DualTicker_Retrieve_dual_ticker_db_password\n\u274c FAIL DualTicker_Retrieve_correlation_service_key\n\n\ud83d\udccb RISK MANAGEMENT: Integration Testing\n============================================================\n\u2705 PASS Risk_Store_risk_db_password\n\u2705 PASS Risk_Store_var_calculator_key\n\u2705 PASS Risk_Store_stress_test_key\n\u2705 PASS Risk_Store_compliance_reporting_key\n\u2705 PASS Risk_Store_circuit_breaker_config\n\u274c FAIL Risk_Integration_risk_db_password\n\u274c FAIL Risk_Integration_var_calculator_key\n\u274c FAIL Risk_Integration_stress_test_key\n\u274c FAIL Risk_Integration_compliance_reporting_key\n\u274c FAIL Risk_Integration_circuit_breaker_config\n\n\ud83d\udccb BACKUP & FAILOVER: Resilience Testing\n============================================================\n\u274c FAIL Fallback_Environment\n\u2705 PASS Fallback_Missing_Secret\n\n\ud83d\udccb TRADING PIPELINE: Complete Workflow Simulation\n============================================================\n\u2705 PASS Pipeline_Setup_ib_paper_account\n\u2705 PASS Pipeline_Setup_timescaledb_password\n\u2705 PASS Pipeline_Setup_aapl_data_source\n\u2705 PASS Pipeline_Setup_msft_data_source\n\u2705 PASS Pipeline_Setup_risk_engine_key\n\u2705 PASS Pipeline_Setup_portfolio_optimizer\n\u2705 PASS Pipeline_Init_database\n\u274c FAIL Pipeline_Init_ib_credentials\n\u274c FAIL Pipeline_Init_data_sources\n\u274c FAIL Pipeline_Init_risk_management\n\u2705 PASS Pipeline_Init_alerts\n\u274c FAIL Pipeline_Complete_Readiness\n\n\ud83d\udccb PERFORMANCE: Load Testing for Trading\n============================================================\n\u2705 PASS Performance_Load_Test\n\u2705 PASS Performance_Concurrent_Access\n\n\ud83d\udccb EXISTING ITS: Component Integration\n============================================================\n\u2705 PASS ITS_FeatureStore_Config\n\u2705 PASS ITS_RiskAgent_Config\n\u2705 PASS ITS_Orchestrator_Config\n\u274c FAIL ITS_DataAgent_Sources\n\n================================================================================\n\ud83d\udcca TRADING INTEGRATION VALIDATION REPORT\n================================================================================\n\ud83d\udcc8 TRADING INTEGRATION SUMMARY:\n   Total Tests: 63\n   Passed: 41 \u2705\n   Failed: 22 \u274c\n   Success Rate: 65.1%\n\n\u274c FAILED INTEGRATION TESTS (22):\n   - Retrieve_Trading_ib_api_key: \n   - Retrieve_Trading_ib_username: \n   - Retrieve_Trading_ib_password: \n   - Retrieve_Trading_broker_api_key: \n   - Retrieve_Trading_alpha_vantage_key: \n   - Retrieve_Trading_yahoo_finance_key: \n   - DualTicker_Retrieve_aapl_data_key: \n   - DualTicker_Retrieve_msft_data_key: \n   - DualTicker_Retrieve_portfolio_manager_key: \n   - DualTicker_Retrieve_dual_ticker_db_password: \n   - DualTicker_Retrieve_correlation_service_key: \n   - Risk_Integration_risk_db_password: \n   - Risk_Integration_var_calculator_key: \n   - Risk_Integration_stress_test_key: \n   - Risk_Integration_compliance_reporting_key: \n   - Risk_Integration_circuit_breaker_config: \n   - Fallback_Environment: \n   - Pipeline_Init_ib_credentials: \n   - Pipeline_Init_data_sources: \n   - Pipeline_Init_risk_management: \n   - Pipeline_Complete_Readiness: \n   - ITS_DataAgent_Sources: \n\n\ud83d\udccb COMPONENT-SPECIFIC ANALYSIS:\n   \u2705 Database: 4/4 (100.0%)\n   \u274c Trading: 7/13 (53.8%)\n   \u274c Risk: 5/10 (50.0%)\n   \u274c Pipeline: 8/12 (66.7%)\n   \u26a0\ufe0f ITS: 5/6 (83.3%)\n\n\ud83c\udfaf TRADING SYSTEM READINESS:\n   \u274c NOT READY - Critical integration failures\n\n\ud83d\ude80 DEPLOYMENT RECOMMENDATION:\n   \u274c DO NOT DEPLOY - Major integration failures\n\n\ud83d\udcbe Detailed report saved to: /home/cristian/IntradayTrading/ITS/TRADING_INTEGRATION_REPORT.json\n",
+      "stderr": "",
+      "success": false,
+      "timestamp": 1753591827.3148534,
+      "detailed_results": {
+        "total_tests": 47,
+        "passed": 47,
+        "failed": 0,
+        "success_rate": 100.0,
+        "results": {
+          "Phase1_Basic_Imports": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.6804557
+          },
+          "Phase1_Encryption_Works": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.803448
+          },
+          "Phase1_Decryption_Works": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.3090913
+          },
+          "Phase1_Wrong_Password_Fails": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4135017
+          },
+          "Phase1_Local_Store": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4175107
+          },
+          "Phase1_Local_Retrieve": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.41911
+          },
+          "Phase1_Local_List": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.419216
+          },
+          "Phase1_Local_Delete": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4206388
+          },
+          "Phase2_Protocol_store": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.420691
+          },
+          "Phase2_Protocol_retrieve": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4206927
+          },
+          "Phase2_Protocol_delete": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4206934
+          },
+          "Phase2_Protocol_list_keys": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4206946
+          },
+          "Phase2_Protocol_exists": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4206955
+          },
+          "Phase2_Datetime_Serialization": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4207268
+          },
+          "Phase2_Enum_Serialization": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4207277
+          },
+          "Phase3_AWS_Backend_Import": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4207323
+          },
+          "Phase3_Azure_Backend_Import": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4207342
+          },
+          "Phase3_Vault_Backend_Import": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.420736
+          },
+          "Phase3_CLI_Import": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4243865
+          },
+          "Phase3_CLI_set_secret": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4243896
+          },
+          "Phase3_CLI_get_secret": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4243908
+          },
+          "Phase3_CLI_list_secrets": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4243922
+          },
+          "Phase3_CLI_delete_secret": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.424393
+          },
+          "Phase3_MultiCloud_Import": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.43108
+          },
+          "Phase3_MultiCloud_Class": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4310844
+          },
+          "Phase4_ITS_Integration_Import": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4310892
+          },
+          "Phase4_Database_Config": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4323835
+          },
+          "Phase4_Secret_Fallback": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4325104
+          },
+          "Phase4_DB_Config_Type": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.432726
+          },
+          "Phase4_Alert_Config_Type": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4328554
+          },
+          "Phase4_Alert_Config_Keys": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.4328573
+          },
+          "E2E_Store_ib_api_key": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.5386512
+          },
+          "E2E_Store_db_password": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.6450086
+          },
+          "E2E_Store_slack_webhook": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.7517486
+          },
+          "E2E_Store_pagerduty_key": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.8608384
+          },
+          "E2E_Retrieve_ib_api_key": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591821.9677694
+          },
+          "E2E_Retrieve_db_password": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.0746164
+          },
+          "E2E_Retrieve_slack_webhook": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.1805599
+          },
+          "E2E_Retrieve_pagerduty_key": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.2874415
+          },
+          "E2E_Secret_Rotation": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.3960516
+          },
+          "E2E_Rotation_Verify": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.5054274
+          },
+          "Security_No_Deterministic_Encryption": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.7246945
+          },
+          "Security_Empty_String_Handling": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591822.94223
+          },
+          "Security_Long_Password_Handling": {
+            "passed": true,
+            "details": "",
+            "timestamp": 1753591823.154201
+          },
+          "Performance_Encryption_Speed": {
+            "passed": true,
+            "details": "Encryption took 108.79ms",
+            "timestamp": 1753591823.2630138
+          },
+          "Performance_Decryption_Speed": {
+            "passed": true,
+            "details": "Decryption took 105.58ms",
+            "timestamp": 1753591823.368611
+          },
+          "Performance_Bulk_Operations": {
+            "passed": true,
+            "details": "10 encryptions took 1.08s",
+            "timestamp": 1753591824.4477146
+          }
+        }
+      }
+    }
+  },
+  "executive_summary": "\n\ud83c\udfaf SECRETS MANAGEMENT SYSTEM - EXECUTIVE VALIDATION REPORT\n=========================================================\n\n\ud83d\udcca OVERALL RESULTS:\n   \u2022 Test Suites: 1/2 passed (50.0%)\n   \u2022 Individual Tests: 94/94 passed (100.0%)\n   \u2022 Execution Time: 4.9 seconds\n\n\ud83c\udf96\ufe0f READINESS ASSESSMENT: STAGING_READY\n   \u2022 Recommendation: DEPLOY TO STAGING FIRST\n   \u2022 Confidence Level: MEDIUM\n\n\ud83d\udccb DETAILED SUITE RESULTS:\n   \u2705 PASS Core_Secrets_Management\n   \u274c FAIL Trading_System_Integration\n      Exit Code: 3\n\n\ud83d\udd0d KEY FINDINGS:\n\n\ud83d\udd75\ufe0f PROGRAMMER TRUST ASSESSMENT: TRUSTWORTHY - All claimed features verified\n\n\ud83d\ude80 FINAL RECOMMENDATION:\n   DEPLOY TO STAGING FIRST\n   \u2022 System needs significant work before production\n   \u2022 Test thoroughly in staging environment\n   \u2022 Address critical failures before proceeding\n",
+  "generated_at": 1753591827.315043
+}

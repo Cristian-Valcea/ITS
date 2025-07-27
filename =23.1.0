@@ -1,0 +1,35 @@
+Collecting pydantic
+  Downloading pydantic-2.11.7-py3-none-any.whl.metadata (67 kB)
+Collecting click
+  Downloading click-8.2.1-py3-none-any.whl.metadata (2.5 kB)
+Collecting PyYAML
+  Downloading PyYAML-6.0.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (2.1 kB)
+Requirement already satisfied: cryptography in /home/cristian/trading-stack/.venv/lib/python3.10/site-packages (45.0.5)
+Collecting argon2-cffi
+  Downloading argon2_cffi-25.1.0-py3-none-any.whl.metadata (4.1 kB)
+Collecting annotated-types>=0.6.0 (from pydantic)
+  Downloading annotated_types-0.7.0-py3-none-any.whl.metadata (15 kB)
+Collecting pydantic-core==2.33.2 (from pydantic)
+  Downloading pydantic_core-2.33.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.8 kB)
+Collecting typing-extensions>=4.12.2 (from pydantic)
+  Downloading typing_extensions-4.14.1-py3-none-any.whl.metadata (3.0 kB)
+Collecting typing-inspection>=0.4.0 (from pydantic)
+  Downloading typing_inspection-0.4.1-py3-none-any.whl.metadata (2.6 kB)
+Requirement already satisfied: cffi>=1.14 in /home/cristian/trading-stack/.venv/lib/python3.10/site-packages (from cryptography) (1.17.1)
+Collecting argon2-cffi-bindings (from argon2-cffi)
+  Downloading argon2_cffi_bindings-21.2.0-cp36-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.7 kB)
+Requirement already satisfied: pycparser in /home/cristian/trading-stack/.venv/lib/python3.10/site-packages (from cffi>=1.14->cryptography) (2.22)
+Downloading pydantic-2.11.7-py3-none-any.whl (444 kB)
+Downloading pydantic_core-2.33.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.0/2.0 MB 3.7 MB/s eta 0:00:00
+Downloading click-8.2.1-py3-none-any.whl (102 kB)
+Downloading PyYAML-6.0.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (751 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 751.2/751.2 kB 4.1 MB/s eta 0:00:00
+Downloading argon2_cffi-25.1.0-py3-none-any.whl (14 kB)
+Downloading annotated_types-0.7.0-py3-none-any.whl (13 kB)
+Downloading typing_extensions-4.14.1-py3-none-any.whl (43 kB)
+Downloading typing_inspection-0.4.1-py3-none-any.whl (14 kB)
+Downloading argon2_cffi_bindings-21.2.0-cp36-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (86 kB)
+Installing collected packages: typing-extensions, PyYAML, click, annotated-types, typing-inspection, pydantic-core, argon2-cffi-bindings, pydantic, argon2-cffi
+
+Successfully installed PyYAML-6.0.2 annotated-types-0.7.0 argon2-cffi-25.1.0 argon2-cffi-bindings-21.2.0 click-8.2.1 pydantic-2.11.7 pydantic-core-2.33.2 typing-extensions-4.14.1 typing-inspection-0.4.1
