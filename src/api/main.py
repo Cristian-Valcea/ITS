@@ -27,6 +27,7 @@ from src.execution.orchestrator_agent import OrchestratorAgent
 from src.shared.duckdb_manager import close_all_duckdb_connections
 from src.shared.feature_store import reset_feature_store
 from src.api.monitoring import router as monitoring_router
+from src.api.live_monitoring import router as live_monitoring_router
 
 # Prometheus metrics endpoint support
 try:
@@ -601,6 +602,7 @@ app.include_router(router, prefix="/orchestrator")
 
 # Include dual-ticker monitoring endpoints
 app.include_router(monitoring_router)
+app.include_router(live_monitoring_router)
 print("✅ Dual-ticker monitoring endpoints enabled at /monitoring/*")
 
 # Include FeatureStore monitoring endpoints if available
