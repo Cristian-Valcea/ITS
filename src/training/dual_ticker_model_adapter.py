@@ -245,6 +245,25 @@ class DualTickerModelAdapter:
         4. Zero out MSFT-specific action weights for neutral start
         """
         
+        # 🔧 REVIEWER FIX: Validate feature alignment before transfer
+        base_features = getattr(self.base_model, 'feature_names', None)
+        new_features = getattr(new_model, 'feature_names', None)
+        
+        if base_features is not None and new_features is not None:
+            # Extract base features (first 13 should match NVDA features in dual-ticker)
+            expected_nvda_features = new_features[:13] if len(new_features) >= 13 else []
+            if len(base_features) >= 13 and len(expected_nvda_features) == 13:
+                assert base_features == expected_nvda_features, (
+                    f"Feature mismatch! Base model features {base_features} != "
+                    f"Expected NVDA features {expected_nvda_features}. "
+                    f"Feature order changed - weight transfer unsafe!"
+                )
+                self.logger.info("✅ Feature alignment validated for safe weight transfer")
+            else:
+                self.logger.warning("⚠️ Could not validate feature alignment - proceeding with caution")
+        else:
+            self.logger.warning("⚠️ Feature names not available - skipping alignment check")
+        
         # Use debug level for CI to reduce log noise
         self.logger.debug("🔧 Starting enhanced weight transfer...")
         

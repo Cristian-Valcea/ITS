@@ -68,6 +68,7 @@ jobs:
         pip install pytest pytest-cov pytest-xdist pytest-asyncio
         pip install psycopg2-binary  # For TimescaleDB connection
         pip install black flake8 mypy  # Code quality tools
+        pip install yamllint  # 🔧 REVIEWER FIX: YAML validation
         
     - name: Code formatting check (Black)
       run: |
@@ -86,6 +87,15 @@ jobs:
           exit 1
         }
         echo "✅ Linting checks passed!"
+
+    - name: YAML validation (yamllint)
+      run: |
+        echo "📝 Validating YAML configuration files..."
+        yamllint config/ --config-data '{extends: default, rules: {line-length: {max: 120}}}' || {
+          echo "❌ YAML validation failed. Fix indentation/syntax issues above."
+          exit 1
+        }
+        echo "✅ YAML validation passed!"
 
     - name: Set memory limits for CI
       run: |
@@ -365,6 +375,16 @@ jobs:
         name: html-coverage-report
         path: htmlcov/
         retention-days: 14
+        
+    - name: Upload coverage report for review verification
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: pytest-cov-html-report
+        path: |
+          htmlcov/
+          coverage.xml
+        retention-days: 30
 
   compatibility-check:
     runs-on: ubuntu-latest

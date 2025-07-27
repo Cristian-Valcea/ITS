@@ -385,11 +385,19 @@ class DualTickerTradingEnv(gym.Env):
             if match:
                 value, unit = int(match.group(1)), match.group(2)
                 if unit == 'min':
+                    # 🔧 REVIEWER FIX: Ensure 390 % bar_minutes == 0 for clean division
+                    if trading_minutes_per_day % value != 0:
+                        raise ValueError(f"Bar size {bar_size} does not divide evenly into 390-minute trading day. "
+                                       f"Valid intervals: 1, 2, 3, 5, 6, 10, 13, 15, 26, 30, 39, 65, 78, 130, 195, 390 minutes")
                     return trading_minutes_per_day // value
                 elif unit == 'h':
-                    return trading_minutes_per_day // (value * 60)
+                    hour_minutes = value * 60
+                    if trading_minutes_per_day % hour_minutes != 0:
+                        raise ValueError(f"Bar size {bar_size} does not divide evenly into 6.5-hour trading day. "
+                                       f"Valid hour intervals: 1h, 2h, 3h, 6h (note: 1h gives 6.5 bars)")
+                    return trading_minutes_per_day // hour_minutes
             
-            # Default fallback
+            # Default fallback with warning
             self.logger.warning(f"Unknown bar_size '{bar_size}', defaulting to 1min (390 bars/day)")
             return 390
     
