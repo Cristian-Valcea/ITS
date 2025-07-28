@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 # Import training components
 from sb3_contrib import RecurrentPPO
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 
 # Import our dual-ticker components
@@ -137,17 +137,23 @@ def create_training_environment():
     )
     big_msft_data = np.random.randn(big_n_periods, 12).astype(np.float32)
     
-    # Create the dual-ticker environment with much larger dataset
+    # Create the dual-ticker environment with OPTIMIZED FRICTION PARAMETERS
     env = DualTickerTradingEnv(
         nvda_data=big_nvda_data,
         msft_data=big_msft_data,
         nvda_prices=big_nvda_prices,
         msft_prices=big_msft_prices,
         trading_days=big_trading_days,
-        initial_capital=10000,
-        tc_bp=1.0,  # 1 basis point
-        reward_scaling=0.01,
-        max_daily_drawdown_pct=0.95  # Almost never terminate on drawdown
+        initial_capital=100000,  # Increased capital for better tracking
+        tc_bp=5.0,              # 🔧 OPTIMIZED: 5x higher transaction costs
+        trade_penalty_bp=10.0,  # 🔧 OPTIMIZED: High trade penalty
+        turnover_bp=2.0,        # 🔧 OPTIMIZED: Turnover penalty enabled
+        hold_action_bonus=0.01, # 🔧 OPTIMIZED: Bonus for holding
+        action_repeat_penalty=0.002, # 🔧 OPTIMIZED: Penalty for action changes
+        daily_trade_limit=50,   # 🔧 OPTIMIZED: Reduced daily limit
+        reward_scaling=0.1,     # 🔧 OPTIMIZED: Better reward scaling
+        max_daily_drawdown_pct=0.02,  # 🔧 OPTIMIZED: Stricter drawdown limit
+        log_trades=False        # Reduce logging spam
     )
     
     logger.info(f"✅ Environment created - observation space: {env.observation_space}")
@@ -177,14 +183,14 @@ def create_model(env):
         env,
         verbose=1,
         tensorboard_log=f"logs/dual_ticker_50k_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        learning_rate=3e-4,
+        learning_rate=1.5e-4,  # 🔧 HALVED from 3e-4 to slow optimizer
         n_steps=2048,
         batch_size=64,
         n_epochs=10,
         gamma=0.99,
         gae_lambda=0.95,
-        clip_range=0.2,
-        ent_coef=0.01,
+        clip_range=0.1,        # 🔧 REDUCED from 0.2 to prevent KL racing
+        ent_coef=0.01,         # 🔧 ENTROPY BONUS to maintain exploration
         device="auto"  # Use GPU if available
     )
     
@@ -219,6 +225,14 @@ def main():
         train_env = create_training_environment()
         vec_env = DummyVecEnv([lambda: train_env])
         
+        # 🔧 STEP 1.5: Add VecNormalize for reward normalization
+        vec_env = VecNormalize(
+            vec_env, 
+            norm_obs=False,      # Don't normalize observations (features are already scaled)
+            norm_reward=True,    # Normalize rewards for better learning
+            clip_reward=10.0     # Clip extreme rewards
+        )
+        
         # Step 2: Create model
         model = create_model(vec_env)
         
@@ -236,15 +250,20 @@ def main():
             reset_num_timesteps=True
         )
         
-        # Step 5: Save final model
-        final_model_path = f"models/dual_ticker_50k_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        # Step 5: Save final model and VecNormalize
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        final_model_path = f"models/dual_ticker_50k_{timestamp}.zip"
+        vecnorm_path = f"models/dual_ticker_50k_{timestamp}_vecnormalize.pkl"
+        
         model.save(final_model_path)
+        vec_env.save(vecnorm_path)  # Save VecNormalize statistics
         
         end_time = datetime.now()
         training_duration = end_time - start_time
         
         logger.info("✅ Training completed successfully!")
         logger.info(f"💾 Final model saved: {final_model_path}")
+        logger.info(f"📊 VecNormalize saved: {vecnorm_path}")
         logger.info(f"⏱️ Training duration: {training_duration}")
         logger.info(f"🔥 Average steps/second: {50000 / training_duration.total_seconds():.1f}")
         

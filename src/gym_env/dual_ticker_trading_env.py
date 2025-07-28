@@ -23,6 +23,9 @@ import logging
 import torch
 from typing import Optional, Dict, Any, Tuple, List
 
+# Import turnover penalty calculator
+from src.gym_env.components.turnover_penalty import TurnoverPenaltyCalculator
+
 
 class DualTickerTradingEnv(gym.Env):
     """
@@ -91,10 +94,18 @@ class DualTickerTradingEnv(gym.Env):
                  msft_prices: pd.Series,          # MSFT close prices
                  trading_days: pd.DatetimeIndex,  # 🔧 SHARED INDEX
                  initial_capital: float = 100000.0,
-                 tc_bp: float = 1.0,              # 🔧 TRANSACTION COST BASIS POINTS
-                 reward_scaling: float = 0.01,    # 🔧 REWARD SCALING (PPO-tuned)
+                 tc_bp: float = 2.0,              # 🔧 TRANSACTION COST BASIS POINTS (wider spreads during earnings)
+                 trade_penalty_bp: float = 5.0,   # 🔧 ADDITIONAL PENALTY FOR OVER-TRADING (aggressive friction)
+                 turnover_bp: float = 1.0,        # 🔧 TURNOVER PENALTY (rolling 30-step window)
+                 hold_action_bonus: float = 0.01, # 🔧 BONUS FOR HOLDING POSITIONS
+                 action_repeat_penalty: float = 0.002, # 🔧 PENALTY FOR CHANGING ACTIONS
+                 high_water_mark_reward: float = 0.001, # 🔧 HIGH-WATER MARK: Reward staying above peak
+                 reward_scaling: float = 0.1,     # 🔧 REWARD SCALING (10x increase for better learning)
                  bar_size: str = '1min',          # 🔧 CONFIGURABLE BAR SIZE
-                 max_daily_drawdown_pct: float = 0.02,
+                 max_daily_drawdown_pct: float = 0.02,  # Legacy parameter (kept for compatibility)
+                 training_drawdown_pct: float = 0.07,    # 🔧 TRAINING: Allow 7% drawdown for exploration
+                 evaluation_drawdown_pct: float = 0.02,  # 🔧 EVALUATION: Strict 2% for risk control
+                 is_training: bool = True,               # 🔧 MODE FLAG: True=training, False=evaluation
                  log_trades: bool = True,
                  **kwargs):
         
@@ -117,11 +128,19 @@ class DualTickerTradingEnv(gym.Env):
         
         # Environment parameters
         self.initial_capital = initial_capital
-        self.max_daily_drawdown_pct = max_daily_drawdown_pct
+        self.max_daily_drawdown_pct = max_daily_drawdown_pct  # Legacy (kept for compatibility)
+        self.training_drawdown_pct = training_drawdown_pct    # 🔧 TRAINING: 7% exploration limit
+        self.evaluation_drawdown_pct = evaluation_drawdown_pct # 🔧 EVALUATION: 2% risk limit
+        self.is_training = is_training                        # 🔧 MODE FLAG
         self.log_trades = log_trades
         
         # 🔧 CONFIGURABLE TRANSACTION COSTS
         self.tc_bp = tc_bp / 10000.0  # Convert basis points to decimal
+        self.trade_penalty_bp = trade_penalty_bp / 10000.0  # Additional over-trading penalty
+        self.turnover_bp = turnover_bp / 10000.0  # Turnover penalty
+        self.hold_action_bonus = hold_action_bonus  # Bonus for holding
+        self.action_repeat_penalty = action_repeat_penalty  # Penalty for action changes
+        self.high_water_mark_reward = high_water_mark_reward  # 🔧 HIGH-WATER MARK reward coefficient
         
         # 🔧 CONFIGURABLE BAR SIZE & SCALING
         self.bar_size = bar_size
@@ -158,6 +177,25 @@ class DualTickerTradingEnv(gym.Env):
         self.logger = logging.getLogger(f"{__name__}.DualTickerEnv")
         if self.log_trades:
             self.trade_log = []
+        
+        # 🔧 TURNOVER PENALTY CALCULATOR (rolling 30-step window)
+        if self.turnover_bp > 0:
+            # Create a quiet logger for turnover penalty (reduce spam)
+            turnover_logger = logging.getLogger(f"{__name__}.TurnoverPenalty")
+            turnover_logger.setLevel(logging.WARNING)  # Only show warnings/errors
+            
+            self.turnover_calculator = TurnoverPenaltyCalculator(
+                portfolio_value_getter=lambda: self.portfolio_value,
+                episode_length_getter=lambda: 30,  # 30-step rolling window
+                target_ratio=0.02,  # 2% target turnover
+                weight_factor=self.turnover_bp,  # Use turnover_bp as weight
+                curve_sharpness=25.0,
+                curve="sigmoid",
+                logger=turnover_logger  # Use quiet logger
+            )
+            self.turnover_history = []  # Track position changes for rolling window
+        else:
+            self.turnover_calculator = None
     
     def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None):
         """Reset environment to initial state"""
@@ -174,6 +212,17 @@ class DualTickerTradingEnv(gym.Env):
         self.portfolio_value = self.initial_capital
         self.peak_portfolio_value = self.initial_capital
         self.total_trades = 0
+        
+        # 🔧 DAILY TRADE CAP TRACKING
+        self.trade_count_today = 0
+        self.current_trading_day = None
+        
+        # 🔧 ACTION TRACKING FOR PENALTIES/BONUSES
+        self.prev_action = None
+        
+        # 🔧 RESET TURNOVER HISTORY
+        if self.turnover_calculator:
+            self.turnover_history = []
         
         if self.log_trades:
             self.trade_log = []
@@ -218,8 +267,49 @@ class DualTickerTradingEnv(gym.Env):
         # Track peak for drawdown calculation
         self.peak_portfolio_value = max(self.peak_portfolio_value, self.portfolio_value)
         
-        # Calculate reward
+        # Calculate reward with daily trade cap penalty
         total_reward = portfolio_change * self.reward_scaling
+        
+        # 🔧 DAILY TRADE CAP PENALTY (50 trades/day limit)
+        if self.trade_count_today > 50:
+            trade_cap_penalty = 0.005 * (self.trade_count_today - 50)  # 0.5¢ per extra trade on $100 stock
+            total_reward -= trade_cap_penalty
+        
+        # 🔧 TURNOVER PENALTY (rolling 30-step window)
+        turnover_penalty = 0.0
+        if self.turnover_calculator:
+            # Calculate position changes for this step
+            nvda_change = abs(self.nvda_position - self.prev_nvda_position)
+            msft_change = abs(self.msft_position - self.prev_msft_position)
+            step_turnover = nvda_change + msft_change
+            
+            # Add to rolling history
+            self.turnover_history.append(step_turnover)
+            if len(self.turnover_history) > 30:  # Keep only last 30 steps
+                self.turnover_history.pop(0)
+            
+            # Calculate penalty based on rolling window turnover
+            total_turnover = sum(self.turnover_history)
+            if total_turnover > 0:
+                turnover_penalty = self.turnover_calculator.compute_penalty(total_turnover, self.current_step)
+                total_reward += turnover_penalty  # turnover_penalty is already negative
+        
+        # 🔧 HOLD ACTION BONUS (reward for holding positions)
+        if action == 4:  # HOLD_BOTH action
+            total_reward += self.hold_action_bonus
+        
+        # 🔧 ACTION REPEAT PENALTY (discourage rapid action changes)
+        if self.prev_action is not None and action != self.prev_action:
+            total_reward -= self.action_repeat_penalty
+        
+        # 🔧 HIGH-WATER MARK REWARD (encourage making and keeping gains)
+        if self.peak_portfolio_value > 0:  # Avoid division by zero
+            equity_ratio = self.portfolio_value / self.peak_portfolio_value
+            hwm_reward = self.high_water_mark_reward * (equity_ratio - 1.0)
+            total_reward += hwm_reward
+        
+        # Update previous action
+        self.prev_action = action
         
         # Check for termination conditions
         done = self._check_termination()
@@ -231,15 +321,28 @@ class DualTickerTradingEnv(gym.Env):
         observation = self._get_observation() if not done else np.zeros(26, dtype=np.float32)
         
         # Count trades
+        trades_this_step = 0
         if abs(self.nvda_position - self.prev_nvda_position) > 0:
             self.total_trades += 1
+            trades_this_step += 1
         if abs(self.msft_position - self.prev_msft_position) > 0:
             self.total_trades += 1
+            trades_this_step += 1
+        
+        # 🔧 DAILY TRADE CAP TRACKING (Calendar-based reset)
+        current_date = self.trading_days[self.current_step].date()
+        if not hasattr(self, 'prev_date') or self.prev_date != current_date:
+            # New trading day - reset counter
+            self.trade_count_today = 0
+            self.prev_date = current_date
+        
+        self.trade_count_today += trades_this_step
         
         # 🔧 DETAILED INFO DICT (saves re-computation for tests/tensorboard)
         info = {
             "nvda_pnl": nvda_pnl,
             "msft_pnl": msft_pnl,
+            "transaction_costs": total_cost,  # For backward compatibility
             "total_cost": total_cost,
             "portfolio_change": portfolio_change,
             "nvda_position": self.nvda_position,
@@ -251,6 +354,8 @@ class DualTickerTradingEnv(gym.Env):
             "peak_portfolio_value": self.peak_portfolio_value,
             "drawdown": (self.peak_portfolio_value - self.portfolio_value) / self.peak_portfolio_value,
             "total_trades": self.total_trades,
+            "trade_count_today": self.trade_count_today,  # 🔧 Daily trade tracking
+            "turnover_penalty": turnover_penalty,  # 🔧 Turnover penalty tracking
             "step": self.current_step,
             "trading_day": self.trading_days[self.current_step] if self.current_step < len(self.trading_days) else None,
             "trading_days_index": self.trading_days  # Exposed for downstream alignment
@@ -295,9 +400,12 @@ class DualTickerTradingEnv(gym.Env):
     def _calculate_reward_components(self) -> Tuple[float, float, float]:
         """Calculate individual P&L components"""
         
+        # Calculate transaction costs (always applies when positions change)
+        total_cost = self._calculate_transaction_costs()
+        
         if self.current_step == 0:
-            # No price change on first step
-            return 0.0, 0.0, 0.0
+            # No price change on first step, but transaction costs still apply
+            return 0.0, 0.0, total_cost
         
         # Price changes from previous step
         nvda_price_change = (self.nvda_prices.iloc[self.current_step] - 
@@ -309,19 +417,34 @@ class DualTickerTradingEnv(gym.Env):
         nvda_pnl = self.nvda_position * nvda_price_change
         msft_pnl = self.msft_position * msft_price_change
         
-        # Transaction costs (basis points of price for each trade)
-        nvda_cost = 0.0
-        msft_cost = 0.0
-        
-        if abs(self.nvda_position - self.prev_nvda_position) > 0:
-            nvda_cost = abs(self.nvda_prices.iloc[self.current_step]) * self.tc_bp
-            
-        if abs(self.msft_position - self.prev_msft_position) > 0:
-            msft_cost = abs(self.msft_prices.iloc[self.current_step]) * self.tc_bp
-        
-        total_cost = nvda_cost + msft_cost
-        
         return nvda_pnl, msft_pnl, total_cost
+    
+    def _calculate_transaction_costs(self) -> float:
+        """
+        Calculate transaction costs based on position changes.
+        
+        FIXED: Now correctly charges based on position size changes,
+        not just the stock price per trade.
+        
+        Includes both:
+        1. Standard transaction costs (tc_bp)
+        2. Over-trading penalty (trade_penalty_bp)
+        
+        Returns:
+            float: Total transaction costs for this step
+        """
+        nvda_change = abs(self.nvda_position - self.prev_nvda_position)
+        msft_change = abs(self.msft_position - self.prev_msft_position)
+        
+        # Standard transaction costs
+        nvda_cost = nvda_change * abs(self.nvda_prices.iloc[self.current_step]) * self.tc_bp
+        msft_cost = msft_change * abs(self.msft_prices.iloc[self.current_step]) * self.tc_bp
+        
+        # Additional over-trading penalty
+        trade_penalty = (nvda_change + msft_change) * self.trade_penalty_bp * \
+                       (abs(self.nvda_prices.iloc[self.current_step]) + abs(self.msft_prices.iloc[self.current_step])) / 2
+        
+        return nvda_cost + msft_cost + trade_penalty
     
     def _check_termination(self) -> bool:
         """Check if episode should terminate"""
@@ -330,13 +453,23 @@ class DualTickerTradingEnv(gym.Env):
         if self.current_step >= self.max_steps:
             return True
         
-        # Drawdown limit breach
+        # 🔧 ADAPTIVE DRAWDOWN LIMIT: Training vs Evaluation
         current_drawdown = (self.peak_portfolio_value - self.portfolio_value) / self.peak_portfolio_value
-        if current_drawdown > self.max_daily_drawdown_pct:
-            self.logger.warning(f"Episode terminated: Drawdown {current_drawdown:.3f} > {self.max_daily_drawdown_pct:.3f}")
+        drawdown_limit = self.training_drawdown_pct if self.is_training else self.evaluation_drawdown_pct
+        mode_str = "TRAINING" if self.is_training else "EVALUATION"
+        
+        if current_drawdown > drawdown_limit:
+            self.logger.warning(f"Episode terminated ({mode_str}): Drawdown {current_drawdown:.3f} > {drawdown_limit:.3f}")
             return True
         
         return False
+    
+    def set_training_mode(self, is_training: bool):
+        """🔧 Switch between training and evaluation modes"""
+        self.is_training = is_training
+        mode_str = "TRAINING" if is_training else "EVALUATION"
+        drawdown_limit = self.training_drawdown_pct if is_training else self.evaluation_drawdown_pct
+        self.logger.info(f"🔧 Mode switched to {mode_str} (drawdown limit: {drawdown_limit:.1%})")
     
     def _log_trade(self, action: int, info: Dict):
         """Log trade details"""
