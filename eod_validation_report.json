@@ -1,0 +1,82 @@
+{
+  "trading_date": "2025-07-28",
+  "validation_timestamp": "2025-07-28T19:17:12.058760",
+  "overall_status": "ERROR",
+  "checks": {
+    "market_data_completeness": {
+      "status": "ERROR",
+      "details": {
+        "error": "No database connection"
+      },
+      "timestamp": "2025-07-28T19:17:12.063131"
+    },
+    "data_quality_reports": {
+      "status": "ERROR",
+      "details": {
+        "error": "No database connection"
+      },
+      "timestamp": "2025-07-28T19:17:12.063175"
+    },
+    "system_performance": {
+      "status": "PASS",
+      "details": {
+        "data_freshness": {
+          "latest_file_age_hours": 0.01,
+          "freshness_ok": true,
+          "threshold_hours": 2
+        },
+        "log_analysis": {
+          "error_count": 0,
+          "warning_count": 0,
+          "log_files_checked": 0
+        },
+        "disk_space": {
+          "free_gb": 940.22,
+          "disk_usage_ok": true,
+          "min_free_gb": 1
+        }
+      },
+      "timestamp": "2025-07-28T19:17:12.063207"
+    },
+    "file_integrity": {
+      "status": "PASS",
+      "details": {
+        "raw_data_files": {
+          "total_files": 3,
+          "today_files": 3,
+          "today_size_mb": 0.0,
+          "files": [
+            "polygon_msft_20250728_191607.csv",
+            "polygon_nvda_20250728_191607.csv",
+            "dual_ticker_20250728_191645.csv"
+          ]
+        },
+        "quality_reports": {
+          "total_files": 0,
+          "today_files": 0,
+          "today_size_kb": 0.0,
+          "files": []
+        },
+        "model_files": {
+          "recent_models": 0,
+          "model_files": []
+        }
+      },
+      "timestamp": "2025-07-28T19:17:12.063633"
+    }
+  },
+  "summary": {
+    "total_checks": 4,
+    "status_counts": {
+      "ERROR": 2,
+      "PASS": 2
+    },
+    "pass_rate": 0.5,
+    "execution_time_seconds": 0.008123,
+    "database_connected": false
+  },
+  "recommendations": [
+    "\ud83d\udea8 Fix technical issues in market_data_completeness validation",
+    "\ud83d\udea8 Fix technical issues in data_quality_reports validation"
+  ]
+}

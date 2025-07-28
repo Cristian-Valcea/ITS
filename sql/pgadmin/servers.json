@@ -1,0 +1,36 @@
+{
+    "Servers": {
+        "1": {
+            "Name": "TimescaleDB Primary",
+            "Group": "Trading Infrastructure",
+            "Host": "primary",
+            "Port": 5432,
+            "MaintenanceDB": "trading_data",
+            "Username": "postgres",
+            "UseSSHTunnel": 0,
+            "TunnelPort": "22",
+            "TunnelAuthentication": 0,
+            "KerberosAuthentication": false,
+            "ConnectionParameters": {
+                "sslmode": "prefer",
+                "connect_timeout": 10
+            }
+        },
+        "2": {
+            "Name": "TimescaleDB Replica",
+            "Group": "Trading Infrastructure", 
+            "Host": "replica",
+            "Port": 5432,
+            "MaintenanceDB": "trading_data",
+            "Username": "postgres",
+            "UseSSHTunnel": 0,
+            "TunnelPort": "22",  
+            "TunnelAuthentication": 0,
+            "KerberosAuthentication": false,
+            "ConnectionParameters": {
+                "sslmode": "prefer",
+                "connect_timeout": 10
+            }
+        }
+    }
+}

@@ -112,10 +112,7 @@ class DualTickerDataAdapter:
             query = f"""
             SELECT 
                 timestamp,
-                open, high, low, close, volume,
-                rsi, ema_short, ema_long, vwap, 
-                volatility, momentum, time_sin, time_cos,
-                volume_sma, price_change, returns
+                open, high, low, close, volume
             FROM market_data 
             WHERE symbol = %s 
             AND timestamp >= %s 
@@ -130,7 +127,10 @@ class DualTickerDataAdapter:
             df['timestamp'] = pd.to_datetime(df['timestamp'])
             df.set_index('timestamp', inplace=True)
             
-            self.logger.info(f"📊 Loaded {len(df)} rows for {symbol}")
+            # Calculate technical indicators
+            df = self._add_technical_indicators(df)
+            
+            self.logger.info(f"📊 Loaded {len(df)} rows for {symbol} with technical indicators")
             return df
             
         except Exception as e:
@@ -138,6 +138,61 @@ class DualTickerDataAdapter:
             # Fallback to mock data
             self.logger.warning(f"Falling back to mock data for {symbol}")
             return self._generate_mock_data(symbol, start_date, end_date, bar_size)
+    
+    def _add_technical_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add technical indicators to OHLCV data"""
+        
+        if len(df) < 50:  # Need minimum data for indicators
+            # For small datasets, just add simple features
+            df['rsi'] = 50.0  # Neutral RSI
+            df['ema_short'] = df['close']
+            df['ema_long'] = df['close']
+            df['vwap'] = df['close']
+            df['volatility'] = 0.02
+            df['momentum'] = 0.0
+            df['time_sin'] = np.sin(2 * np.pi * np.arange(len(df)) / 252)
+            df['time_cos'] = np.cos(2 * np.pi * np.arange(len(df)) / 252)
+            df['volume_sma'] = df['volume']
+            df['price_change'] = df['close'].diff().fillna(0)
+            df['returns'] = df['close'].pct_change().fillna(0)
+            return df
+        
+        # Calculate RSI (14-period)
+        delta = df['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        df['rsi'] = 100 - (100 / (1 + rs))
+        df['rsi'] = df['rsi'].fillna(50)  # Fill NaN with neutral
+        
+        # EMAs
+        df['ema_short'] = df['close'].ewm(span=12).mean()
+        df['ema_long'] = df['close'].ewm(span=26).mean()
+        
+        # VWAP (approximation)
+        df['vwap'] = (df['close'] * df['volume']).rolling(window=20).sum() / df['volume'].rolling(window=20).sum()
+        df['vwap'] = df['vwap'].fillna(df['close'])
+        
+        # Volatility (20-period rolling std of returns)
+        returns = df['close'].pct_change()
+        df['volatility'] = returns.rolling(window=20).std().fillna(0.02)
+        
+        # Momentum (10-period price change)
+        df['momentum'] = df['close'].pct_change(periods=10).fillna(0)
+        
+        # Time features (day of year cycle)
+        day_of_year = df.index.dayofyear
+        df['time_sin'] = np.sin(2 * np.pi * day_of_year / 365)
+        df['time_cos'] = np.cos(2 * np.pi * day_of_year / 365)
+        
+        # Volume SMA
+        df['volume_sma'] = df['volume'].rolling(window=20).mean().fillna(df['volume'])
+        
+        # Price change and returns
+        df['price_change'] = df['close'].diff().fillna(0)
+        df['returns'] = df['close'].pct_change().fillna(0)
+        
+        return df
     
     def _generate_mock_data(self, symbol: str, start_date: str, end_date: str, bar_size: str = '1min') -> pd.DataFrame:
         """Generate mock market data for testing

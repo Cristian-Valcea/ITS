@@ -1,0 +1,67 @@
+{
+  "timestamp": "2025-07-28T20:09:04.251602",
+  "environment": "ci",
+  "max_missing_threshold": 0.05,
+  "status": "PASS",
+  "checks": {
+    "missing_data_check": {
+      "status": "PASS",
+      "details": {
+        "total_rows": 6,
+        "missing_cells": 0,
+        "total_cells": 42,
+        "missing_pct": 0.0,
+        "threshold": 0.05,
+        "expected_symbols": [
+          "NVDA",
+          "MSFT"
+        ],
+        "actual_symbols": [
+          "MSFT",
+          "NVDA"
+        ],
+        "missing_symbols": []
+      }
+    },
+    "ohlc_validation": {
+      "status": "PASS",
+      "details": {
+        "total_bars": 6,
+        "total_violations": 0,
+        "violation_pct": 0.0,
+        "breakdown": {
+          "high_lt_low": 0,
+          "high_lt_open": 0,
+          "high_lt_close": 0,
+          "low_gt_open": 0,
+          "low_gt_close": 0
+        }
+      }
+    },
+    "dual_ticker_sync": {
+      "status": "PASS",
+      "details": {
+        "nvda_timestamps": 3,
+        "msft_timestamps": 3,
+        "common_timestamps": 3,
+        "total_unique_timestamps": 3,
+        "sync_pct": 1.0,
+        "sync_threshold": 0.8
+      }
+    }
+  },
+  "summary": {
+    "total_checks": 3,
+    "passed_checks": 3,
+    "failed_checks": 0,
+    "pass_rate": 1.0
+  },
+  "pipeline_action": "CONTINUE",
+  "data_source": {
+    "file_path": "raw/dual_ticker_20250728_200757.csv",
+    "file_size_bytes": 498,
+    "modification_time": "2025-07-28T20:07:57.739720",
+    "total_rows": 6
+  },
+  "execution_time_seconds": 0.003796
+}

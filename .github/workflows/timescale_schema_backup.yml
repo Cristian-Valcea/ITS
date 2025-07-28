@@ -1,0 +1,275 @@
+name: TimescaleDB Schema Backup
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allow manual trigger
+  push:
+    branches: [ main ]
+    paths:
+      - 'sql/**'
+      - 'scripts/timescale_manager.sh'
+      - 'docker-compose.timescale.yml'
+
+env:
+  TIMESCALE_PASSWORD: ${{ secrets.TIMESCALE_PASSWORD }}
+  PGADMIN_PASSWORD: ${{ secrets.PGADMIN_PASSWORD }}
+
+jobs:
+  schema-backup:
+    runs-on: ubuntu-latest
+    
+    services:
+      timescaledb:
+        image: timescale/timescaledb:2.14.2-pg14
+        env:
+          POSTGRES_DB: trading_data
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test_password_for_ci
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Wait for TimescaleDB
+      run: |
+        echo "Waiting for TimescaleDB to be ready..."
+        for i in {1..30}; do
+          if pg_isready -h localhost -p 5432 -U postgres; then
+            echo "TimescaleDB is ready!"
+            break
+          fi
+          echo "Attempt $i: TimescaleDB not ready, waiting..."
+          sleep 2
+        done
+        
+    - name: Initialize TimescaleDB
+      run: |
+        export PGPASSWORD=test_password_for_ci
+        psql -h localhost -p 5432 -U postgres -d trading_data -f sql/init/01_init_timescaledb.sql
+        
+    - name: Verify schema creation  
+      run: |
+        export PGPASSWORD=test_password_for_ci
+        echo "Checking created tables..."
+        psql -h localhost -p 5432 -U postgres -d trading_data -c "
+          SELECT schemaname, tablename 
+          FROM pg_tables 
+          WHERE schemaname IN ('trading', 'analytics', 'monitoring')
+          ORDER BY schemaname, tablename;
+        "
+        
+        echo "Checking hypertables..."
+        psql -h localhost -p 5432 -U postgres -d trading_data -c "
+          SELECT hypertable_schema, hypertable_name, num_dimensions 
+          FROM timescaledb_information.hypertables;
+        "
+        
+    - name: Backup schema
+      run: |
+        export PGPASSWORD=test_password_for_ci
+        timestamp=$(date +%Y%m%d_%H%M%S)
+        
+        echo "Creating schema backup..."
+        pg_dump -h localhost -p 5432 -U postgres -d trading_data \
+          --schema-only \
+          --no-owner \
+          --no-privileges \
+          --clean \
+          --if-exists \
+          > "sql/schema/schema_${timestamp}.sql"
+          
+        # Create latest symlink
+        cd sql/schema
+        ln -sf "schema_${timestamp}.sql" schema_latest.sql
+        
+        echo "Schema backup created: schema_${timestamp}.sql"
+        
+    - name: Generate schema documentation
+      run: |
+        export PGPASSWORD=test_password_for_ci
+        timestamp=$(date +%Y%m%d_%H%M%S)
+        
+        echo "# TimescaleDB Schema Documentation" > "sql/schema/README_${timestamp}.md"
+        echo "Generated: $(date)" >> "sql/schema/README_${timestamp}.md"
+        echo "" >> "sql/schema/README_${timestamp}.md"
+        
+        echo "## Database Version" >> "sql/schema/README_${timestamp}.md"
+        psql -h localhost -p 5432 -U postgres -d trading_data -t -c "SELECT version();" >> "sql/schema/README_${timestamp}.md"
+        
+        echo "" >> "sql/schema/README_${timestamp}.md"
+        echo "## TimescaleDB Version" >> "sql/schema/README_${timestamp}.md"
+        psql -h localhost -p 5432 -U postgres -d trading_data -t -c "SELECT extversion FROM pg_extension WHERE extname='timescaledb';" >> "sql/schema/README_${timestamp}.md"
+        
+        echo "" >> "sql/schema/README_${timestamp}.md"
+        echo "## Tables" >> "sql/schema/README_${timestamp}.md"
+        echo "| Schema | Table | Type |" >> "sql/schema/README_${timestamp}.md"
+        echo "|--------|-------|------|" >> "sql/schema/README_${timestamp}.md"
+        
+        psql -h localhost -p 5432 -U postgres -d trading_data -t -c "
+          SELECT 
+            schemaname || ' | ' || tablename || ' | Table |'
+          FROM pg_tables 
+          WHERE schemaname IN ('trading', 'analytics', 'monitoring')
+          ORDER BY schemaname, tablename;
+        " >> "sql/schema/README_${timestamp}.md"
+        
+        echo "" >> "sql/schema/README_${timestamp}.md"
+        echo "## Hypertables" >> "sql/schema/README_${timestamp}.md"
+        echo "| Schema | Table | Dimensions | Chunks |" >> "sql/schema/README_${timestamp}.md"
+        echo "|--------|-------|------------|--------|" >> "sql/schema/README_${timestamp}.md"
+        
+        psql -h localhost -p 5432 -U postgres -d trading_data -t -c "
+          SELECT 
+            hypertable_schema || ' | ' || hypertable_name || ' | ' || 
+            num_dimensions || ' | ' || num_chunks || ' |'
+          FROM timescaledb_information.hypertables
+          ORDER BY hypertable_schema, hypertable_name;
+        " >> "sql/schema/README_${timestamp}.md"
+        
+        # Create latest documentation symlink
+        cd sql/schema
+        ln -sf "README_${timestamp}.md" README_latest.md
+        
+    - name: Validate schema
+      run: |
+        export PGPASSWORD=test_password_for_ci
+        
+        echo "Validating schema integrity..."
+        
+        # Check required tables exist
+        required_tables=("trading.market_data" "trading.data_quality_reports" "trading.orders" "trading.positions")
+        
+        for table in "${required_tables[@]}"; do
+          count=$(psql -h localhost -p 5432 -U postgres -d trading_data -t -c "
+            SELECT COUNT(*) FROM information_schema.tables 
+            WHERE table_schema = '$(echo $table | cut -d. -f1)' 
+            AND table_name = '$(echo $table | cut -d. -f2)';
+          ")
+          
+          if [ "$(echo $count | tr -d ' ')" = "1" ]; then
+            echo "✅ Table $table exists"
+          else
+            echo "❌ Table $table missing"
+            exit 1
+          fi
+        done
+        
+        # Check hypertables are properly configured
+        hypertables=$(psql -h localhost -p 5432 -U postgres -d trading_data -t -c "
+          SELECT COUNT(*) FROM timescaledb_information.hypertables;
+        ")
+        
+        if [ "$(echo $hypertables | tr -d ' ')" -ge "4" ]; then
+          echo "✅ Hypertables configured correctly"
+        else
+          echo "❌ Missing hypertables"
+          exit 1
+        fi
+        
+        echo "Schema validation passed!"
+        
+    - name: Commit schema changes
+      if: github.event_name != 'pull_request'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # Add schema files
+        git add sql/schema/
+        
+        # Check if there are changes
+        if git diff --staged --quiet; then
+          echo "No schema changes detected"
+        else
+          timestamp=$(date +%Y%m%d_%H%M%S)
+          git commit -m "📊 Automated schema backup - ${timestamp}
+
+          - Updated schema backup from CI
+          - Generated documentation  
+          - Schema validation passed
+          
+          🤖 Automated by GitHub Actions"
+          
+          git push
+          echo "Schema changes committed and pushed"
+        fi
+        
+    - name: Upload schema artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: timescale-schema-backup
+        path: |
+          sql/schema/schema_*.sql
+          sql/schema/README_*.md
+        retention-days: 30
+        
+    - name: Check schema size
+      run: |
+        schema_size=$(wc -l < sql/schema/schema_latest.sql)
+        echo "Schema size: $schema_size lines"
+        
+        if [ "$schema_size" -lt 50 ]; then
+          echo "⚠️ Schema seems unusually small"
+        elif [ "$schema_size" -gt 10000 ]; then
+          echo "⚠️ Schema seems unusually large"  
+        else
+          echo "✅ Schema size looks normal"
+        fi
+
+  test-restore:
+    needs: schema-backup
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download schema backup
+      uses: actions/download-artifact@v4
+      with:
+        name: timescale-schema-backup
+        path: sql/schema/
+        
+    - name: Start fresh TimescaleDB
+      run: |
+        docker run -d \
+          --name test-timescale \
+          -e POSTGRES_DB=trading_data \
+          -e POSTGRES_USER=postgres \
+          -e POSTGRES_PASSWORD=test_password \
+          -p 5433:5432 \
+          timescale/timescaledb:2.14.2-pg14
+          
+        # Wait for database
+        for i in {1..30}; do
+          if docker exec test-timescale pg_isready -U postgres; then
+            echo "Test TimescaleDB is ready!"
+            break
+          fi
+          echo "Waiting for test database..."
+          sleep 2
+        done
+        
+    - name: Test schema restore
+      run: |
+        echo "Testing schema restore..."
+        
+        docker exec -e PGPASSWORD=test_password test-timescale \
+          psql -U postgres -d trading_data -f /sql/schema/schema_latest.sql
+          
+        echo "✅ Schema restore test passed"
+        
+    - name: Cleanup test database
+      run: |
+        docker stop test-timescale
+        docker rm test-timescale

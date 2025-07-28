@@ -1,0 +1,32 @@
+{
+  "symbol": "MSFT",
+  "data": [
+    {
+      "timestamp": "2025-07-23 19:14:52",
+      "open": 501.16,
+      "high": 504.73,
+      "low": 497.89,
+      "close": 499.82,
+      "volume": 17803533
+    },
+    {
+      "timestamp": "2025-07-24 19:14:52",
+      "open": 517.07,
+      "high": 518.26,
+      "low": 509.28,
+      "close": 509.28,
+      "volume": 22910025
+    },
+    {
+      "timestamp": "2025-07-25 19:14:52",
+      "open": 504.16,
+      "high": 505.79,
+      "low": 497.1,
+      "close": 499.04,
+      "volume": 11418973
+    }
+  ],
+  "count": 3,
+  "source": "mock_generator",
+  "timeframe": "daily"
+}

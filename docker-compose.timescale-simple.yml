@@ -1,0 +1,51 @@
+services:
+  # Primary TimescaleDB instance (simplified for immediate use)
+  primary:
+    image: timescale/timescaledb:2.14.2-pg14
+    container_name: timescaledb_primary
+    environment:
+      POSTGRES_DB: trading_data
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD:-secure_trading_password}
+    command: >
+      postgres
+      -c wal_level=logical
+      -c max_wal_senders=10
+      -c max_replication_slots=10
+      -c max_logical_replication_workers=10
+      -c shared_preload_libraries=timescaledb
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_primary_data:/var/lib/postgresql/data
+      - ./sql/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d trading_data"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # Replica instance (simplified)
+  replica:
+    image: timescale/timescaledb:2.14.2-pg14
+    container_name: timescaledb_replica
+    environment:
+      POSTGRES_DB: trading_data
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD:-secure_trading_password}
+    ports:
+      - "5433:5432"
+    volumes:
+      - timescale_replica_data:/var/lib/postgresql/data
+    depends_on:
+      primary:
+        condition: service_healthy
+    profiles:
+      - replica
+    restart: unless-stopped
+
+volumes:
+  timescale_primary_data: {}
+  timescale_replica_data: {}

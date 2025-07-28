@@ -1,0 +1,74 @@
+{
+  "fetch_time": "2025-07-28T19:14:52.791755",
+  "date_range": {
+    "start": "2025-07-23",
+    "end": "2025-07-28"
+  },
+  "source": "mock_data_generator",
+  "symbols": {
+    "NVDA": {
+      "symbol": "NVDA",
+      "data": [
+        {
+          "timestamp": "2025-07-23 19:14:52",
+          "open": 170.77,
+          "high": 172.18,
+          "low": 167.75,
+          "close": 167.75,
+          "volume": 44721229
+        },
+        {
+          "timestamp": "2025-07-24 19:14:52",
+          "open": 170.08,
+          "high": 172.16,
+          "low": 169.0,
+          "close": 169.0,
+          "volume": 38442015
+        },
+        {
+          "timestamp": "2025-07-25 19:14:52",
+          "open": 171.52,
+          "high": 172.14,
+          "low": 169.04,
+          "close": 169.04,
+          "volume": 42411506
+        }
+      ],
+      "count": 3,
+      "source": "mock_generator",
+      "timeframe": "daily"
+    },
+    "MSFT": {
+      "symbol": "MSFT",
+      "data": [
+        {
+          "timestamp": "2025-07-23 19:14:52",
+          "open": 501.16,
+          "high": 504.73,
+          "low": 497.89,
+          "close": 499.82,
+          "volume": 17803533
+        },
+        {
+          "timestamp": "2025-07-24 19:14:52",
+          "open": 517.07,
+          "high": 518.26,
+          "low": 509.28,
+          "close": 509.28,
+          "volume": 22910025
+        },
+        {
+          "timestamp": "2025-07-25 19:14:52",
+          "open": 504.16,
+          "high": 505.79,
+          "low": 497.1,
+          "close": 499.04,
+          "volume": 11418973
+        }
+      ],
+      "count": 3,
+      "source": "mock_generator",
+      "timeframe": "daily"
+    }
+  }
+}

@@ -261,7 +261,10 @@ class DualTickerTradingEnv(gym.Env):
                                abs(msft_action - self.prev_msft_position) > 0):
             self._log_trade(action, info)
         
-        return observation, total_reward, done, info
+        # Gymnasium API compatibility: return (obs, reward, terminated, truncated, info)
+        terminated = done
+        truncated = False  # We don't use truncation in trading environments
+        return observation, total_reward, terminated, truncated, info
     
     def _get_observation(self):
         """Build 26-dimensional observation vector"""

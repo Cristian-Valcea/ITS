@@ -1,0 +1,158 @@
+version: '3.8'
+
+# TimescaleDB Replica Setup with WAL Logical Replication
+# Usage: docker compose -f docker-compose.timescale.yml up -d replica
+
+services:
+  # Primary TimescaleDB instance  
+  primary:
+    image: timescale/timescaledb:2.14.2-pg14
+    container_name: timescaledb_primary
+    environment:
+      POSTGRES_DB: trading_data
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD:-secure_trading_password}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+      # WAL configuration for logical replication
+      POSTGRES_INITDB_WALDIR: /var/lib/postgresql/wal
+    command: >
+      postgres
+      -c wal_level=logical
+      -c max_wal_senders=10
+      -c max_replication_slots=10
+      -c max_logical_replication_workers=10
+      -c max_worker_processes=20
+      -c shared_preload_libraries=timescaledb
+      -c log_statement=all
+      -c log_destination=stderr
+      -c logging_collector=on
+      -c log_directory=/var/log/postgresql
+      -c log_filename=postgresql-%Y-%m-%d.log
+      -c log_rotation_age=1d
+      -c log_rotation_size=100MB
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_primary_data:/var/lib/postgresql/data
+      - timescale_primary_wal:/var/lib/postgresql/wal
+      - timescale_logs:/var/log/postgresql
+      - ./sql/init:/docker-entrypoint-initdb.d
+      - ./sql/schema:/opt/schema
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d trading_data"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - timescale_network
+
+  # Replica TimescaleDB instance
+  replica:
+    image: timescale/timescaledb:2.14.2-pg14
+    container_name: timescaledb_replica
+    environment:
+      POSTGRES_DB: trading_data
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD:-secure_trading_password}
+      PGUSER: postgres
+      POSTGRES_MASTER_SERVICE: primary
+      POSTGRES_MASTER_PORT: 5432
+    command: >
+      bash -c "
+      echo 'Waiting for primary to be ready...'
+      until pg_isready -h primary -p 5432 -U postgres; do
+        echo 'Primary not ready, waiting...'
+        sleep 2
+      done
+      echo 'Starting replica setup...'
+      pg_basebackup -h primary -D /var/lib/postgresql/data -U postgres -v -P -W
+      echo 'standby_mode = on' >> /var/lib/postgresql/data/recovery.conf
+      echo 'primary_conninfo = \"host=primary port=5432 user=postgres\"' >> /var/lib/postgresql/data/recovery.conf
+      echo 'trigger_file = \"/tmp/promote_replica\"' >> /var/lib/postgresql/data/recovery.conf
+      postgres
+      -c wal_level=logical
+      -c max_wal_senders=10
+      -c max_replication_slots=10
+      -c shared_preload_libraries=timescaledb
+      -c log_statement=all
+      "
+    ports:
+      - "5433:5432"  # Different port for replica
+    volumes:
+      - timescale_replica_data:/var/lib/postgresql/data
+      - timescale_replica_logs:/var/log/postgresql
+    depends_on:
+      primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d trading_data"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+    networks:
+      - timescale_network
+    profiles:
+      - replica  # Only start with --profile replica
+
+  # pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:8.2
+    container_name: timescale_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@trading.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin_secure_password}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./sql/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      - primary
+    networks:
+      - timescale_network
+    profiles:
+      - tools
+    restart: unless-stopped
+
+  # Schema validation and backup service
+  schema_backup:
+    image: postgres:14
+    container_name: timescale_schema_backup
+    environment:
+      PGPASSWORD: ${TIMESCALE_PASSWORD:-secure_trading_password}
+    volumes:
+      - ./sql/backups:/backups
+      - ./scripts:/scripts:ro
+    command: >
+      bash -c "
+      echo 'Schema backup service ready'
+      echo 'Run: docker exec timescale_schema_backup /scripts/backup_schema.sh'
+      tail -f /dev/null
+      "
+    depends_on:
+      primary:
+        condition: service_healthy
+    networks:
+      - timescale_network
+    profiles:
+      - tools
+    restart: unless-stopped
+
+volumes:
+  timescale_primary_data: {}
+  timescale_primary_wal: {}
+  timescale_replica_data: {}
+  timescale_logs: {}
+  timescale_replica_logs: {}
+  pgadmin_data: {}
+
+networks:
+  timescale_network:
+    driver: bridge
+    name: timescale_replication_network

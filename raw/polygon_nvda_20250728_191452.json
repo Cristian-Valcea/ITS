@@ -1,0 +1,32 @@
+{
+  "symbol": "NVDA",
+  "data": [
+    {
+      "timestamp": "2025-07-23 19:14:52",
+      "open": 170.77,
+      "high": 172.18,
+      "low": 167.75,
+      "close": 167.75,
+      "volume": 44721229
+    },
+    {
+      "timestamp": "2025-07-24 19:14:52",
+      "open": 170.08,
+      "high": 172.16,
+      "low": 169.0,
+      "close": 169.0,
+      "volume": 38442015
+    },
+    {
+      "timestamp": "2025-07-25 19:14:52",
+      "open": 171.52,
+      "high": 172.14,
+      "low": 169.04,
+      "close": 169.04,
+      "volume": 42411506
+    }
+  ],
+  "count": 3,
+  "source": "mock_generator",
+  "timeframe": "daily"
+}
