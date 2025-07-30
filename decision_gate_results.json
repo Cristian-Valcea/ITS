@@ -1,0 +1,13 @@
+{
+  "ep_rew_mean": 181506.0,
+  "max_dd_pct": 0.6071728832934443,
+  "actual_trading_freq_pct": 0.3,
+  "intended_trading_freq_pct": 59.699999999999996,
+  "gate_blocks": 498,
+  "decision_gate_interval": 10,
+  "action_histogram": {
+    "SELL": 0.0,
+    "HOLD": 40.300000000000004,
+    "BUY": 59.699999999999996
+  }
+}

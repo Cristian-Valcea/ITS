@@ -53,6 +53,8 @@ class IntradayTradingEnvV3(gym.Env):
         risk_free_rate_annual: float = 0.05,
         base_impact_bp: float = 20.0,
         impact_exponent: float = 0.5,
+        # Decision gate timer (reviewer recommendation)
+        decision_gate_interval: int = 0,  # If >0, only allow trades every N steps
         verbose: bool = False
     ):
         super().__init__()
@@ -65,6 +67,7 @@ class IntradayTradingEnvV3(gym.Env):
         self.transaction_cost_pct = transaction_cost_pct
         self.max_episode_steps = max_episode_steps or len(processed_feature_data)
         self.log_trades = log_trades
+        self.decision_gate_interval = decision_gate_interval
         self.verbose = verbose
         
         # Initialize V3 reward system
@@ -151,7 +154,7 @@ class IntradayTradingEnvV3(gym.Env):
         # Update portfolio value
         self._update_portfolio_value()
         
-        # Calculate V3 reward with current features for position decay
+        # Calculate V3 reward with current features for position decay and action tracking
         current_features = self.processed_feature_data[self.current_step] if self.current_step < len(self.processed_feature_data) else None
         reward, reward_components = self.reward_calculator.calculate_reward(
             prev_portfolio_value=prev_portfolio_value,
@@ -163,6 +166,7 @@ class IntradayTradingEnvV3(gym.Env):
             nvda_price=self.price_data.iloc[self.current_step],
             msft_price=510.0,  # Dummy price for MSFT
             step=self.current_step,
+            action=action,  # Pass action for change penalty tracking
             features=current_features
         )
         
@@ -189,7 +193,16 @@ class IntradayTradingEnvV3(gym.Env):
         return obs, reward, terminated, truncated, info
     
     def _apply_action_mask(self, action: int) -> int:
-        """Apply hard inventory clamp during OFF periods - restrict to {HOLD, SELL} only"""
+        """Apply hard inventory clamp during OFF periods and decision gate timer"""
+        
+        # Decision gate timer: only allow trades every N steps
+        if self.decision_gate_interval > 0:
+            gate_open = (self.current_step % self.decision_gate_interval) == 0
+            if not gate_open and action != 1:  # Trade attempted when gate closed
+                if self.verbose:
+                    logger.info(f"⏰ Decision gate closed: {action} → HOLD (step {self.current_step})")
+                action = 1  # Force HOLD
+                return action
         
         # Get current alpha signal strength from features
         if self.current_step < len(self.processed_feature_data):

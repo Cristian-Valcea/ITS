@@ -1,0 +1,30 @@
+{
+  "ep_rew_mean": 181752.75,
+  "max_dd_pct": 0.6060695011817123,
+  "trading_freq_pct": 59.5,
+  "action_histogram": {
+    "SELL": 0.0,
+    "HOLD": 40.5,
+    "BUY": 59.5
+  },
+  "aggressive_controls": {
+    "hold_bonus_coef": 0.0002,
+    "action_change_cost_bp": 12.5,
+    "ticket_cost_usd": 25.0,
+    "clip_range": 0.15,
+    "ent_coef": 0.0005
+  },
+  "component_breakdown": {
+    "risk_free_nav_change": 217.40672828688994,
+    "embedded_impact": 0.1358584611527978,
+    "downside_semi_variance": 0.00023053527535450236,
+    "kelly_bonus": 0.2566901797148006,
+    "position_decay_penalty": 49.941185930368036,
+    "turnover_penalty": 3.53057294867986e-06,
+    "size_penalty": 0.0,
+    "hold_bonus": 14.225879923753139,
+    "action_change_penalty": 0.05930785262092904,
+    "ticket_cost": 1.2231077411158754e-06,
+    "total_reward": 181.7527108572601
+  }
+}

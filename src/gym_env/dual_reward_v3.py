@@ -23,6 +23,9 @@ class RewardComponents:
     position_decay_penalty: float    # Penalty for holding positions during OFF periods
     turnover_penalty: float          # Turnover penalty with OFF-period kicker
     size_penalty: float              # Soft position-size cap penalty
+    hold_bonus: float                # Bonus for doing nothing when α≈0
+    action_change_penalty: float     # Penalty for changing actions frequently
+    ticket_cost: float               # Fixed per-trade ticket cost
     total_reward: float
     
     def to_dict(self) -> Dict[str, float]:
@@ -34,6 +37,9 @@ class RewardComponents:
             'position_decay_penalty': self.position_decay_penalty,
             'turnover_penalty': self.turnover_penalty,
             'size_penalty': self.size_penalty,
+            'hold_bonus': self.hold_bonus,
+            'action_change_penalty': self.action_change_penalty,
+            'ticket_cost': self.ticket_cost,
             'total_reward': self.total_reward
         }
 
@@ -75,6 +81,11 @@ class DualTickerRewardV3:
         max_notional_ratio: float = 0.30,      # 30% NAV soft position limit
         size_penalty_kappa: float = 2.0e-4,   # Quadratic penalty coefficient for excess size
         
+        # Turnover reduction parameters (reviewer recommendations - ENHANCED)
+        hold_bonus_coef: float = 2e-4,         # Increased bonus for doing nothing when α≈0
+        action_change_cost_bp: float = 12.5,   # Increased action change cost (was 7.5bp)
+        ticket_cost_usd: float = 25.0,         # Increased fixed ticket cost per trade (was $15)
+        
         # Time step parameters
         step_minutes: float = 1.0,             # Minutes per step (for risk-free scaling)
         
@@ -94,6 +105,9 @@ class DualTickerRewardV3:
         self.position_decay_penalty = position_decay_penalty
         self.max_notional_ratio = max_notional_ratio
         self.size_penalty_kappa = size_penalty_kappa
+        self.hold_bonus_coef = hold_bonus_coef
+        self.action_change_cost_bp = action_change_cost_bp
+        self.ticket_cost_usd = ticket_cost_usd
         self.step_minutes = step_minutes
         self.verbose = verbose
         
@@ -101,6 +115,7 @@ class DualTickerRewardV3:
         self.portfolio_history = []
         self.trade_history = []
         self.return_history = []
+        self.prev_action = None  # Track previous action for action-change penalty
         
         # Calculate per-step risk-free rate
         minutes_per_year = 525600  # 365.25 * 24 * 60
@@ -124,6 +139,7 @@ class DualTickerRewardV3:
         nvda_price: float,
         msft_price: float,
         step: int,
+        action: Optional[int] = None,  # Current action for change penalty
         features: Optional[np.ndarray] = None  # Add features to detect OFF periods
     ) -> Tuple[float, RewardComponents]:
         """
@@ -168,7 +184,22 @@ class DualTickerRewardV3:
             nvda_position, msft_position, curr_portfolio_value
         )
         
-        # Total V3 reward
+        # 8. HOLD Bonus (reviewer recommendation: make doing nothing better)
+        hold_bonus = self._calculate_hold_bonus(
+            nvda_trade_value, msft_trade_value, curr_portfolio_value, features
+        )
+        
+        # 9. Action Change Penalty (reviewer recommendation: penalize frequent changes)
+        action_change_penalty = self._calculate_action_change_penalty(
+            nvda_trade_value, msft_trade_value, nvda_price, msft_price, action
+        )
+        
+        # 10. Fixed Ticket Cost (reviewer recommendation: flat fee per trade)
+        ticket_cost = self._calculate_ticket_cost(
+            nvda_trade_value, msft_trade_value, curr_portfolio_value
+        )
+        
+        # Total V3 reward (enhanced with reviewer recommendations)
         total_reward = (
             risk_free_nav_change 
             - embedded_impact 
@@ -177,6 +208,9 @@ class DualTickerRewardV3:
             - position_decay_penalty
             - turnover_penalty
             - size_penalty
+            + hold_bonus              # Make doing nothing better
+            - action_change_penalty   # Penalize frequent action changes
+            - ticket_cost            # Fixed cost per trade
         )
         
         # Create component breakdown
@@ -188,6 +222,9 @@ class DualTickerRewardV3:
             position_decay_penalty=position_decay_penalty,
             turnover_penalty=turnover_penalty,
             size_penalty=size_penalty,
+            hold_bonus=hold_bonus,
+            action_change_penalty=action_change_penalty,
+            ticket_cost=ticket_cost,
             total_reward=total_reward
         )
         
@@ -373,6 +410,95 @@ class DualTickerRewardV3:
         
         return penalty
     
+    def _calculate_hold_bonus(
+        self, nvda_trade_value: float, msft_trade_value: float, 
+        nav: float, features: Optional[np.ndarray] = None
+    ) -> float:
+        """Calculate bonus for doing nothing when α≈0 (reviewer recommendation)"""
+        
+        if nav <= 0:
+            return 0.0
+        
+        # Check if we're doing nothing (no trades)
+        total_trade_value = abs(nvda_trade_value) + abs(msft_trade_value)
+        if total_trade_value > 1.0:  # Any meaningful trade
+            return 0.0
+        
+        # Check if alpha is near zero (OFF period or weak signal)
+        alpha_mag = 0.0
+        if features is not None and len(features) >= 13:
+            alpha_signal = features[12]  # Alpha signal feature
+            alpha_mag = abs(alpha_signal)
+        
+        # Bonus only when doing nothing AND alpha is weak
+        if alpha_mag < 1e-4:  # Very weak alpha signal
+            bonus = self.hold_bonus_coef * nav
+            if self.verbose and bonus > 0:
+                logger.info(f"🎁 HOLD bonus: {bonus:.4f} (α≈0, no trade)")
+            return bonus
+        
+        return 0.0
+    
+    def _calculate_action_change_penalty(
+        self, nvda_trade_value: float, msft_trade_value: float,
+        nvda_price: float, msft_price: float, action: Optional[int] = None
+    ) -> float:
+        """Calculate penalty for changing actions frequently (reviewer recommendation)"""
+        
+        if action is None or self.prev_action is None:
+            # Store current action for next time
+            self.prev_action = action
+            return 0.0
+        
+        # No penalty if action unchanged
+        if action == self.prev_action:
+            self.prev_action = action
+            return 0.0
+        
+        # Calculate penalty: ψ = 0.5 × tc_bp × |ΔQ|
+        total_trade_value = abs(nvda_trade_value) + abs(msft_trade_value)
+        if total_trade_value <= 1.0:
+            self.prev_action = action
+            return 0.0
+        
+        # Apply action change cost (50% of normal transaction cost)
+        if self.action_change_cost_bp > 0:
+            penalty = (self.action_change_cost_bp / 10000) * total_trade_value
+            if self.verbose and penalty > 0:
+                logger.info(f"🔄 Action change penalty: {penalty:.4f} (prev={self.prev_action}, curr={action})")
+        else:
+            penalty = 0.0
+        
+        self.prev_action = action
+        return penalty
+    
+    def _calculate_ticket_cost(
+        self, nvda_trade_value: float, msft_trade_value: float, nav: float
+    ) -> float:
+        """Calculate fixed ticket cost per trade (reviewer recommendation)"""
+        
+        if nav <= 0:
+            return 0.0
+        
+        # Count number of trades (NVDA and/or MSFT)
+        num_trades = 0
+        if abs(nvda_trade_value) > 1.0:
+            num_trades += 1
+        if abs(msft_trade_value) > 1.0:
+            num_trades += 1
+        
+        if num_trades == 0:
+            return 0.0
+        
+        # Fixed cost per trade, normalized by NAV
+        total_ticket_cost = num_trades * self.ticket_cost_usd
+        normalized_cost = total_ticket_cost / nav
+        
+        if self.verbose and normalized_cost > 0:
+            logger.info(f"🎫 Ticket cost: ${total_ticket_cost:.0f} ({num_trades} trades, {normalized_cost:.6f} of NAV)")
+        
+        return normalized_cost
+    
     def _update_state_tracking(self, curr_portfolio: float, prev_portfolio: float):
         """Update internal state for reward calculations"""
         
@@ -394,6 +520,7 @@ class DualTickerRewardV3:
         self.portfolio_history.clear()
         self.trade_history.clear()
         self.return_history.clear()
+        self.prev_action = None  # Reset action tracking
         
         if self.verbose:
             logger.info("🔄 DualTickerRewardV3 state reset (STRUCTURAL REDESIGN)")
