@@ -1,0 +1,184 @@
+{
+  "success": false,
+  "best_return": 0.0,
+  "configs_tested": 16,
+  "all_results": [
+    {
+      "config": {
+        "n_steps": 2048,
+        "learning_rate": 7e-05,
+        "ent_coef": 0.002,
+        "n_epochs": 4
+      },
+      "return": 0.0,
+      "drawdown": 0.0,
+      "trading_freq": 0.0
+    },
+    {
+      "config": {
+        "n_steps": 2048,
+        "learning_rate": 7e-05,
+        "ent_coef": 0.002,
+        "n_epochs": 8
+      },
+      "return": -0.003250423984290974,
+      "drawdown": 0.020603984306478362,
+      "trading_freq": 0.125
+    },
+    {
+      "config": {
+        "n_steps": 2048,
+        "learning_rate": 7e-05,
+        "ent_coef": 0.005,
+        "n_epochs": 4
+      },
+      "return": 0.0,
+      "drawdown": 0.0,
+      "trading_freq": 0.0
+    },
+    {
+      "config": {
+        "n_steps": 2048,
+        "learning_rate": 7e-05,
+        "ent_coef": 0.005,
+        "n_epochs": 8
+      },
+      "return": -0.0027028279483332883,
+      "drawdown": 0.02059290404103349,
+      "trading_freq": 0.125
+    },
+    {
+      "config": {
+        "n_steps": 2048,
+        "learning_rate": 0.0003,
+        "ent_coef": 0.002,
+        "n_epochs": 4
+      },
+      "return": -0.0027028279483332883,
+      "drawdown": 0.02059290404103349,
+      "trading_freq": 0.4375
+    },
+    {
+      "config": {
+        "n_steps": 2048,
+        "learning_rate": 0.0003,
+        "ent_coef": 0.002,
+        "n_epochs": 8
+      },
+      "return": -0.003250423984290974,
+      "drawdown": 0.020603984306478362,
+      "trading_freq": 0.4375
+    },
+    {
+      "config": {
+        "n_steps": 2048,
+        "learning_rate": 0.0003,
+        "ent_coef": 0.005,
+        "n_epochs": 4
+      },
+      "return": -0.0027028279483332883,
+      "drawdown": 0.02059290404103349,
+      "trading_freq": 0.5
+    },
+    {
+      "config": {
+        "n_steps": 2048,
+        "learning_rate": 0.0003,
+        "ent_coef": 0.005,
+        "n_epochs": 8
+      },
+      "return": -0.003250423984290974,
+      "drawdown": 0.020603984306478362,
+      "trading_freq": 0.3125
+    },
+    {
+      "config": {
+        "n_steps": 4096,
+        "learning_rate": 7e-05,
+        "ent_coef": 0.002,
+        "n_epochs": 4
+      },
+      "return": -0.003250423984290974,
+      "drawdown": 0.020603984306478362,
+      "trading_freq": 0.125
+    },
+    {
+      "config": {
+        "n_steps": 4096,
+        "learning_rate": 7e-05,
+        "ent_coef": 0.002,
+        "n_epochs": 8
+      },
+      "return": -0.003250423984290974,
+      "drawdown": 0.020603984306478362,
+      "trading_freq": 0.5625
+    },
+    {
+      "config": {
+        "n_steps": 4096,
+        "learning_rate": 7e-05,
+        "ent_coef": 0.005,
+        "n_epochs": 4
+      },
+      "return": -0.003250423984290974,
+      "drawdown": 0.020603984306478362,
+      "trading_freq": 0.1875
+    },
+    {
+      "config": {
+        "n_steps": 4096,
+        "learning_rate": 7e-05,
+        "ent_coef": 0.005,
+        "n_epochs": 8
+      },
+      "return": -0.003250423984290974,
+      "drawdown": 0.020603984306478362,
+      "trading_freq": 0.625
+    },
+    {
+      "config": {
+        "n_steps": 4096,
+        "learning_rate": 0.0003,
+        "ent_coef": 0.002,
+        "n_epochs": 4
+      },
+      "return": -0.0027028279483332883,
+      "drawdown": 0.02059290404103349,
+      "trading_freq": 0.375
+    },
+    {
+      "config": {
+        "n_steps": 4096,
+        "learning_rate": 0.0003,
+        "ent_coef": 0.002,
+        "n_epochs": 8
+      },
+      "return": -0.003250423984290974,
+      "drawdown": 0.020603984306478362,
+      "trading_freq": 0.625
+    },
+    {
+      "config": {
+        "n_steps": 4096,
+        "learning_rate": 0.0003,
+        "ent_coef": 0.005,
+        "n_epochs": 4
+      },
+      "return": -0.003250423984290974,
+      "drawdown": 0.020603984306478362,
+      "trading_freq": 0.4375
+    },
+    {
+      "config": {
+        "n_steps": 4096,
+        "learning_rate": 0.0003,
+        "ent_coef": 0.005,
+        "n_epochs": 8
+      },
+      "return": -0.003250423984290974,
+      "drawdown": 0.020603984306478362,
+      "trading_freq": 0.5625
+    }
+  ],
+  "timestamp": "2025-07-29T23:33:36.890285"
+}

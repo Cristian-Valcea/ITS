@@ -1,0 +1,19 @@
+{
+  "ep_rew_mean": 140078.296875,
+  "max_dd_pct": 0.5769285796026961,
+  "trading_freq_pct": 68.30000000000001,
+  "action_histogram": {
+    "SELL": 9.9,
+    "HOLD": 31.7,
+    "BUY": 58.4
+  },
+  "total_steps": 1000,
+  "enhanced_controls": {
+    "turnover_kicker": true,
+    "size_cap_30pct": true,
+    "dq_clamp_15pct": true,
+    "dd_visibility": true,
+    "position_decay": true,
+    "hard_clamp": true
+  }
+}
