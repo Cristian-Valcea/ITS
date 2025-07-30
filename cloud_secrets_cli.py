@@ -33,7 +33,7 @@ import click
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from security.advanced_secrets_manager import AdvancedSecretsManager
+from src.security.secrets_manager import AdvancedSecretsManager
 from security.backends import available_backends
 
 # Setup logging

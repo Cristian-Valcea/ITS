@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
 from security.backends.local_vault import LocalVaultBackend
-from security.advanced_secrets_manager import AdvancedSecretsManager, SecretsHelper
+from src.security.secrets_manager import AdvancedSecretsManager
 
 
 async def test_basic_operations():

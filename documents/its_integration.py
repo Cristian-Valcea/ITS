@@ -7,7 +7,7 @@ Provides convenience functions and configuration helpers for the IntradayJules T
 import os
 import logging
 from typing import Dict, Any, Optional
-from .advanced_secrets_manager import AdvancedSecretsManager
+from .secrets_manager import AdvancedSecretsManager
 from .backends.local_vault import LocalVaultBackend
 
 logger = logging.getLogger(__name__)

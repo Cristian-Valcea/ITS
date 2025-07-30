@@ -12,7 +12,7 @@ This module provides enterprise-grade secrets management with:
 """
 
 from .protocols import VaultBackend, SecretData, SecretMetadata
-from .advanced_secrets_manager import AdvancedSecretsManager, SecretsHelper
+from .secrets_manager import SecretsManager, AdvancedSecretsManager
 from .encryption import HardenedEncryption
 from .backends.local_vault import LocalVaultBackend
 
@@ -30,8 +30,8 @@ __all__ = [
     "VaultBackend",
     "SecretData", 
     "SecretMetadata",
+    "SecretsManager",
     "AdvancedSecretsManager",
-    "SecretsHelper",
     "HardenedEncryption",
     "LocalVaultBackend",
     "ITSSecretsHelper",
