@@ -173,6 +173,30 @@ class SecretsHelper:
         
         manager = SecretsManager(vault_path, password)
         return manager.store_secret(key, value)
+    
+    @staticmethod
+    def get_timescaledb_password():
+        """Get TimescaleDB password from secure vault"""
+        vault_path = "~/.trading_secrets.json"
+        password = SecretsHelper._get_master_password()
+        
+        manager = SecretsManager(vault_path, password)
+        return manager.get_secret("TIMESCALEDB_PASSWORD")
+    
+    @staticmethod
+    def get_postgres_password():
+        """Get PostgreSQL password from secure vault"""
+        vault_path = "~/.trading_secrets.json"
+        password = SecretsHelper._get_master_password()
+        
+        manager = SecretsManager(vault_path, password)
+        return manager.get_secret("POSTGRES_PASSWORD")
+    
+    @staticmethod
+    def get_database_url(host="localhost", port="5432", database="trading_data", user="postgres"):
+        """Get complete database URL with secure password"""
+        password = SecretsHelper.get_timescaledb_password()
+        return f"postgresql://{user}:{password}@{host}:{port}/{database}"
 
 # Quick test
 if __name__ == "__main__":

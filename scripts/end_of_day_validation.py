@@ -71,7 +71,15 @@ class EndOfDayValidator:
         port = os.getenv('TIMESCALEDB_PORT', '5432')
         database = os.getenv('TIMESCALEDB_DATABASE', 'trading_data')
         username = os.getenv('TIMESCALEDB_USERNAME', 'postgres')
-        password = os.getenv('TIMESCALEDB_PASSWORD', 'postgres')
+        # Get password from secure vault
+        try:
+            import sys
+            sys.path.append('..')
+            from secrets_helper import SecretsHelper
+            password = SecretsHelper.get_timescaledb_password()
+        except Exception as e:
+            print(f"⚠️  Could not get password from vault: {e}")
+            password = os.getenv('TIMESCALEDB_PASSWORD', 'postgres')
         
         return f"postgresql://{username}:{password}@{host}:{port}/{database}"
     

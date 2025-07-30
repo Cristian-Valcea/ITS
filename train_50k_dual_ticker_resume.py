@@ -43,6 +43,15 @@ from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from src.gym_env.dual_ticker_trading_env import DualTickerTradingEnv
 from src.gym_env.dual_ticker_data_adapter import DualTickerDataAdapter
 
+def _get_secure_db_password():
+    """Get database password from secure vault with fallback"""
+    try:
+        from secrets_helper import SecretsHelper
+        return SecretsHelper.get_timescaledb_password()
+    except Exception as e:
+        logger.warning(f"Could not get password from vault: {e}")
+        return os.environ.get('TIMESCALEDB_PASSWORD', 'your_password')
+
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='50K Dual-Ticker Training with Resume Support')
@@ -67,7 +76,7 @@ def create_training_environment():
             'port': 5432,
             'database': 'trading_data',
             'user': 'postgres',
-            'password': os.environ.get('TIMESCALEDB_PASSWORD', 'your_password')
+            'password': _get_secure_db_password()
         }
         
         # Create data adapter

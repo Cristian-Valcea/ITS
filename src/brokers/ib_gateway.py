@@ -422,6 +422,42 @@ class IBGatewayClient:
                 'error': str(e),
                 'timestamp': datetime.now().isoformat()
             }
+    
+    def get_current_price(self, symbol: str) -> float:
+        """Get current market price for symbol"""
+        if symbol not in self.supported_symbols:
+            raise ValueError(f"Symbol {symbol} not supported. Use: {self.supported_symbols}")
+        
+        if self.simulation_mode:
+            # Return simulated prices based on symbol
+            simulation_prices = {
+                'NVDA': 485.50 + (hash(datetime.now().isoformat()[:13]) % 100) / 10,  # ±$10 range
+                'MSFT': 412.25 + (hash(datetime.now().isoformat()[:13]) % 80) / 10    # ±$8 range
+            }
+            return simulation_prices.get(symbol, 150.0)
+        
+        if not self.connected or not self.ib:
+            raise ValueError("Not connected to IB Gateway")
+        
+        if symbol not in self.contracts:
+            raise ValueError(f"Contract not available for {symbol}")
+        
+        try:
+            contract = self.contracts[symbol]
+            ticker = self.ib.reqMktData(contract, '', False, False)
+            self.ib.sleep(2)  # Wait for market data
+            
+            if ticker.last and ticker.last > 0:
+                return float(ticker.last)
+            elif ticker.close and ticker.close > 0:
+                return float(ticker.close)
+            else:
+                logger.warning(f"No market data available for {symbol}")
+                return 0.0
+                
+        except Exception as e:
+            logger.error(f"Failed to get current price for {symbol}: {e}")
+            raise
 
 def main():
     """CLI interface for testing IB Gateway client"""

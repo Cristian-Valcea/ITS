@@ -42,6 +42,15 @@ from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from src.gym_env.dual_ticker_trading_env import DualTickerTradingEnv
 from src.gym_env.dual_ticker_data_adapter import DualTickerDataAdapter
 
+def _get_secure_db_password():
+    """Get database password from secure vault with fallback"""
+    try:
+        from secrets_helper import SecretsHelper
+        return SecretsHelper.get_timescaledb_password()
+    except Exception as e:
+        logger.warning(f"Could not get password from vault: {e}")
+        return os.getenv('TIMESCALEDB_PASSWORD', 'password')
+
 def create_training_environment():
     """Create training environment with REDUCED FRICTION to let edge show"""
     logger.info("📈 Creating REDUCED FRICTION training environment...")
@@ -53,7 +62,7 @@ def create_training_environment():
             'port': int(os.getenv('TIMESCALEDB_PORT', 5432)),
             'database': os.getenv('TIMESCALEDB_DATABASE', 'trading_data'),
             'user': os.getenv('TIMESCALEDB_USER', 'postgres'),
-            'password': os.getenv('TIMESCALEDB_PASSWORD', 'password')
+            'password': _get_secure_db_password()
         }
         
         logger.info("🔌 Attempting TimescaleDB connection...")
