@@ -68,17 +68,56 @@ class ModelStatus(BaseModel):
 
 # Model loading
 def load_production_model(model_path: str = "deploy_models/dual_ticker_prod_20250731_step201k_stable.zip"):
-    """Load the production model for inference"""
+    """Load the production model for inference with timeout and error handling"""
     
     logger.info(f"🤖 Loading production model: {model_path}")
     
+    # Check if model file exists
+    if not Path(model_path).exists():
+        logger.error(f"❌ Model file not found: {model_path}")
+        return False
+    
+    # Check file size (detect corrupted models)
+    file_size = Path(model_path).stat().st_size
+    if file_size < 1024:  # Less than 1KB indicates corrupted file
+        logger.error(f"❌ Model file appears corrupted (size: {file_size} bytes)")
+        return False
+    
+    logger.info(f"📁 Model file size: {file_size / (1024*1024):.1f} MB")
+    
     try:
-        # Load the model
-        model = RecurrentPPO.load(model_path)
-        logger.info("✅ Model loaded successfully")
+        import signal
         
-        # Create environment for normalization (simplified for inference)
-        env = None  # Skip environment creation for inference-only mode
+        def timeout_handler(signum, frame):
+            raise TimeoutError("Model loading timeout")
+        
+        # Set timeout for model loading (30 seconds)
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(30)
+        
+        try:
+            # Load the model
+            logger.info("🔄 Loading RecurrentPPO model...")
+            model = RecurrentPPO.load(model_path)
+            logger.info("✅ Model loaded successfully")
+            
+            # Test model prediction to verify it works
+            logger.info("🧪 Testing model prediction...")
+            dummy_obs = np.zeros((1, 26), dtype=np.float32)  # 26-dim observation
+            dummy_state = None
+            action, state = model.predict(dummy_obs, state=dummy_state, deterministic=True)
+            logger.info(f"✅ Model test prediction: action={action}")
+            
+            # Clear timeout
+            signal.alarm(0)
+            
+        except TimeoutError:
+            logger.error("❌ Model loading timed out (30s limit)")
+            signal.alarm(0)
+            return False
+        
+        # Skip environment creation for inference-only mode
+        env = None
         
         # Try to load VecNormalize if available
         vec_normalize_path = model_path.replace('.zip', '_vecnorm.pkl')
@@ -103,7 +142,11 @@ def load_production_model(model_path: str = "deploy_models/dual_ticker_prod_2025
         return True
         
     except Exception as e:
+        signal.alarm(0)  # Clear timeout
         logger.error(f"❌ Failed to load model: {e}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+        import traceback
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
         return False
 
 # Inference counters
@@ -234,7 +277,7 @@ def create_observation_from_tick(tick_data: Dict[str, str]) -> Optional[np.ndarr
 
 @app.on_event("startup")
 async def startup_event():
-    """Load model on startup"""
+    """Load model on startup with graceful error handling"""
     
     logger.info("🚀 Starting Inference API service")
     
@@ -242,6 +285,10 @@ async def startup_event():
     success = load_production_model()
     if not success:
         logger.error("❌ Failed to load production model on startup")
+        logger.error("❌ API will start but inference will not be available")
+        logger.error("❌ Use /model/reload endpoint to retry model loading")
+    else:
+        logger.info("✅ Model loaded successfully - API ready for inference")
     
     # Start background processing
     asyncio.create_task(process_market_data())
