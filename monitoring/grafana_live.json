@@ -1,0 +1,134 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Phase 2B Live Trading Dashboard",
+    "tags": ["trading", "live", "phase2b"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Portfolio Value",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "portfolio_total_value",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 2
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Daily P&L",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "portfolio_daily_pnl",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 2,
+            "color": {
+              "mode": "thresholds",
+              "thresholds": [
+                {"color": "red", "value": -50},
+                {"color": "yellow", "value": 0},
+                {"color": "green", "value": 50}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Risk Decisions",
+        "type": "bargauge",
+        "targets": [
+          {
+            "expr": "risk_guard_approved_total",
+            "refId": "A",
+            "legendFormat": "Approved"
+          },
+          {
+            "expr": "risk_guard_rejected_total",
+            "refId": "B",
+            "legendFormat": "Rejected"
+          },
+          {
+            "expr": "risk_guard_modified_total",
+            "refId": "C",
+            "legendFormat": "Modified"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Service Health",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "ib_connected",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8}
+      },
+      {
+        "id": 5,
+        "title": "Position Overview",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "portfolio_nvda_value",
+            "refId": "A",
+            "legendFormat": "NVDA"
+          },
+          {
+            "expr": "portfolio_msft_value",
+            "refId": "B",
+            "legendFormat": "MSFT"
+          },
+          {
+            "expr": "portfolio_cash",
+            "refId": "C",
+            "legendFormat": "Cash"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8}
+      },
+      {
+        "id": 6,
+        "title": "Portfolio Value Timeline",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "portfolio_total_value",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD"
+          }
+        },
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "5s"
+  }
+}

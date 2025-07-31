@@ -144,6 +144,42 @@ services:
       - tools
     restart: unless-stopped
 
+  # Redis cache for live trading data
+  redis_cache:
+    image: redis:7-alpine
+    container_name: trading_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 200mb --maxmemory-policy allkeys-lru --save 60 1000
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - timescale_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Prometheus Pushgateway for metrics collection
+  pushgateway:
+    image: prom/pushgateway:latest
+    container_name: trading_pushgateway
+    restart: unless-stopped
+    ports:
+      - "9091:9091"
+    networks:
+      - timescale_network
+    profiles:
+      - live
+
 volumes:
   timescale_primary_data: {}
   timescale_primary_wal: {}
@@ -151,6 +187,7 @@ volumes:
   timescale_logs: {}
   timescale_replica_logs: {}
   pgadmin_data: {}
+  redis_data: {}
 
 networks:
   timescale_network:
