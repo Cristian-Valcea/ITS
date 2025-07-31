@@ -1,28 +1,62 @@
 {
-  "trading_date": "2025-07-28",
-  "validation_timestamp": "2025-07-28T19:17:12.058760",
-  "overall_status": "ERROR",
+  "trading_date": "2025-07-30",
+  "validation_timestamp": "2025-07-30T21:37:24.118703",
+  "overall_status": "FAIL",
   "checks": {
     "market_data_completeness": {
-      "status": "ERROR",
+      "status": "FAIL",
       "details": {
-        "error": "No database connection"
+        "expected_symbols": [
+          "MSFT",
+          "NVDA"
+        ],
+        "found_symbols": [
+          "MSFT",
+          "NVDA"
+        ],
+        "missing_symbols": [],
+        "expected_minutes": 390,
+        "min_completeness_threshold": 0.95,
+        "symbols": {
+          "MSFT": {
+            "bar_count": 10,
+            "unique_minutes": 10,
+            "completeness_pct": 0.0256,
+            "first_bar": "2025-07-30T09:30:00+00:00",
+            "last_bar": "2025-07-30T17:43:00+00:00",
+            "market_hours_ok": true,
+            "completeness_ok": false,
+            "overall_ok": false
+          },
+          "NVDA": {
+            "bar_count": 10,
+            "unique_minutes": 10,
+            "completeness_pct": 0.0256,
+            "first_bar": "2025-07-30T09:30:00+00:00",
+            "last_bar": "2025-07-30T17:43:00+00:00",
+            "market_hours_ok": true,
+            "completeness_ok": false,
+            "overall_ok": false
+          }
+        },
+        "failure_reason": "Data completeness below threshold"
       },
-      "timestamp": "2025-07-28T19:17:12.063131"
+      "timestamp": "2025-07-30T21:37:24.506228"
     },
     "data_quality_reports": {
-      "status": "ERROR",
+      "status": "WARN",
       "details": {
-        "error": "No database connection"
+        "warning": "No quality reports found for 2025-07-30",
+        "total_reports": 0
       },
-      "timestamp": "2025-07-28T19:17:12.063175"
+      "timestamp": "2025-07-30T21:37:24.523836"
     },
     "system_performance": {
-      "status": "PASS",
+      "status": "WARN",
       "details": {
         "data_freshness": {
-          "latest_file_age_hours": 0.01,
-          "freshness_ok": true,
+          "latest_file_age_hours": 999,
+          "freshness_ok": false,
           "threshold_hours": 2
         },
         "log_analysis": {
@@ -31,25 +65,22 @@
           "log_files_checked": 0
         },
         "disk_space": {
-          "free_gb": 940.22,
+          "free_gb": 934.06,
           "disk_usage_ok": true,
           "min_free_gb": 1
-        }
+        },
+        "warning": "Data freshness issue: 999.0 hours old"
       },
-      "timestamp": "2025-07-28T19:17:12.063207"
+      "timestamp": "2025-07-30T21:37:24.527409"
     },
     "file_integrity": {
-      "status": "PASS",
+      "status": "FAIL",
       "details": {
         "raw_data_files": {
-          "total_files": 3,
-          "today_files": 3,
+          "total_files": 12,
+          "today_files": 0,
           "today_size_mb": 0.0,
-          "files": [
-            "polygon_msft_20250728_191607.csv",
-            "polygon_nvda_20250728_191607.csv",
-            "dual_ticker_20250728_191645.csv"
-          ]
+          "files": []
         },
         "quality_reports": {
           "total_files": 0,
@@ -58,25 +89,69 @@
           "files": []
         },
         "model_files": {
-          "recent_models": 0,
-          "model_files": []
-        }
+          "recent_models": 38,
+          "model_files": [
+            "trimmed_config_2.zip",
+            "aggressive_turnover_checkpoint.zip",
+            "decision_gate_checkpoint.zip",
+            "phase_1_enhanced_checkpoint.zip",
+            "dual_ticker_robust_50k_final.zip",
+            "dual_ticker_50k_20250728_224824.zip",
+            "dual_ticker_optimized_50k_final.zip",
+            "dual_ticker_curriculum_60k_final.zip",
+            "simple_transformer_v2_10k.zip",
+            "curriculum_phase_0_phase_0___persistent.zip",
+            "dual_ticker_enhanced_50k_final.zip",
+            "phase_0_persistent_checkpoint.zip",
+            "turnover_enhanced_checkpoint.zip",
+            "dual_ticker_curriculum_40000_steps.zip",
+            "dual_ticker_curriculum_30000_steps.zip",
+            "dual_ticker_optimized_30000_steps.zip",
+            "simple_transformer_v2_5000_steps.zip",
+            "dual_ticker_simple_monitored_10000_steps.zip",
+            "dual_ticker_curriculum_20000_steps.zip",
+            "dual_ticker_enhanced_10000_steps.zip",
+            "dual_ticker_enhanced_50000_steps.zip",
+            "dual_ticker_enhanced_30000_steps.zip",
+            "simple_transformer_v2_10000_steps.zip",
+            "dual_ticker_robust_30000_steps.zip",
+            "dual_ticker_robust_20000_steps.zip",
+            "dual_ticker_curriculum_60000_steps.zip",
+            "dual_ticker_robust_10000_steps.zip",
+            "dual_ticker_enhanced_40000_steps.zip",
+            "dual_ticker_robust_40000_steps.zip",
+            "dual_ticker_optimized_50000_steps.zip",
+            "dual_ticker_optimized_40000_steps.zip",
+            "dual_ticker_curriculum_50000_steps.zip",
+            "dual_ticker_optimized_20000_steps.zip",
+            "dual_ticker_robust_50000_steps.zip",
+            "dual_ticker_curriculum_10000_steps.zip",
+            "dual_ticker_optimized_10000_steps.zip",
+            "dual_ticker_simple_monitored_20000_steps.zip",
+            "dual_ticker_enhanced_20000_steps.zip"
+          ]
+        },
+        "failure_reason": "No raw data files found for today"
       },
-      "timestamp": "2025-07-28T19:17:12.063633"
+      "timestamp": "2025-07-30T21:37:24.528153"
     }
   },
   "summary": {
     "total_checks": 4,
     "status_counts": {
-      "ERROR": 2,
-      "PASS": 2
+      "FAIL": 2,
+      "WARN": 2
     },
-    "pass_rate": 0.5,
-    "execution_time_seconds": 0.008123,
-    "database_connected": false
+    "pass_rate": 0.0,
+    "execution_time_seconds": 0.411344,
+    "database_connected": true
   },
   "recommendations": [
-    "\ud83d\udea8 Fix technical issues in market_data_completeness validation",
-    "\ud83d\udea8 Fix technical issues in data_quality_reports validation"
+    "\ud83d\udd27 Fix data ingestion for missing symbols: []",
+    "\ud83d\udcca Review and improve data quality validation rules",
+    "\u23f0 Investigate data ingestion delays",
+    "\ud83d\udcbe Clean up old files or increase disk space",
+    "\ud83d\udd0d Review system logs for recurring issues",
+    "\ud83d\udcc1 Check data pipeline and file generation processes"
   ]
 }
