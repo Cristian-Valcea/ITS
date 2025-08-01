@@ -23,10 +23,11 @@ logger = logging.getLogger(__name__)
 class IBGatewayClient:
     """Interactive Brokers Gateway client for paper trading"""
     
-    def __init__(self, host: str = '127.0.0.1', port: int = 7497, client_id: int = 1):
-        self.host = host
-        self.port = port
-        self.client_id = client_id
+    def __init__(self, host: str = None, port: int = None, client_id: int = None):
+        # Use environment variables with fallbacks
+        self.host = host or os.getenv('IBKR_HOST_IP', '127.0.0.1')
+        self.port = port or int(os.getenv('IBKR_PORT', '7497'))
+        self.client_id = client_id or int(os.getenv('IBKR_CLIENT_ID', '1'))
         self.ib = None
         self.connected = False
         self.simulation_mode = not IB_AVAILABLE
