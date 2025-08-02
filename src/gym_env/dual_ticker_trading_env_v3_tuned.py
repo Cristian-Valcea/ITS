@@ -218,7 +218,7 @@ class DualTickerTradingEnvV3Tuned(gym.Env):
         else:
             return 0.0, 0.0
     
-    def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
         """
         Execute environment step (IDENTICAL TO V3 EXCEPT REWARD CALCULATION)
         """
@@ -320,7 +320,7 @@ class DualTickerTradingEnvV3Tuned(gym.Env):
             }
         }
         
-        return observation, reward, done, info
+        return observation, reward, done, False, info
     
     def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None):
         """Reset environment (IDENTICAL TO V3)"""
