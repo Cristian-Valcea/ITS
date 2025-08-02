@@ -83,7 +83,7 @@ class TickVsMinuteAlphaStudy:
         end_time = pd.Timestamp(f"{self.study_date} 16:00:00", tz='US/Eastern')
         
         # Generate 1-second intervals (23,400 ticks)
-        timestamps = pd.date_range(start_time, end_time, freq='1S')
+        timestamps = pd.date_range(start_time, end_time, freq='1s')
         n_ticks = len(timestamps)
         
         # Base price parameters
@@ -143,6 +143,13 @@ class TickVsMinuteAlphaStudy:
         
         logger.info(f"📈 Aggregating to {timeframe} bars...")
         
+        # Convert deprecated pandas frequency strings
+        timeframe_map = {
+            '1T': '1min', '5T': '5min', '15T': '15min', '30T': '30min', '60T': '60min',
+            '1H': '1h', '1D': '1d'
+        }
+        pandas_timeframe = timeframe_map.get(timeframe, timeframe)
+        
         # Resample to OHLCV bars
         agg_funcs = {
             'price': ['first', 'max', 'min', 'last'],  # OHLC
@@ -150,7 +157,7 @@ class TickVsMinuteAlphaStudy:
             'spread': 'mean'
         }
         
-        bars = tick_data.resample(timeframe).agg(agg_funcs).dropna()
+        bars = tick_data.resample(pandas_timeframe).agg(agg_funcs).dropna()
         
         # Flatten column names
         bars.columns = ['open', 'high', 'low', 'close', 'volume', 'avg_spread']
