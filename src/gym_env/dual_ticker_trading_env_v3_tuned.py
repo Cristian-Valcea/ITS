@@ -322,7 +322,7 @@ class DualTickerTradingEnvV3Tuned(gym.Env):
         
         return observation, reward, done, info
     
-    def reset(self, seed: Optional[int] = None) -> np.ndarray:
+    def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None):
         """Reset environment (IDENTICAL TO V3)"""
         if seed is not None:
             np.random.seed(seed)
@@ -340,7 +340,7 @@ class DualTickerTradingEnvV3Tuned(gym.Env):
         if hasattr(self, '_persistent_alpha'):
             delattr(self, '_persistent_alpha')
         
-        return self._get_observation()
+        return self._get_observation(), {}
     
     def render(self, mode: str = 'human') -> None:
         """Render environment (IDENTICAL TO V3)"""
