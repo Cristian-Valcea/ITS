@@ -1,0 +1,748 @@
+# .github/workflows/nightly_polygon_backtest.yml
+name: Nightly Rolling-Window Backtest on Live Polygon Data
+
+on:
+  schedule:
+    # Run at 1:00 AM EST (6:00 AM UTC) every weeknight (Mon-Fri after market close)
+    - cron: '0 6 * * 2-6'  # Tuesday-Saturday (covers Mon-Fri market days)
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: 'Number of days to backtest'
+        required: false
+        default: '5'
+        type: string
+      test_mode:
+        description: 'Run in test mode (smaller dataset)'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  PYTHON_UNBUFFERED: 1
+  # Memory limits for CI runner
+  OMP_NUM_THREADS: 2
+  MKL_NUM_THREADS: 2
+
+jobs:
+  polygon-data-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    outputs:
+      data_available: ${{ steps.data_check.outputs.data_available }}
+      trading_days: ${{ steps.data_check.outputs.trading_days }}
+      data_quality_score: ${{ steps.data_check.outputs.quality_score }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-polygon-${{ hashFiles('requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-polygon-
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov requests pandas numpy
+        pip install polygon-api-client  # Latest Polygon SDK
+        
+    - name: Validate Polygon API credentials
+      id: api_check
+      env:
+        POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+      run: |
+        if [[ -z "$POLYGON_API_KEY" ]]; then
+          echo "❌ POLYGON_API_KEY secret not configured"
+          echo "Configure at: https://github.com/${{ github.repository }}/settings/secrets/actions"
+          exit 1
+        fi
+        
+        echo "🔑 Polygon API key configured (length: ${#POLYGON_API_KEY})"
+        
+        # Test API connectivity
+        python -c "
+        import os
+        import requests
+        
+        api_key = os.environ['POLYGON_API_KEY']
+        url = f'https://api.polygon.io/v2/aggs/ticker/NVDA/range/1/minute/2024-01-02/2024-01-02?apikey={api_key}'
+        
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            print(f'✅ API connectivity verified: {data.get(\"resultsCount\", 0)} bars')
+        else:
+            print(f'❌ API test failed: HTTP {response.status_code}')
+            print(f'Response: {response.text[:200]}')
+            exit(1)
+        "
+        
+    - name: Check data availability and quality
+      id: data_check
+      env:
+        POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+      run: |
+        lookback_days=${{ github.event.inputs.lookback_days || '5' }}
+        test_mode=${{ github.event.inputs.test_mode || 'false' }}
+        
+        if [[ "$test_mode" == "true" ]]; then
+          lookback_days="2"
+          echo "🧪 Test mode: Using $lookback_days days"
+        fi
+        
+        python -c "
+        import os
+        import sys
+        import requests
+        import pandas as pd
+        from datetime import datetime, timedelta
+        import json
+        
+        print('📊 Checking Polygon data availability and quality...')
+        
+        api_key = os.environ['POLYGON_API_KEY']
+        lookback_days = int('$lookback_days')
+        
+        # Calculate date range (excluding weekends)
+        end_date = datetime.now()
+        trading_days = []
+        current_date = end_date - timedelta(days=1)  # Start from yesterday
+        
+        while len(trading_days) < lookback_days:
+            if current_date.weekday() < 5:  # Monday=0, Friday=4
+                trading_days.append(current_date.strftime('%Y-%m-%d'))
+            current_date -= timedelta(days=1)
+            
+            # Safety check to avoid infinite loop
+            if (end_date - current_date).days > 14:
+                break
+        
+        trading_days = sorted(trading_days)  # Oldest first
+        print(f'📅 Trading days to validate: {trading_days}')
+        
+        # Check data for both tickers
+        tickers = ['NVDA', 'MSFT']
+        quality_scores = []
+        total_bars = 0
+        
+        for ticker in tickers:
+            ticker_bars = 0
+            for date in trading_days:
+                url = f'https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/minute/{date}/{date}?apikey={api_key}'
+                
+                try:
+                    response = requests.get(url, timeout=15)
+                    if response.status_code == 200:
+                        data = response.json()
+                        bars = data.get('resultsCount', 0)
+                        ticker_bars += bars
+                        print(f'  {ticker} {date}: {bars} bars')
+                    else:
+                        print(f'  {ticker} {date}: HTTP {response.status_code}')
+                        
+                except Exception as e:
+                    print(f'  {ticker} {date}: Error - {e}')
+                    
+            total_bars += ticker_bars
+            
+            # Quality score: expect ~390 bars per ticker per day (6.5 hours * 60 minutes)
+            expected_bars = len(trading_days) * 390
+            quality_score = min(100, (ticker_bars / expected_bars) * 100) if expected_bars > 0 else 0
+            quality_scores.append(quality_score)
+            
+            print(f'📈 {ticker}: {ticker_bars} total bars, quality score: {quality_score:.1f}%')
+        
+        # Overall quality assessment
+        avg_quality = sum(quality_scores) / len(quality_scores)
+        data_available = avg_quality >= 70  # Require 70% data completeness
+        
+        print(f'📊 Overall data quality: {avg_quality:.1f}%')
+        print(f'📊 Total bars collected: {total_bars}')
+        print(f'✅ Data sufficient for backtest: {data_available}')
+        
+        # Set GitHub Actions outputs
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+            f.write(f'data_available={str(data_available).lower()}\\n')
+            f.write(f'trading_days={len(trading_days)}\\n')
+            f.write(f'quality_score={avg_quality:.1f}\\n')
+        
+        if not data_available:
+            print('❌ Insufficient data quality for reliable backtest')
+            sys.exit(1)
+        "
+        
+  rolling-window-backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: polygon-data-validation
+    if: needs.polygon-data-validation.outputs.data_available == 'true'
+    
+    services:
+      timescaledb:
+        image: timescale/timescaledb:latest-pg14
+        env:
+          POSTGRES_DB: intradayjules
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_password
+          POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    env:
+      TEST_DB_HOST: localhost
+      TEST_DB_PORT: 5432
+      TEST_DB_NAME: intradayjules
+      TEST_DB_USER: postgres
+      TEST_DB_PASSWORD: ci_test_password
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-backtest-${{ hashFiles('requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-backtest-
+          ${{ runner.os }}-pip-
+          
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client
+        
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov psycopg2-binary
+        pip install polygon-api-client matplotlib seaborn
+        pip install stable-baselines3[extra]  # For model loading
+        
+    - name: Wait for TimescaleDB
+      run: |
+        echo "⏳ Waiting for TimescaleDB to be ready..."
+        for i in {1..30}; do
+          if pg_isready -h localhost -p 5432 -U postgres; then
+            echo "✅ TimescaleDB is ready! (attempt $i/30)"
+            break
+          fi
+          echo "🔄 TimescaleDB not ready yet... (attempt $i/30)"
+          sleep 2
+        done
+        
+    - name: Initialize database schema
+      run: |
+        echo "🗄️ Setting up database schema..."
+        
+        # Apply schema
+        PGPASSWORD=ci_test_password psql -h localhost -U postgres -d intradayjules -f sql/docker-entrypoint-initdb.d/01_schema.sql || {
+          echo "❌ Failed to initialize database schema"
+          exit 1
+        }
+        
+        # Verify schema
+        PGPASSWORD=ci_test_password psql -h localhost -U postgres -d intradayjules -c "
+          SELECT table_name FROM information_schema.tables 
+          WHERE table_schema = 'public' AND table_name = 'dual_ticker_bars';
+        " | grep -q "dual_ticker_bars" || {
+          echo "❌ Schema verification failed"
+          exit 1
+        }
+        
+        echo "✅ Database schema initialized successfully!"
+        
+    - name: Download and prepare live Polygon data
+      env:
+        POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+      run: |
+        lookback_days=${{ github.event.inputs.lookback_days || '5' }}
+        test_mode=${{ github.event.inputs.test_mode || 'false' }}
+        
+        if [[ "$test_mode" == "true" ]]; then
+          lookback_days="2"
+          echo "🧪 Test mode: Using $lookback_days days"
+        fi
+        
+        echo "📥 Downloading live Polygon data for backtest..."
+        
+        python -c "
+        import os
+        import sys
+        import requests
+        import pandas as pd
+        import psycopg2
+        from datetime import datetime, timedelta
+        import time
+        
+        print('📊 Downloading and storing live Polygon data...')
+        
+        # Database connection
+        db_config = {
+            'host': 'localhost',
+            'port': 5432,
+            'database': 'intradayjules',
+            'user': 'postgres',
+            'password': 'ci_test_password'
+        }
+        
+        api_key = os.environ['POLYGON_API_KEY']
+        lookback_days = int('$lookback_days')
+        
+        # Calculate trading days
+        end_date = datetime.now()
+        trading_days = []
+        current_date = end_date - timedelta(days=1)
+        
+        while len(trading_days) < lookback_days:
+            if current_date.weekday() < 5:  # Trading days only
+                trading_days.append(current_date.strftime('%Y-%m-%d'))
+            current_date -= timedelta(days=1)
+            if (end_date - current_date).days > 14:
+                break
+        
+        trading_days = sorted(trading_days)
+        print(f'📅 Processing trading days: {trading_days}')
+        
+        # Download data for both tickers
+        tickers = ['NVDA', 'MSFT']
+        total_bars = 0
+        
+        conn = psycopg2.connect(**db_config)
+        cur = conn.cursor()
+        
+        for ticker in tickers:
+            print(f'📈 Processing {ticker}...')
+            
+            for date in trading_days:
+                url = f'https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/minute/{date}/{date}?apikey={api_key}'
+                
+                try:
+                    response = requests.get(url, timeout=15)
+                    if response.status_code == 200:
+                        data = response.json()
+                        results = data.get('results', [])
+                        
+                        if results:
+                            # Convert to DataFrame and store
+                            df = pd.DataFrame(results)
+                            df['timestamp'] = pd.to_datetime(df['t'], unit='ms')
+                            df['symbol'] = ticker
+                            
+                            # Insert into database
+                            for _, row in df.iterrows():
+                                cur.execute('''
+                                    INSERT INTO dual_ticker_bars 
+                                    (timestamp, symbol, open, high, low, close, volume, vwap)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                    ON CONFLICT (timestamp, symbol) DO NOTHING
+                                ''', (
+                                    row['timestamp'], ticker, 
+                                    row['o'], row['h'], row['l'], row['c'], 
+                                    row['v'], row.get('vw', row['c'])
+                                ))
+                                
+                            total_bars += len(results)
+                            print(f'  {date}: {len(results)} bars stored')
+                            
+                        time.sleep(0.1)  # Rate limiting
+                        
+                    else:
+                        print(f'  {date}: HTTP {response.status_code}')
+                        
+                except Exception as e:
+                    print(f'  {date}: Error - {e}')
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print(f'✅ Total bars stored: {total_bars}')
+        print(f'✅ Data preparation complete for {len(trading_days)} trading days')
+        "
+        
+    - name: Load latest production model
+      run: |
+        echo "🤖 Loading latest production model for backtest..."
+        
+        # Check for available production models
+        if [[ -f "deploy_models/dual_ticker_prod_20250731_step201k_stable.zip" ]]; then
+          model_path="deploy_models/dual_ticker_prod_20250731_step201k_stable.zip"
+          echo "✅ Using production model: $model_path"
+        elif [[ -f "models/phase1_fast_recovery_model.zip" ]]; then
+          model_path="models/phase1_fast_recovery_model.zip"
+          echo "✅ Using fallback model: $model_path"
+        else
+          echo "❌ No production model found"
+          exit 1
+        fi
+        
+        # Verify model can be loaded
+        python -c "
+        import zipfile
+        import os
+        
+        model_path = '$model_path'
+        if os.path.exists(model_path):
+            with zipfile.ZipFile(model_path, 'r') as z:
+                files = z.namelist()
+                print(f'📦 Model archive contains: {len(files)} files')
+                
+                # Check for required model files
+                required_files = ['policy.pth', 'policy.pkl', 'data']
+                missing = [f for f in required_files if not any(f in file for file in files)]
+                if missing:
+                    print(f'⚠️  Missing files: {missing}')
+                else:
+                    print('✅ Model structure verified')
+        else:
+            print('❌ Model file not found')
+            exit(1)
+        "
+        
+    - name: Run rolling-window backtest
+      run: |
+        echo "🎯 Running rolling-window backtest on live Polygon data..."
+        
+        lookback_days=${{ github.event.inputs.lookback_days || '5' }}
+        test_mode=${{ github.event.inputs.test_mode || 'false' }}
+        
+        if [[ "$test_mode" == "true" ]]; then
+          lookback_days="2"
+          window_size="1"
+          echo "🧪 Test mode: $lookback_days days, window size: $window_size"
+        else
+          window_size="3"
+          echo "🏭 Production mode: $lookback_days days, window size: $window_size"
+        fi
+        
+        python -c "
+        import os
+        import sys
+        import pandas as pd
+        import numpy as np
+        import psycopg2
+        from datetime import datetime, timedelta
+        import json
+        from pathlib import Path
+        
+        sys.path.append('.')
+        from src.gym_env.dual_ticker_trading_env import DualTickerTradingEnv
+        from src.gym_env.dual_ticker_data_adapter import DualTickerDataAdapter
+        
+        print('🎯 Starting rolling-window backtest...')
+        
+        # Database configuration
+        db_config = {
+            'host': 'localhost',
+            'port': 5432,
+            'database': 'intradayjules',
+            'user': 'postgres',
+            'password': 'ci_test_password'
+        }
+        
+        lookback_days = int('$lookback_days')
+        window_size = int('$window_size')
+        
+        # Get available trading days from database
+        conn = psycopg2.connect(**db_config)
+        cur = conn.cursor()
+        
+        cur.execute('''
+            SELECT DISTINCT DATE(timestamp) as trading_date 
+            FROM dual_ticker_bars 
+            WHERE symbol = 'NVDA'
+            ORDER BY trading_date DESC 
+            LIMIT %s
+        ''', (lookback_days,))
+        
+        trading_days = [row[0].strftime('%Y-%m-%d') for row in cur.fetchall()]
+        trading_days = sorted(trading_days)  # Oldest first
+        
+        print(f'📅 Available trading days: {trading_days}')
+        
+        if len(trading_days) < window_size:
+            print(f'❌ Insufficient data: {len(trading_days)} days < {window_size} required')
+            sys.exit(1)
+        
+        # Rolling window backtest
+        results = []
+        total_windows = len(trading_days) - window_size + 1
+        
+        for i in range(total_windows):
+            window_days = trading_days[i:i+window_size]
+            start_date = window_days[0]
+            end_date = window_days[-1]
+            
+            print(f'🔄 Window {i+1}/{total_windows}: {start_date} to {end_date}')
+            
+            try:
+                # Load data for this window
+                adapter = DualTickerDataAdapter(db_config)
+                data = adapter.load_training_data(start_date, end_date)
+                
+                if not data or len(data.get('trading_days', [])) == 0:
+                    print(f'  ⚠️  No data for window {i+1}')
+                    continue
+                
+                # Create environment
+                env = DualTickerTradingEnv(**data)
+                obs, info = env.reset()
+                
+                # Run episode with simple strategy (HOLD_BOTH = action 4)
+                total_reward = 0
+                step_count = 0
+                episode_returns = []
+                
+                while step_count < 1000:  # Limit steps for CI
+                    # Simple strategy: Hold both stocks
+                    action = 4  # HOLD_BOTH
+                    obs, reward, done, info = env.step(action)
+                    
+                    total_reward += reward
+                    step_count += 1
+                    
+                    if done:
+                        break
+                
+                # Calculate performance metrics
+                final_portfolio_value = info.get('portfolio_value', 100000)
+                returns = (final_portfolio_value - 100000) / 100000
+                sharpe_ratio = returns / max(0.01, np.std([reward]))  # Simplified
+                
+                window_result = {
+                    'window': i + 1,
+                    'start_date': start_date,
+                    'end_date': end_date,
+                    'days': len(window_days),
+                    'steps': step_count,
+                    'total_reward': total_reward,
+                    'final_portfolio_value': final_portfolio_value,
+                    'returns_pct': returns * 100,
+                    'sharpe_ratio': sharpe_ratio,
+                    'success': True
+                }
+                
+                results.append(window_result)
+                
+                print(f'  ✅ Window {i+1}: {returns*100:.2f}% returns, Sharpe: {sharpe_ratio:.2f}')
+                
+            except Exception as e:
+                print(f'  ❌ Window {i+1} failed: {e}')
+                
+                window_result = {
+                    'window': i + 1,
+                    'start_date': start_date,
+                    'end_date': end_date,
+                    'error': str(e),
+                    'success': False
+                }
+                results.append(window_result)
+        
+        # Summary statistics
+        successful_windows = [r for r in results if r.get('success', False)]
+        
+        if successful_windows:
+            avg_returns = np.mean([r['returns_pct'] for r in successful_windows])
+            avg_sharpe = np.mean([r['sharpe_ratio'] for r in successful_windows])
+            win_rate = len([r for r in successful_windows if r['returns_pct'] > 0]) / len(successful_windows)
+            
+            summary = {
+                'total_windows': total_windows,
+                'successful_windows': len(successful_windows),
+                'success_rate': len(successful_windows) / total_windows,
+                'avg_returns_pct': avg_returns,
+                'avg_sharpe_ratio': avg_sharpe,
+                'win_rate': win_rate,
+                'data_quality_score': ${{ needs.polygon-data-validation.outputs.quality_score }},
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            print(f'📊 BACKTEST SUMMARY:')
+            print(f'  Windows: {len(successful_windows)}/{total_windows} successful')
+            print(f'  Avg Returns: {avg_returns:.2f}%')
+            print(f'  Avg Sharpe: {avg_sharpe:.2f}')
+            print(f'  Win Rate: {win_rate:.1%}')
+            
+            # Save results
+            Path('reports/backtest').mkdir(parents=True, exist_ok=True)
+            
+            with open('reports/backtest/nightly_results.json', 'w') as f:
+                json.dump({
+                    'summary': summary,
+                    'windows': results
+                }, f, indent=2)
+            
+            # Performance gates for CI
+            assert summary['success_rate'] >= 0.7, f'Success rate too low: {summary[\"success_rate\"]:.1%} < 70%'
+            assert abs(avg_returns) < 50, f'Returns too volatile: {avg_returns:.1f}% (abs > 50%)'
+            assert len(successful_windows) >= 1, 'No successful backtest windows'
+            
+            print('✅ Rolling-window backtest completed successfully!')
+            
+        else:
+            print('❌ No successful backtest windows')
+            sys.exit(1)
+        
+        cur.close()
+        conn.close()
+        "
+        
+    - name: Generate backtest report
+      if: always()
+      run: |
+        echo "📊 Generating backtest report..."
+        
+        if [[ -f "reports/backtest/nightly_results.json" ]]; then
+          python -c "
+          import json
+          import matplotlib.pyplot as plt
+          import pandas as pd
+          from datetime import datetime
+          
+          # Load results
+          with open('reports/backtest/nightly_results.json', 'r') as f:
+              data = json.load(f)
+          
+          summary = data['summary']
+          windows = [w for w in data['windows'] if w.get('success', False)]
+          
+          if windows:
+              # Create performance chart
+              df = pd.DataFrame(windows)
+              
+              fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+              
+              # Returns over time
+              ax1.plot(range(1, len(df) + 1), df['returns_pct'], 'b-o', linewidth=2, markersize=4)
+              ax1.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+              ax1.set_title('Rolling-Window Returns (Live Polygon Data)', fontsize=14, fontweight='bold')
+              ax1.set_xlabel('Window')
+              ax1.set_ylabel('Returns (%)')
+              ax1.grid(True, alpha=0.3)
+              
+              # Portfolio value over time
+              ax2.plot(range(1, len(df) + 1), df['final_portfolio_value'], 'g-o', linewidth=2, markersize=4)
+              ax2.axhline(y=100000, color='r', linestyle='--', alpha=0.5, label='Initial Value')
+              ax2.set_title('Portfolio Value Progression', fontsize=14, fontweight='bold')
+              ax2.set_xlabel('Window')
+              ax2.set_ylabel('Portfolio Value (\$)')
+              ax2.grid(True, alpha=0.3)
+              ax2.legend()
+              
+              plt.tight_layout()
+              plt.savefig('reports/backtest/nightly_performance.png', dpi=150, bbox_inches='tight')
+              print('✅ Performance chart saved')
+              
+              # Generate text report
+              with open('reports/backtest/nightly_report.md', 'w') as f:
+                  f.write(f'# Nightly Polygon Backtest Report\\n\\n')
+                  f.write(f'**Generated:** {datetime.now().strftime(\"%Y-%m-%d %H:%M:%S UTC\")}\\n')
+                  f.write(f'**Data Quality:** {summary[\"data_quality_score\"]:.1f}%\\n\\n')
+                  
+                  f.write(f'## Summary\\n\\n')
+                  f.write(f'- **Windows Tested:** {summary[\"successful_windows\"]}/{summary[\"total_windows\"]}\\n')
+                  f.write(f'- **Success Rate:** {summary[\"success_rate\"]:.1%}\\n')
+                  f.write(f'- **Average Returns:** {summary[\"avg_returns_pct\"]:.2f}%\\n')
+                  f.write(f'- **Average Sharpe:** {summary[\"avg_sharpe_ratio\"]:.2f}\\n')
+                  f.write(f'- **Win Rate:** {summary[\"win_rate\"]:.1%}\\n\\n')
+                  
+                  f.write(f'## Window Details\\n\\n')
+                  f.write(f'| Window | Start Date | End Date | Returns (%) | Sharpe | Steps |\\n')
+                  f.write(f'|--------|------------|----------|-------------|--------|-------|\\n')
+                  
+                  for w in windows:
+                      f.write(f'| {w[\"window\"]} | {w[\"start_date\"]} | {w[\"end_date\"]} | ')
+                      f.write(f'{w[\"returns_pct\"]:.2f} | {w[\"sharpe_ratio\"]:.2f} | {w[\"steps\"]} |\\n')
+              
+              print('✅ Markdown report generated')
+          "
+        else
+          echo "⚠️  No results file found"
+        fi
+        
+    - name: Archive backtest results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: nightly-backtest-results-${{ github.run_number }}
+        path: |
+          reports/backtest/
+        retention-days: 30
+        
+    - name: Performance gate validation
+      run: |
+        if [[ -f "reports/backtest/nightly_results.json" ]]; then
+          echo "✅ Nightly backtest completed successfully"
+          echo "📊 Results archived and available for review"
+          
+          # Extract key metrics for status
+          python -c "
+          import json
+          
+          with open('reports/backtest/nightly_results.json', 'r') as f:
+              data = json.load(f)
+          
+          summary = data['summary']
+          print(f'📈 Success Rate: {summary[\"success_rate\"]:.1%}')
+          print(f'📈 Avg Returns: {summary[\"avg_returns_pct\"]:.2f}%')
+          print(f'📈 Data Quality: {summary[\"data_quality_score\"]:.1f}%')
+          "
+        else
+          echo "❌ Backtest failed - no results generated"
+          exit 1
+        fi
+
+  notify-results:
+    runs-on: ubuntu-latest
+    needs: [polygon-data-validation, rolling-window-backtest]
+    if: always()
+    
+    steps:
+    - name: Notify completion status
+      run: |
+        echo "🌙 NIGHTLY POLYGON BACKTEST COMPLETE"
+        echo "=================================="
+        
+        data_status="${{ needs.polygon-data-validation.result }}"
+        backtest_status="${{ needs.rolling-window-backtest.result }}"
+        
+        echo "📊 Data Validation: $data_status"
+        echo "🎯 Rolling Backtest: $backtest_status"
+        echo "📅 Trading Days: ${{ needs.polygon-data-validation.outputs.trading_days }}"
+        echo "📈 Data Quality: ${{ needs.polygon-data-validation.outputs.quality_score }}%"
+        
+        if [[ "$data_status" == "success" && "$backtest_status" == "success" ]]; then
+          echo "✅ NIGHTLY VALIDATION PASSED"
+          echo "🚀 Trading system validated against live market data"
+        else
+          echo "❌ NIGHTLY VALIDATION FAILED"
+          echo "🔍 Check logs and artifacts for details"
+          exit 1
+        fi

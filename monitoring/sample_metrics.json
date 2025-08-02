@@ -1,0 +1,1702 @@
+[
+  {
+    "timestamp": "2025-08-02T12:12:26.251059",
+    "metrics": {
+      "trading_portfolio_value_usd": 122931.3356215892,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 22931.335621589198,
+      "trading_max_drawdown_pct": 0.0,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 476.10785364501913,
+      "trading_msft_price_usd": 409.3828578278187,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.7620090987129143,
+      "ai_prediction_accuracy_1h": 0.8323200717945637,
+      "ai_episode_reward_mean": 4.439968385641835
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251081",
+    "metrics": {
+      "trading_portfolio_value_usd": 123114.84718269561,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 183.51156110641023,
+      "trading_max_drawdown_pct": 0.0,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 477.7046423444235,
+      "trading_msft_price_usd": 410.24679221228695,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.7660253006742459,
+      "ai_prediction_accuracy_1h": 0.6835082658909064,
+      "ai_episode_reward_mean": 4.1838146489123655
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251094",
+    "metrics": {
+      "trading_portfolio_value_usd": 125099.20728210814,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1984.36009941253,
+      "trading_max_drawdown_pct": 0.0,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 494.33266992812844,
+      "trading_msft_price_usd": 419.85478154751416,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.7402201639715343,
+      "ai_prediction_accuracy_1h": 0.5939239746654325,
+      "ai_episode_reward_mean": 4.0660606444122385
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251110",
+    "metrics": {
+      "trading_portfolio_value_usd": 124565.12918804293,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -534.0780940652039,
+      "trading_max_drawdown_pct": 0.004269236437772284,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 486.95622135645436,
+      "trading_msft_price_usd": 418.4776510018352,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.7549482451724724,
+      "ai_prediction_accuracy_1h": 0.6342764334850762,
+      "ai_episode_reward_mean": 3.8808399242163034
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251122",
+    "metrics": {
+      "trading_portfolio_value_usd": 125220.59295898105,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 655.4637709381204,
+      "trading_max_drawdown_pct": 0.004269236437772284,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 491.6152956926334,
+      "trading_msft_price_usd": 421.9985681195783,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.765227010238941,
+      "ai_prediction_accuracy_1h": 0.7370030229708168,
+      "ai_episode_reward_mean": 3.8853622274961594
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251134",
+    "metrics": {
+      "trading_portfolio_value_usd": 125050.84723539319,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -169.74572358786827,
+      "trading_max_drawdown_pct": 0.004269236437772284,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 492.9881874283961,
+      "trading_msft_price_usd": 420.01198219977806,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.7129323868073787,
+      "ai_prediction_accuracy_1h": 0.8098449785113827,
+      "ai_episode_reward_mean": 3.838329180563592
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251146",
+    "metrics": {
+      "trading_portfolio_value_usd": 122770.45078773706,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -2280.396447656123,
+      "trading_max_drawdown_pct": 0.019566607323498245,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 474.3438184519918,
+      "trading_msft_price_usd": 408.7771655428122,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.7269329951201464,
+      "ai_prediction_accuracy_1h": 0.8099274503946045,
+      "ai_episode_reward_mean": 3.714205797844705
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251158",
+    "metrics": {
+      "trading_portfolio_value_usd": 122754.19976521058,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -16.25102252648503,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 474.426204266029,
+      "trading_msft_price_usd": 408.6074129325761,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.8616614345001368,
+      "ai_prediction_accuracy_1h": 0.7767143070746494,
+      "ai_episode_reward_mean": 3.472584209086407
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251169",
+    "metrics": {
+      "trading_portfolio_value_usd": 123659.26906487404,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 905.0692996634607,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 479.76813712913525,
+      "trading_msft_price_usd": 413.9238517368105,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.9296204095911959,
+      "ai_prediction_accuracy_1h": 0.8204510560195496,
+      "ai_episode_reward_mean": 3.5959287368134407
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251182",
+    "metrics": {
+      "trading_portfolio_value_usd": 124436.75530842593,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 777.486243551888,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 491.4133256839488,
+      "trading_msft_price_usd": 415.5507418685707,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.8353747053335867,
+      "ai_prediction_accuracy_1h": 0.85,
+      "ai_episode_reward_mean": 3.4746066446400046
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251219",
+    "metrics": {
+      "trading_portfolio_value_usd": 125154.9497937879,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 718.1944853619789,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 501.1135678235149,
+      "trading_msft_price_usd": 417.4939283551013,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.7854904347365961,
+      "ai_prediction_accuracy_1h": 0.6551240529652916,
+      "ai_episode_reward_mean": 3.31105723610429
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251240",
+    "metrics": {
+      "trading_portfolio_value_usd": 125603.37303627555,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 448.4232424876391,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 500.5000358806627,
+      "trading_msft_price_usd": 421.48642701868675,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.7994026114104393,
+      "ai_prediction_accuracy_1h": 0.6672405492517623,
+      "ai_episode_reward_mean": 3.5957761372842354
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251253",
+    "metrics": {
+      "trading_portfolio_value_usd": 125829.42399818545,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 226.05096190990298,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 505.4887033754163,
+      "trading_msft_price_usd": 421.2915735784553,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.7159477827826354,
+      "ai_prediction_accuracy_1h": 0.7305409039658773,
+      "ai_episode_reward_mean": 3.5917321055468476
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251265",
+    "metrics": {
+      "trading_portfolio_value_usd": 123435.54767218442,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -2393.876326001031,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 485.3985483575791,
+      "trading_msft_price_usd": 409.713502119212,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.6661501285617567,
+      "ai_prediction_accuracy_1h": 0.7554116167078381,
+      "ai_episode_reward_mean": 3.116990327412327
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251276",
+    "metrics": {
+      "trading_portfolio_value_usd": 123942.05785492877,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 506.51018274435773,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 493.6347113657606,
+      "trading_msft_price_usd": 410.5026857220063,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.6265080607018169,
+      "ai_prediction_accuracy_1h": 0.5570337104989954,
+      "ai_episode_reward_mean": 3.44182405110038
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251288",
+    "metrics": {
+      "trading_portfolio_value_usd": 124414.69699648264,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 472.6391415538674,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 498.1552995524043,
+      "trading_msft_price_usd": 412.5577668238535,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.6714139426796375,
+      "ai_prediction_accuracy_1h": 0.7385267252958816,
+      "ai_episode_reward_mean": 3.56258206409509
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251299",
+    "metrics": {
+      "trading_portfolio_value_usd": 123704.14982517136,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -710.5471713112784,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 494.3659814888804,
+      "trading_msft_price_usd": 408.2154229227279,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.6438223919116244,
+      "ai_prediction_accuracy_1h": 0.5552870120660904,
+      "ai_episode_reward_mean": 3.5320707275611576
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251312",
+    "metrics": {
+      "trading_portfolio_value_usd": 124511.7133073677,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 807.5634821963322,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 502.7333874283681,
+      "trading_msft_price_usd": 411.45869946624407,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.6513544219257682,
+      "ai_prediction_accuracy_1h": 0.6790346384928951,
+      "ai_episode_reward_mean": 3.5749122307602055
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251325",
+    "metrics": {
+      "trading_portfolio_value_usd": 125660.32991989487,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1148.6166125271702,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 515.0605080748941,
+      "trading_msft_price_usd": 415.89420430125136,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.6374853876353999,
+      "ai_prediction_accuracy_1h": 0.45,
+      "ai_episode_reward_mean": 3.9580736127333895
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251336",
+    "metrics": {
+      "trading_portfolio_value_usd": 125444.5203992709,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -215.80952062396682,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 512.3866434094044,
+      "trading_msft_price_usd": 415.2099019066722,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5867757260730099,
+      "ai_prediction_accuracy_1h": 0.5680967837147796,
+      "ai_episode_reward_mean": 3.930248369412461
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251349",
+    "metrics": {
+      "trading_portfolio_value_usd": 125819.13086500367,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 374.6104657327669,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 514.6700656599626,
+      "trading_msft_price_usd": 417.3802298500461,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5798786544045081,
+      "ai_prediction_accuracy_1h": 0.633315951839988,
+      "ai_episode_reward_mean": 3.9955264244293027
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251361",
+    "metrics": {
+      "trading_portfolio_value_usd": 127975.06650159073,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 2155.9356365870626,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 535.3428910768871,
+      "trading_msft_price_usd": 426.7326828978865,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.6463988080244649,
+      "ai_prediction_accuracy_1h": 0.6844805478335421,
+      "ai_episode_reward_mean": 4.382187845213144
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251372",
+    "metrics": {
+      "trading_portfolio_value_usd": 126736.80477389053,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -1238.2617277001991,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 525.3951958249495,
+      "trading_msft_price_usd": 420.55870818869215,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.660172356280143,
+      "ai_prediction_accuracy_1h": 0.7336276828768595,
+      "ai_episode_reward_mean": 3.9525176281888212
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251384",
+    "metrics": {
+      "trading_portfolio_value_usd": 126191.11776681605,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -545.6870070744772,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 517.8703412291865,
+      "trading_msft_price_usd": 419.1466725446394,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.6582197881283812,
+      "ai_prediction_accuracy_1h": 0.6908597216987165,
+      "ai_episode_reward_mean": 3.912673658422863
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251396",
+    "metrics": {
+      "trading_portfolio_value_usd": 127800.20340182059,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1609.085635004536,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 531.0110412203662,
+      "trading_msft_price_usd": 427.0804278400189,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.6565761868042375,
+      "ai_prediction_accuracy_1h": 0.725944053063445,
+      "ai_episode_reward_mean": 3.9180729730886714
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251409",
+    "metrics": {
+      "trading_portfolio_value_usd": 128026.35174961473,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 226.1483477941365,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 536.8359674132251,
+      "trading_msft_price_usd": 426.5379448246123,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.671052457655003,
+      "ai_prediction_accuracy_1h": 0.6584779244161965,
+      "ai_episode_reward_mean": 3.569192140052892
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251420",
+    "metrics": {
+      "trading_portfolio_value_usd": 126221.5747407559,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -1804.7770088588295,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 521.8352473101723,
+      "trading_msft_price_usd": 417.748436460394,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.6441568115460882,
+      "ai_prediction_accuracy_1h": 0.45998776571199423,
+      "ai_episode_reward_mean": 3.5879343098800156
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251433",
+    "metrics": {
+      "trading_portfolio_value_usd": 126549.69873791777,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 328.1239971618779,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 520.7152316652514,
+      "trading_msft_price_usd": 420.94947628879333,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.694452049289678,
+      "ai_prediction_accuracy_1h": 0.7895142223490974,
+      "ai_episode_reward_mean": 3.7747269634721135
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251444",
+    "metrics": {
+      "trading_portfolio_value_usd": 127276.32995243589,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 726.6312145181146,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 527.6849967188002,
+      "trading_msft_price_usd": 424.1006676374655,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.73581875850864,
+      "ai_prediction_accuracy_1h": 0.8325281492954825,
+      "ai_episode_reward_mean": 3.870641278348124
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251455",
+    "metrics": {
+      "trading_portfolio_value_usd": 127951.25181435875,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 674.9218619228632,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 531.5791787472676,
+      "trading_msft_price_usd": 428.10244064162816,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.7989898467048799,
+      "ai_prediction_accuracy_1h": 0.678657729864245,
+      "ai_episode_reward_mean": 3.7634867586211507
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251467",
+    "metrics": {
+      "trading_portfolio_value_usd": 127617.41944197181,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -333.8323723869398,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 531.7402973843319,
+      "trading_msft_price_usd": 425.25337143962685,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.8365887732467623,
+      "ai_prediction_accuracy_1h": 0.7046471534017829,
+      "ai_episode_reward_mean": 3.8621751140549243
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251479",
+    "metrics": {
+      "trading_portfolio_value_usd": 128817.3209971642,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1199.9015551923949,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 542.6451813219691,
+      "trading_msft_price_usd": 430.70884942554795,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.7549021807397823,
+      "ai_prediction_accuracy_1h": 0.6978336570328919,
+      "ai_episode_reward_mean": 4.102379152442448
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251509",
+    "metrics": {
+      "trading_portfolio_value_usd": 128477.26684209876,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -340.05415506544523,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 543.3814505924427,
+      "trading_msft_price_usd": 427.5682859373052,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.7570902857523772,
+      "ai_prediction_accuracy_1h": 0.7091566790347636,
+      "ai_episode_reward_mean": 4.027625097605589
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251568",
+    "metrics": {
+      "trading_portfolio_value_usd": 130315.2629526444,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1837.996110545646,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 553.35069951208,
+      "trading_msft_price_usd": 438.7310664753366,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.8310933037231697,
+      "ai_prediction_accuracy_1h": 0.7155454405225569,
+      "ai_episode_reward_mean": 4.180341275443009
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251584",
+    "metrics": {
+      "trading_portfolio_value_usd": 129566.10157133378,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -749.1613813106233,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 547.5603330219835,
+      "trading_msft_price_usd": 434.9007076686218,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.8382663599603846,
+      "ai_prediction_accuracy_1h": 0.7801880951941055,
+      "ai_episode_reward_mean": 4.056964281853043
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251596",
+    "metrics": {
+      "trading_portfolio_value_usd": 128456.28340669043,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -1109.8181646433513,
+      "trading_max_drawdown_pct": 0.01969638647677065,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 540.5872916848225,
+      "trading_msft_price_usd": 428.55765685374433,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.8467688952691586,
+      "ai_prediction_accuracy_1h": 0.7538009305646675,
+      "ai_episode_reward_mean": 3.595192268866147
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251630",
+    "metrics": {
+      "trading_portfolio_value_usd": 127531.94568227348,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -924.3377244169533,
+      "trading_max_drawdown_pct": 0.021358336754324508,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 535.2335403136062,
+      "trading_msft_price_usd": 423.08557222160965,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.8633412888278528,
+      "ai_prediction_accuracy_1h": 0.85,
+      "ai_episode_reward_mean": 3.819021084218693
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251645",
+    "metrics": {
+      "trading_portfolio_value_usd": 127481.1035767126,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -50.842105560877826,
+      "trading_max_drawdown_pct": 0.021748483728738038,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 535.9612294617519,
+      "trading_msft_price_usd": 422.35868419687506,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.8348531066186625,
+      "ai_prediction_accuracy_1h": 0.7226090771969673,
+      "ai_episode_reward_mean": 3.804403993450427
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251658",
+    "metrics": {
+      "trading_portfolio_value_usd": 129155.8765234312,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1674.7729467186,
+      "trading_max_drawdown_pct": 0.021748483728738038,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 550.360344498664,
+      "trading_msft_price_usd": 430.31549415415003,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.7326514053169502,
+      "ai_prediction_accuracy_1h": 0.7636691650230398,
+      "ai_episode_reward_mean": 3.713437860177704
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251669",
+    "metrics": {
+      "trading_portfolio_value_usd": 129700.21936358314,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 544.3428401519341,
+      "trading_max_drawdown_pct": 0.021748483728738038,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 552.9574843918199,
+      "trading_msft_price_usd": 433.76954286660106,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.7449035320956868,
+      "ai_prediction_accuracy_1h": 0.7629997468463312,
+      "ai_episode_reward_mean": 3.677052016830213
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251681",
+    "metrics": {
+      "trading_portfolio_value_usd": 129550.67382756561,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -149.5455360175256,
+      "trading_max_drawdown_pct": 0.021748483728738038,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 560.9429552399386,
+      "trading_msft_price_usd": 429.19605054640573,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.605927038653569,
+      "ai_prediction_accuracy_1h": 0.6730762968305628,
+      "ai_episode_reward_mean": 3.707557347290314
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251692",
+    "metrics": {
+      "trading_portfolio_value_usd": 129658.0947802311,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 107.42095266548858,
+      "trading_max_drawdown_pct": 0.021748483728738038,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 559.5786672921721,
+      "trading_msft_price_usd": 430.6596784635207,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.6081595722684833,
+      "ai_prediction_accuracy_1h": 0.629085022043053,
+      "ai_episode_reward_mean": 3.764111385948131
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251704",
+    "metrics": {
+      "trading_portfolio_value_usd": 127550.17053750574,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -2107.924242725363,
+      "trading_max_drawdown_pct": 0.021748483728738038,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 536.1693941344472,
+      "trading_msft_price_usd": 422.8475069231948,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.6189036201114535,
+      "ai_prediction_accuracy_1h": 0.6570079620687153,
+      "ai_episode_reward_mean": 3.830877024102496
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251715",
+    "metrics": {
+      "trading_portfolio_value_usd": 127654.71841988884,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 104.54788238310721,
+      "trading_max_drawdown_pct": 0.021748483728738038,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 537.8736266718116,
+      "trading_msft_price_usd": 423.0086423858187,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5210282671858242,
+      "ai_prediction_accuracy_1h": 0.6393873445753289,
+      "ai_episode_reward_mean": 3.8038259118847613
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251727",
+    "metrics": {
+      "trading_portfolio_value_usd": 127199.98945451702,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -454.72896537181805,
+      "trading_max_drawdown_pct": 0.023905668664916477,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 531.9801202859941,
+      "trading_msft_price_usd": 421.6748620018111,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.45605889060023663,
+      "ai_prediction_accuracy_1h": 0.7318754871871265,
+      "ai_episode_reward_mean": 3.6453839874520413
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251741",
+    "metrics": {
+      "trading_portfolio_value_usd": 128865.29716170997,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1665.3077071929438,
+      "trading_max_drawdown_pct": 0.023905668664916477,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 545.8097152649045,
+      "trading_msft_price_usd": 429.79009498720615,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.45305358947286006,
+      "ai_prediction_accuracy_1h": 0.7060179795693389,
+      "ai_episode_reward_mean": 3.606767669061463
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251753",
+    "metrics": {
+      "trading_portfolio_value_usd": 130525.8673623722,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1660.5702006622305,
+      "trading_max_drawdown_pct": 0.023905668664916477,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 560.4034630004762,
+      "trading_msft_price_usd": 437.54745176957,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.40879830512644577,
+      "ai_prediction_accuracy_1h": 0.6175281471498898,
+      "ai_episode_reward_mean": 3.7653355947149403
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251766",
+    "metrics": {
+      "trading_portfolio_value_usd": 130185.3350574782,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -340.5323048940045,
+      "trading_max_drawdown_pct": 0.023905668664916477,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 558.3995331508461,
+      "trading_msft_price_usd": 435.54465333279893,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.41166080009226047,
+      "ai_prediction_accuracy_1h": 0.5685106618823522,
+      "ai_episode_reward_mean": 3.7459004120358466
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251778",
+    "metrics": {
+      "trading_portfolio_value_usd": 130633.07903895443,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 447.7439814762329,
+      "trading_max_drawdown_pct": 0.023905668664916477,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 563.7720909639498,
+      "trading_msft_price_usd": 437.03728742297443,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4255602394898239,
+      "ai_prediction_accuracy_1h": 0.7458831822671311,
+      "ai_episode_reward_mean": 3.753435777354027
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251790",
+    "metrics": {
+      "trading_portfolio_value_usd": 131747.39062786117,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1114.3115889067412,
+      "trading_max_drawdown_pct": 0.023905668664916477,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 565.302373458169,
+      "trading_msft_price_usd": 445.6855996246061,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4,
+      "ai_prediction_accuracy_1h": 0.6068783500159987,
+      "ai_episode_reward_mean": 3.657604732671773
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251802",
+    "metrics": {
+      "trading_portfolio_value_usd": 134777.7564117664,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 3030.365783905232,
+      "trading_max_drawdown_pct": 0.023905668664916477,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 590.2469939249349,
+      "trading_msft_price_usd": 460.54505596266387,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4210558373586518,
+      "ai_prediction_accuracy_1h": 0.7894719173574805,
+      "ai_episode_reward_mean": 3.7593006683687578
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251813",
+    "metrics": {
+      "trading_portfolio_value_usd": 134540.5551461156,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -237.20126565080136,
+      "trading_max_drawdown_pct": 0.023905668664916477,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 587.778966757653,
+      "trading_msft_price_usd": 459.5967234019412,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5128397446794758,
+      "ai_prediction_accuracy_1h": 0.6263960373985046,
+      "ai_episode_reward_mean": 3.8018251171060924
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251825",
+    "metrics": {
+      "trading_portfolio_value_usd": 132170.63171944785,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -2369.923426667752,
+      "trading_max_drawdown_pct": 0.023905668664916477,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 562.7772557013361,
+      "trading_msft_price_usd": 450.2647411198422,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5522197726367086,
+      "ai_prediction_accuracy_1h": 0.8144988782300155,
+      "ai_episode_reward_mean": 3.652690565972524
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251862",
+    "metrics": {
+      "trading_portfolio_value_usd": 133601.22560131137,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1430.5938818635186,
+      "trading_max_drawdown_pct": 0.023905668664916477,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 573.9071011649767,
+      "trading_msft_price_usd": 457.5489211921878,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5623290682979901,
+      "ai_prediction_accuracy_1h": 0.7722516460514904,
+      "ai_episode_reward_mean": 3.97876875483791
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251875",
+    "metrics": {
+      "trading_portfolio_value_usd": 131555.76848590237,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -2045.4571154089936,
+      "trading_max_drawdown_pct": 0.023905932341093207,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 556.6237364933069,
+      "trading_msft_price_usd": 447.70484717697514,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5778806278784551,
+      "ai_prediction_accuracy_1h": 0.6774405651829732,
+      "ai_episode_reward_mean": 3.967871057832813
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251886",
+    "metrics": {
+      "trading_portfolio_value_usd": 131640.54195903835,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 84.77347313598148,
+      "trading_max_drawdown_pct": 0.023905932341093207,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 561.4018811588344,
+      "trading_msft_price_usd": 446.42039917580524,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.584441613637465,
+      "ai_prediction_accuracy_1h": 0.6922618370477942,
+      "ai_episode_reward_mean": 4.035756992914412
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251898",
+    "metrics": {
+      "trading_portfolio_value_usd": 129309.0540132347,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -2331.4879458036594,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 538.7498029854327,
+      "trading_msft_price_usd": 436.4296988663589,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5228415151583466,
+      "ai_prediction_accuracy_1h": 0.5575744980185658,
+      "ai_episode_reward_mean": 3.75035531546325
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251909",
+    "metrics": {
+      "trading_portfolio_value_usd": 130390.33771011588,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1081.2836968811898,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 548.5275341788579,
+      "trading_msft_price_usd": 441.3663416764415,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5364769154629334,
+      "ai_prediction_accuracy_1h": 0.6767219901985486,
+      "ai_episode_reward_mean": 3.743361065411318
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251921",
+    "metrics": {
+      "trading_portfolio_value_usd": 132294.4546485101,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1904.1169383942033,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 565.8631733546981,
+      "trading_msft_price_usd": 450.0107998397931,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.46917970679538906,
+      "ai_prediction_accuracy_1h": 0.675812351639015,
+      "ai_episode_reward_mean": 3.580504020229315
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251934",
+    "metrics": {
+      "trading_portfolio_value_usd": 131186.53242039966,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -1107.9222281104303,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 554.1725200909025,
+      "trading_msft_price_usd": 445.649220132121,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.498669798705197,
+      "ai_prediction_accuracy_1h": 0.7505689944593454,
+      "ai_episode_reward_mean": 3.4868687347988963
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251947",
+    "metrics": {
+      "trading_portfolio_value_usd": 132443.1365925927,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1256.6041721930378,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 560.2780421328018,
+      "trading_msft_price_usd": 453.576954049605,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4590220227201319,
+      "ai_prediction_accuracy_1h": 0.6976478850992016,
+      "ai_episode_reward_mean": 3.5909210123094497
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251959",
+    "metrics": {
+      "trading_portfolio_value_usd": 133922.958042905,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1479.8214503123017,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 569.502187766305,
+      "trading_msft_price_usd": 462.06540545491447,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4621612929041438,
+      "ai_prediction_accuracy_1h": 0.5894907523808615,
+      "ai_episode_reward_mean": 3.876937838794064
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251971",
+    "metrics": {
+      "trading_portfolio_value_usd": 134004.98571758292,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 82.02767467792728,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 566.76569359984,
+      "trading_msft_price_usd": 463.8891753132577,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4638940051412781,
+      "ai_prediction_accuracy_1h": 0.5173392320846297,
+      "ai_episode_reward_mean": 3.9685569105735072
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251983",
+    "metrics": {
+      "trading_portfolio_value_usd": 133938.92638907625,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -66.05932850667159,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 565.3252870449325,
+      "trading_msft_price_usd": 463.9388503069136,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4,
+      "ai_prediction_accuracy_1h": 0.502871750602543,
+      "ai_episode_reward_mean": 4.034843253559579
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.251995",
+    "metrics": {
+      "trading_portfolio_value_usd": 135109.347591991,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1170.4212029147602,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 574.4376882360025,
+      "trading_msft_price_usd": 469.89552650159084,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4,
+      "ai_prediction_accuracy_1h": 0.6592170693485023,
+      "ai_episode_reward_mean": 4.34359359927562
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252010",
+    "metrics": {
+      "trading_portfolio_value_usd": 135399.92649917462,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 290.5789071836043,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 573.1357482530725,
+      "trading_msft_price_usd": 472.85949238767495,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4882188560676727,
+      "ai_prediction_accuracy_1h": 0.6335863941562108,
+      "ai_episode_reward_mean": 4.5379322659516035
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252022",
+    "metrics": {
+      "trading_portfolio_value_usd": 136622.72009363212,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1222.7935944575001,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 581.4742565324284,
+      "trading_msft_price_usd": 479.57506055842254,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4548212400885292,
+      "ai_prediction_accuracy_1h": 0.5922742459750046,
+      "ai_episode_reward_mean": 4.828832537220148
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252033",
+    "metrics": {
+      "trading_portfolio_value_usd": 133995.1979629165,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -2627.5221307156025,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 558.2817624765668,
+      "trading_msft_price_usd": 467.3425819924014,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5009495840407798,
+      "ai_prediction_accuracy_1h": 0.6112324867743463,
+      "ai_episode_reward_mean": 4.482461285901549
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252044",
+    "metrics": {
+      "trading_portfolio_value_usd": 132698.51894856335,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -1296.679014353169,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 544.5223181571308,
+      "trading_msft_price_usd": 462.2700253392234,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5304415409208654,
+      "ai_prediction_accuracy_1h": 0.7225502464656123,
+      "ai_episode_reward_mean": 4.630432396464066
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252056",
+    "metrics": {
+      "trading_portfolio_value_usd": 133653.6594142798,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 955.140465716453,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 549.9099173793263,
+      "trading_msft_price_usd": 467.98469621094563,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4445519023700659,
+      "ai_prediction_accuracy_1h": 0.5291165922609636,
+      "ai_episode_reward_mean": 4.836858646154351
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252067",
+    "metrics": {
+      "trading_portfolio_value_usd": 134481.41495531704,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 827.7555410372443,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 556.4458633409364,
+      "trading_msft_price_usd": 472.1593482355853,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.41544091029712893,
+      "ai_prediction_accuracy_1h": 0.710175748020909,
+      "ai_episode_reward_mean": 5.125062950017527
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252079",
+    "metrics": {
+      "trading_portfolio_value_usd": 132741.83931277995,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -1739.5756425370928,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 541.0795383141409,
+      "trading_msft_price_usd": 464.0655199756076,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4,
+      "ai_prediction_accuracy_1h": 0.7847094487751856,
+      "ai_episode_reward_mean": 4.860961999156874
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252091",
+    "metrics": {
+      "trading_portfolio_value_usd": 132004.53599239435,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -737.303320385603,
+      "trading_max_drawdown_pct": 0.04057570436047321,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 534.6850075436952,
+      "trading_msft_price_usd": 460.58571346008,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4,
+      "ai_prediction_accuracy_1h": 0.5842217820322405,
+      "ai_episode_reward_mean": 4.59277535419854
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252103",
+    "metrics": {
+      "trading_portfolio_value_usd": 130797.12454432354,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -1207.4114480708085,
+      "trading_max_drawdown_pct": 0.04264002023467329,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 526.3894408194174,
+      "trading_msft_price_usd": 453.9804375279389,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.41253586509737106,
+      "ai_prediction_accuracy_1h": 0.6529784463230472,
+      "ai_episode_reward_mean": 4.251577797209277
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252114",
+    "metrics": {
+      "trading_portfolio_value_usd": 130803.99114650604,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 6.866602182504721,
+      "trading_max_drawdown_pct": 0.04264002023467329,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 529.0156957712536,
+      "trading_msft_price_usd": 452.9433863161946,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.434220476333614,
+      "ai_prediction_accuracy_1h": 0.6712786898521121,
+      "ai_episode_reward_mean": 4.190474383144061
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252125",
+    "metrics": {
+      "trading_portfolio_value_usd": 131450.7390536958,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 646.7479071897687,
+      "trading_max_drawdown_pct": 0.04264002023467329,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 526.9510533532654,
+      "trading_msft_price_usd": 459.19321988360434,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4,
+      "ai_prediction_accuracy_1h": 0.45,
+      "ai_episode_reward_mean": 4.1204463728643965
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252136",
+    "metrics": {
+      "trading_portfolio_value_usd": 126838.20496705578,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -4612.534086640037,
+      "trading_max_drawdown_pct": 0.07161704231822266,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 492.5401026138055,
+      "trading_msft_price_usd": 435.0933319697125,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4,
+      "ai_prediction_accuracy_1h": 0.6873249064923861,
+      "ai_episode_reward_mean": 3.632950053195658
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252148",
+    "metrics": {
+      "trading_portfolio_value_usd": 126694.72994470509,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -143.47502235068532,
+      "trading_max_drawdown_pct": 0.07266719724305769,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 489.5015896999713,
+      "trading_msft_price_usd": 435.16375383088774,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4,
+      "ai_prediction_accuracy_1h": 0.5572834123198674,
+      "ai_episode_reward_mean": 3.6372185876738574
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252161",
+    "metrics": {
+      "trading_portfolio_value_usd": 125559.4623152329,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -1135.2676294721896,
+      "trading_max_drawdown_pct": 0.08097670556417846,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 478.67117249304385,
+      "trading_msft_price_usd": 430.2158640881726,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.42549062839143637,
+      "ai_prediction_accuracy_1h": 0.671393664788988,
+      "ai_episode_reward_mean": 3.853464601476412
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252172",
+    "metrics": {
+      "trading_portfolio_value_usd": 123810.69281592398,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -1748.7694993089244,
+      "trading_max_drawdown_pct": 0.09377669591798224,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 466.2545369279355,
+      "trading_msft_price_usd": 420.8163830793933,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.40586189687696717,
+      "ai_prediction_accuracy_1h": 0.546090549413504,
+      "ai_episode_reward_mean": 3.582262959362464
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252184",
+    "metrics": {
+      "trading_portfolio_value_usd": 122521.70387928546,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -1288.9889366385178,
+      "trading_max_drawdown_pct": 0.10321135609569741,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 455.2996593010868,
+      "trading_msft_price_usd": 414.639340951926,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4,
+      "ai_prediction_accuracy_1h": 0.4936018730707566,
+      "ai_episode_reward_mean": 3.9872083145916553
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252195",
+    "metrics": {
+      "trading_portfolio_value_usd": 121315.12276818651,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -1206.5811110989453,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 444.2298034959735,
+      "trading_msft_price_usd": 409.196938278232,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4596595064567157,
+      "ai_prediction_accuracy_1h": 0.529586622969201,
+      "ai_episode_reward_mean": 3.779919847143889
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252207",
+    "metrics": {
+      "trading_portfolio_value_usd": 123038.42737124322,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1723.3046030567057,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 453.9010699695901,
+      "trading_msft_price_usd": 419.52811560636417,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5138515823955876,
+      "ai_prediction_accuracy_1h": 0.6979638524921143,
+      "ai_episode_reward_mean": 4.1085139877606345
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252221",
+    "metrics": {
+      "trading_portfolio_value_usd": 122153.62152270587,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -884.8058485373476,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 451.2975574564793,
+      "trading_msft_price_usd": 413.2395304156825,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5480478838810802,
+      "ai_prediction_accuracy_1h": 0.6042529360494724,
+      "ai_episode_reward_mean": 3.8218971248524753
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252233",
+    "metrics": {
+      "trading_portfolio_value_usd": 121988.72089558892,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -164.90062711694918,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 450.4201757664195,
+      "trading_msft_price_usd": 412.2309342272329,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.575836777618489,
+      "ai_prediction_accuracy_1h": 0.5735469599834706,
+      "ai_episode_reward_mean": 3.6461151207738056
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252246",
+    "metrics": {
+      "trading_portfolio_value_usd": 122215.77306988079,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 227.0521742918645,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 451.46500195404974,
+      "trading_msft_price_usd": 413.6876914348192,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.519624955786317,
+      "ai_prediction_accuracy_1h": 0.7042636247534838,
+      "ai_episode_reward_mean": 3.4698535588545183
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252259",
+    "metrics": {
+      "trading_portfolio_value_usd": 121553.77482338055,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -661.9982465002395,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 446.0649963920992,
+      "trading_msft_price_usd": 410.4210416981299,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4595543193458639,
+      "ai_prediction_accuracy_1h": 0.5474656088052328,
+      "ai_episode_reward_mean": 3.1697440832183497
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252271",
+    "metrics": {
+      "trading_portfolio_value_usd": 123992.78203848893,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 2439.0072151083878,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 463.2835800657696,
+      "trading_msft_price_usd": 423.5716919600038,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.47889069371163273,
+      "ai_prediction_accuracy_1h": 0.682391071275664,
+      "ai_episode_reward_mean": 3.2431144173447186
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252282",
+    "metrics": {
+      "trading_portfolio_value_usd": 123380.0103197966,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -612.7717186923401,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 461.14505365894377,
+      "trading_msft_price_usd": 419.35631364041177,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4768859924006443,
+      "ai_prediction_accuracy_1h": 0.6123381923397972,
+      "ai_episode_reward_mean": 3.341464468793217
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252294",
+    "metrics": {
+      "trading_portfolio_value_usd": 123796.95405155519,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 416.943731758598,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 464.7113061482987,
+      "trading_msft_price_usd": 421.3449062011688,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.546694416432399,
+      "ai_prediction_accuracy_1h": 0.6565419203697048,
+      "ai_episode_reward_mean": 3.421567256062065
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252305",
+    "metrics": {
+      "trading_portfolio_value_usd": 126149.8471151574,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 2352.8930636022124,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 486.0799567201581,
+      "trading_msft_price_usd": 432.04874399291236,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5634598510631571,
+      "ai_prediction_accuracy_1h": 0.7014805450671533,
+      "ai_episode_reward_mean": 3.648817745707993
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252316",
+    "metrics": {
+      "trading_portfolio_value_usd": 126283.91419558765,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 134.06708043024992,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 491.09095285722844,
+      "trading_msft_price_usd": 431.07805460605204,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5065003632817826,
+      "ai_prediction_accuracy_1h": 0.7488343880657408,
+      "ai_episode_reward_mean": 3.6451069271880985
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252329",
+    "metrics": {
+      "trading_portfolio_value_usd": 127688.06390855755,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 1404.1497129698982,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 499.00960516707755,
+      "trading_msft_price_usd": 439.4798637516973,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5100279360985412,
+      "ai_prediction_accuracy_1h": 0.7173880192295125,
+      "ai_episode_reward_mean": 3.8806224636633933
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252341",
+    "metrics": {
+      "trading_portfolio_value_usd": 126046.1227169981,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -1641.9411915594537,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 477.6301375028817,
+      "trading_msft_price_usd": 434.7051320154501,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5205826407097873,
+      "ai_prediction_accuracy_1h": 0.5960581607116084,
+      "ai_episode_reward_mean": 3.9399751111018033
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252352",
+    "metrics": {
+      "trading_portfolio_value_usd": 126776.36252820256,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 730.2398112044611,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 485.1346439884344,
+      "trading_msft_price_usd": 437.6635860731737,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5038126611670276,
+      "ai_prediction_accuracy_1h": 0.6157127927548942,
+      "ai_episode_reward_mean": 3.775043676273253
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252363",
+    "metrics": {
+      "trading_portfolio_value_usd": 127149.87516717057,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 373.5126389680081,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 489.2767862258931,
+      "trading_msft_price_usd": 439.0502987989659,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.48850906652626125,
+      "ai_prediction_accuracy_1h": 0.6889142946276031,
+      "ai_episode_reward_mean": 4.031094440036066
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252374",
+    "metrics": {
+      "trading_portfolio_value_usd": 127231.02170535846,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": 81.1465381878952,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 490.29526766621103,
+      "trading_msft_price_usd": 439.30215268373263,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4766639110943115,
+      "ai_prediction_accuracy_1h": 0.5602959544969773,
+      "ai_episode_reward_mean": 4.03996109023049
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252386",
+    "metrics": {
+      "trading_portfolio_value_usd": 126829.69840924276,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -401.3232961157046,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 486.26151680523384,
+      "trading_msft_price_usd": 437.6385214081756,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5165983732988249,
+      "ai_prediction_accuracy_1h": 0.7961099963588872,
+      "ai_episode_reward_mean": 3.7280469222920862
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252398",
+    "metrics": {
+      "trading_portfolio_value_usd": 125643.0227846771,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -1186.675624565658,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 474.5391043223769,
+      "trading_msft_price_usd": 432.63389640465215,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.5382033665827894,
+      "ai_prediction_accuracy_1h": 0.793301543314121,
+      "ai_episode_reward_mean": 3.6719489951561353
+    }
+  },
+  {
+    "timestamp": "2025-08-02T12:12:26.252411",
+    "metrics": {
+      "trading_portfolio_value_usd": 125505.41106194782,
+      "trading_cash_balance_usd": 50000.0,
+      "trading_daily_pnl_usd": -137.61172272928525,
+      "trading_max_drawdown_pct": 0.1120428382259905,
+      "trading_nvda_position_shares": 50,
+      "trading_msft_position_shares": 120,
+      "trading_nvda_price_usd": 475.122676701402,
+      "trading_msft_price_usd": 431.2439768906476,
+      "trading_total_trades_count": 0,
+      "ai_model_confidence_score": 0.4936333400434697,
+      "ai_prediction_accuracy_1h": 0.604892004110912,
+      "ai_episode_reward_mean": 3.5831471059101663
+    }
+  }
+]

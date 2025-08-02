@@ -1,0 +1,48 @@
+{
+  "benchmark_timestamp": "2025-08-02T12:04:28.494984",
+  "results": [
+    {
+      "loader_type": "lazy_loading",
+      "dataset_size_mb": 0.0,
+      "peak_memory_mb": 103.59375,
+      "avg_memory_mb": 103.59375,
+      "loading_time_sec": 0.003859996795654297,
+      "memory_efficiency": 0.0,
+      "throughput_mbps": 0.0
+    },
+    {
+      "loader_type": "traditional_loading",
+      "dataset_size_mb": 17.166259765625,
+      "peak_memory_mb": 140.22265625,
+      "avg_memory_mb": 140.22265625,
+      "loading_time_sec": 0.05416274070739746,
+      "memory_efficiency": 0.4686533539511571,
+      "throughput_mbps": 316.9385363706394
+    }
+  ],
+  "comparison": {
+    "lazy_loading": {
+      "peak_memory_mb": 103.59375,
+      "memory_efficiency": 0.0,
+      "throughput_mbps": 0.0,
+      "loading_time_sec": 0.003859996795654297
+    },
+    "traditional_loading": {
+      "peak_memory_mb": 140.22265625,
+      "memory_efficiency": 0.4686533539511571,
+      "throughput_mbps": 316.9385363706394,
+      "loading_time_sec": 0.05416274070739746
+    },
+    "improvements": {
+      "memory_savings_pct": 26.12196005237206,
+      "efficiency_improvement_pct": -100.0,
+      "throughput_ratio": 0.0
+    },
+    "recommendation": "\ud83d\udd36 CONSIDER: Lazy loading provides moderate memory savings"
+  },
+  "system_info": {
+    "cpu_count": 20,
+    "memory_gb": 31.19057846069336,
+    "python_version": "3.10.12"
+  }
+}

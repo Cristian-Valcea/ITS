@@ -1,0 +1,30 @@
+{
+  "scenario": "production_large_dataset",
+  "benchmark_timestamp": 1754125739.517994,
+  "lazy_loading": {
+    "peak_memory_mb": 116.93359375,
+    "memory_increase_mb": 13.95703125,
+    "data_loaded_mb": 46.40414897783497,
+    "processing_time_sec": 0.021027326583862305,
+    "data_efficiency_pct": 25.0
+  },
+  "traditional_loading": {
+    "peak_memory_mb": 133.12890625,
+    "memory_increase_mb": 25.02734375,
+    "data_loaded_mb": 8.9979248046875,
+    "processing_time_sec": 0.03191065788269043,
+    "data_efficiency_pct": 100.0
+  },
+  "comparison": {
+    "memory_savings_pct": 44.23287029811144,
+    "data_efficiency_gain": 0.19390345481791674,
+    "time_savings_pct": 34.1056312246438,
+    "recommendation": "\ud83d\ude80 HIGHLY RECOMMENDED: Significant production benefits"
+  },
+  "use_case": {
+    "description": "Year-long dataset, analyze Q4 only",
+    "total_dataset_size": "~180 MB (12 months)",
+    "actually_needed": "~45 MB (3 months)",
+    "efficiency_ratio": "4:1 (load 25%, discard 75%)"
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "timestamp": "2025-08-02T10:56:05.769527",
+  "file_structure": {
+    "studies/tick_vs_minute_alpha_study.py": {
+      "exists": true,
+      "size": 23494,
+      "status": "\u2705 EXISTS"
+    },
+    "studies/filtering_ablation_study.py": {
+      "exists": true,
+      "size": 36228,
+      "status": "\u2705 EXISTS"
+    },
+    "tests/test_feature_lag_validation.py": {
+      "exists": true,
+      "size": 31424,
+      "status": "\u2705 EXISTS"
+    },
+    "studies/tick_vs_minute_results/": {
+      "exists": true,
+      "files_count": 8,
+      "status": "\u2705 EXISTS"
+    },
+    "studies/filtering_ablation_results/": {
+      "exists": true,
+      "files_count": 7,
+      "status": "\u2705 EXISTS"
+    },
+    "tests/test_critical_reviewer_implementations.py": {
+      "exists": true,
+      "size": 25725,
+      "status": "\u2705 EXISTS"
+    },
+    "tests/test_production_readiness_validation.py": {
+      "exists": true,
+      "size": 25126,
+      "status": "\u2705 EXISTS"
+    }
+  },
+  "study_results": {
+    "tick_vs_minute": {
+      "summary_results.csv": true,
+      "tick_vs_minute_study_report.md": true,
+      "tick_vs_minute_analysis.png": true
+    },
+    "filtering_ablation": {
+      "ablation_summary.csv": true,
+      "filtering_ablation_report.md": true,
+      "lockbox_audit_hashes.json": true,
+      "ci_validation.py": true,
+      "config_earnings_excluded/performance_summary.json": true,
+      "config_earnings_included/performance_summary.json": true
+    }
+  },
+  "lockbox_valid": false,
+  "code_quality": {
+    "studies/tick_vs_minute_alpha_study.py": {
+      "has_docstring": false,
+      "has_imports": true,
+      "has_classes": true,
+      "has_functions": true,
+      "has_logging": true,
+      "has_error_handling": false,
+      "line_count": 536,
+      "size_bytes": 23447
+    },
+    "studies/filtering_ablation_study.py": {
+      "has_docstring": false,
+      "has_imports": true,
+      "has_classes": true,
+      "has_functions": true,
+      "has_logging": true,
+      "has_error_handling": false,
+      "line_count": 841,
+      "size_bytes": 36093
+    },
+    "tests/test_feature_lag_validation.py": {
+      "has_docstring": false,
+      "has_imports": true,
+      "has_classes": true,
+      "has_functions": true,
+      "has_logging": true,
+      "has_error_handling": true,
+      "line_count": 726,
+      "size_bytes": 31289
+    }
+  },
+  "overall_success": false
+}

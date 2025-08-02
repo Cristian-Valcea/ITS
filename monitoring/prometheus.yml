@@ -1,15 +1,10 @@
 global:
-  scrape_interval: 15s
-
+  evaluation_interval: 30s
+  scrape_interval: 30s
 scrape_configs:
-  - job_name: 'pushgateway'
-    static_configs:
-      - targets: ['trading_pushgateway:9091']
-    scrape_interval: 5s
-    metrics_path: /metrics
-
-  - job_name: 'inference-api'
-    static_configs:
-      - targets: ['host.docker.internal:8000']
-    scrape_interval: 10s
-    metrics_path: /metrics
+- job_name: ai_trading_system
+  metrics_path: /metrics
+  scrape_interval: 30s
+  static_configs:
+  - targets:
+    - localhost:9091

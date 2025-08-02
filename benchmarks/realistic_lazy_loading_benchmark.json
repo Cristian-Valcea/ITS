@@ -1,0 +1,21 @@
+{
+  "benchmark_timestamp": 1754125627.2553785,
+  "lazy_loading": {
+    "peak_memory_mb": 138.16796875,
+    "memory_increase_mb": 35.23046875,
+    "loading_time_sec": 0.2972378730773926,
+    "cache_hit_rate": 0.4444444444444444,
+    "chunks_loaded": 5
+  },
+  "traditional_loading": {
+    "peak_memory_mb": 148.05078125,
+    "memory_increase_mb": 31.2578125,
+    "loading_time_sec": 0.043515682220458984,
+    "total_rows": 125000
+  },
+  "comparison": {
+    "memory_savings_pct": -12.709322669332668,
+    "time_ratio": 6.830592051194951,
+    "recommendation": "\u26a0\ufe0f EVALUATE: Limited memory benefits, consider use case"
+  }
+}
