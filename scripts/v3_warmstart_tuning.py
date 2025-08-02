@@ -111,10 +111,41 @@ class V3WarmStartTuner:
             nvda_features = training_data['nvda_features']
             msft_features = training_data['msft_features']
             nvda_prices = training_data['nvda_prices']
+            msft_prices = training_data['msft_prices']
             
-            # Combine features: [NVDA features, MSFT features]
-            features = np.concatenate([nvda_features, msft_features], axis=1)
-            prices = nvda_prices
+            # Combine features: [NVDA features, MSFT features, alpha signals]
+            # V3 expects 26 features: 12 NVDA + 12 MSFT + 2 alpha signals
+            n_timesteps = len(nvda_features)
+            
+            # Add placeholder alpha signals (will be generated dynamically in environment)
+            nvda_alpha_placeholder = np.zeros((n_timesteps, 1))
+            msft_alpha_placeholder = np.zeros((n_timesteps, 1))
+            
+            features = np.concatenate([
+                nvda_features,      # 12 features
+                nvda_alpha_placeholder,  # 1 alpha signal
+                msft_features,      # 12 features  
+                msft_alpha_placeholder   # 1 alpha signal
+            ], axis=1)  # Total: 26 features
+            
+            # Combine prices: [NVDA open, close, MSFT open, close]
+            # Extract OHLC from price data (assuming columns: open, high, low, close)
+            if nvda_prices.shape[1] >= 4 and msft_prices.shape[1] >= 4:
+                prices = np.column_stack([
+                    nvda_prices[:, 0],  # NVDA open
+                    nvda_prices[:, 3],  # NVDA close
+                    msft_prices[:, 0],  # MSFT open
+                    msft_prices[:, 3]   # MSFT close
+                ])
+            else:
+                # Fallback: use close prices for both open and close
+                prices = np.column_stack([
+                    nvda_prices[:, -1],  # NVDA close as open
+                    nvda_prices[:, -1],  # NVDA close
+                    msft_prices[:, -1],  # MSFT close as open
+                    msft_prices[:, -1]   # MSFT close
+                ])
+            
             timestamps = training_data['trading_days']
             
             logger.info(f"✅ Real data loaded: {len(features):,} timesteps")
@@ -130,7 +161,7 @@ class V3WarmStartTuner:
             # Fallback to synthetic data
             n_timesteps = 50000  # Enough for 50K step training
             
-            # Generate realistic features (26 dimensions)
+            # Generate realistic features (26 dimensions: 12 NVDA + 1 alpha + 12 MSFT + 1 alpha)
             features = np.random.randn(n_timesteps, 26).astype(np.float32)
             
             # Generate realistic prices (NVDA open, close, MSFT open, close)
