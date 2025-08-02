@@ -1,0 +1,16 @@
+{
+  "filter_name": "earnings_included",
+  "performance": {
+    "gross_return_pct": 0.2629619223217361,
+    "sharpe_ratio": 1.3319435132903465,
+    "max_drawdown_pct": 0.16361233010471632,
+    "total_trades": 746,
+    "win_rate_pct": 0.6415147661438463
+  },
+  "lock_box_hash": "2adac7f0b60b51d3",
+  "filter_config": {
+    "include_earnings_days": true,
+    "include_fomc_hours": true,
+    "include_holiday_days": true
+  }
+}

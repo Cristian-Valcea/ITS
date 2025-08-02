@@ -1,0 +1,149 @@
+# Operations Configuration - DevOps and Monitoring
+# Addresses operational resilience and observability
+
+# API integration with resilience
+polygon_api:
+  rate_limiting:
+    requests_per_minute: 5
+    burst_capacity: 10
+    token_persistence:
+      backend: "redis"              # Process-safe token storage
+      ttl_seconds: 3600
+      fallback: "sqlite"            # Local fallback if Redis unavailable
+      
+  failover:
+    primary: "polygon_starter"
+    secondary: "ibkr_realtime"      # IBKR feed fallback
+    fallback_trigger_threshold: 3   # Switch after 3 consecutive failures
+    
+  circuit_breaker:
+    failure_threshold: 5
+    recovery_time_seconds: 300
+    half_open_retry_count: 3
+
+# Data storage optimization
+storage:
+  parquet_optimization:
+    row_group_size: 50000          # 50k rows per group for optimal IO
+    compression: "snappy"
+    use_dictionary: true           # 30% size reduction on categorical
+    column_encoding:
+      symbol: "dictionary"
+      timestamp: "timestamp_millis"
+      
+  lazy_loading:
+    backend: "fsspec"
+    chunk_size: 100000
+    memory_map: true
+    column_pruning: true           # Load only required columns
+    
+  immutable_data_lake:
+    backend: "minio"               # S3-compatible for compliance
+    versioning: true
+    encryption: "AES256"
+    retention_policy: "7_years"
+
+# Monitoring and observability
+monitoring:
+  metrics_backends:
+    short_term: "pushgateway"      # Real-time metrics
+    long_term: "timescaledb"       # Historical aggregates
+    
+  dashboards:
+    grafana_config: "dashboards/trading_operations.json"
+    panels:
+      - latency_distribution
+      - pnl_tracking
+      - risk_metrics
+      - data_quality
+      - api_health
+      - model_performance
+      
+  alerting:
+    channels:
+      warning: "slack"
+      critical: "pagerduty"
+      emergency: "sms"
+      
+    rules:
+      data_gap_minutes: 5          # Alert if data gap > 5 minutes
+      api_failure_count: 3         # Alert after 3 API failures
+      latency_p99_ms: 100          # Alert if p99 latency > 100ms
+      drawdown_pct: 1.5            # Alert at 1.5% drawdown
+
+# End-to-end latency SLA
+latency_sla:
+  components:
+    market_data_ingestion: 10      # Market data → system (10ms)
+    feature_calculation: 15        # Feature engineering (15ms)
+    model_inference: 20            # Model prediction (20ms)
+    risk_checks: 10                # Risk validation (10ms)
+    broker_acknowledgment: 50      # Order submission → ACK (50ms)
+    
+  total_budget_ms: 105             # End-to-end < 105ms
+  monitoring_frequency: "every_trade"
+  breach_escalation: "immediate"
+
+# Data versioning and reproducibility
+data_versioning:
+  dvc_enabled: true
+  tracking:
+    raw_data: true
+    processed_splits: true
+    model_artifacts: true
+    config_snapshots: true
+    
+  git_integration:
+    auto_commit_processed_data: false  # Manual approval required
+    tag_production_datasets: true
+    
+# MLOps pipeline
+mlops:
+  ci_cd:
+    pytest_benchmarks: true
+    performance_regression_threshold: 0.10  # 10% slowdown fails CI
+    
+  automated_testing:
+    data_quality_gates: true
+    model_performance_gates: true
+    integration_tests: true
+    
+  deployment:
+    blue_green: true
+    canary_percentage: 10          # 10% traffic for canary
+    rollback_triggers:
+      - "performance_degradation"
+      - "error_rate_spike"
+      - "latency_breach"
+
+# Compliance and audit
+audit:
+  immutable_logs:
+    storage: "s3_glacier"
+    format: "structured_json"
+    retention: "infinite"
+    
+  configuration_tracking:
+    git_sha_required: true
+    config_diffs: true
+    approval_workflow: true
+    
+  model_lineage:
+    training_data_hash: true
+    hyperparameter_tracking: true
+    code_version_tracking: true
+    performance_attribution: true
+
+# Disaster recovery
+disaster_recovery:
+  backup_frequency: "daily"
+  backup_retention: "1_year"
+  
+  recovery_objectives:
+    rto_minutes: 15                # Recovery Time Objective
+    rpo_minutes: 5                 # Recovery Point Objective
+    
+  failover_procedures:
+    automated_failover: true
+    manual_override: true
+    rollback_capability: true

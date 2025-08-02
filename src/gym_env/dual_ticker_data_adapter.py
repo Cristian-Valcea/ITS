@@ -56,23 +56,33 @@ class DualTickerDataAdapter:
                           start_date: str, 
                           end_date: str,
                           symbols: List[str] = ['NVDA', 'MSFT'],
-                          bar_size: str = '1min') -> Dict[str, Any]:
+                          bar_size: str = '1min',
+                          data_split: str = 'train') -> Dict[str, Any]:
         """
-        Load aligned NVDA + MSFT data for training
+        Load aligned NVDA + MSFT data for training with professional data pipeline
         
         Args:
             start_date: Start date for data loading
             end_date: End date for data loading  
             symbols: List of symbols to load (default NVDA, MSFT)
             bar_size: Bar frequency ('1min', '5min', etc.)
+            data_split: Data split to load ('train', 'validation', 'test')
         
         Returns:
             Dict with aligned features, prices, and shared trading_days index
         """
         
-        self.logger.info(f"🔧 Loading dual-ticker data: {symbols} from {start_date} to {end_date} (bar_size={bar_size})")
+        self.logger.info(f"🔧 Loading dual-ticker data: {symbols} from {start_date} to {end_date} (split={data_split})")
         
-        # Load individual asset data
+        # Try to load from professional pipeline first
+        processed_data = self._load_processed_data(data_split, symbols)
+        
+        if processed_data:
+            self.logger.info("✅ Using processed data from professional pipeline")
+            return processed_data
+        
+        # Fallback to individual asset loading
+        self.logger.warning("⚠️ Processed data not found, loading individual assets")
         nvda_data = self._load_asset_data('NVDA', start_date, end_date, bar_size)
         msft_data = self._load_asset_data('MSFT', start_date, end_date, bar_size)
         
@@ -528,6 +538,70 @@ class DualTickerDataAdapter:
             ))
         
         return rows
+    
+    def _load_processed_data(self, data_split: str, symbols: List[str]) -> Optional[Dict[str, Any]]:
+        """
+        Load processed data from professional pipeline
+        
+        Args:
+            data_split: Data split to load ('train', 'validation', 'test')
+            symbols: List of symbols to load
+            
+        Returns:
+            Dict with aligned features and prices, or None if not found
+        """
+        from pathlib import Path
+        
+        processed_data_path = Path("data/processed")
+        
+        if not processed_data_path.exists():
+            return None
+        
+        try:
+            # Load processed parquet files for each symbol
+            symbol_data = {}
+            
+            for symbol in symbols:
+                filename = f"{symbol.lower()}_{data_split}_processed.parquet"
+                filepath = processed_data_path / filename
+                
+                if not filepath.exists():
+                    self.logger.warning(f"⚠️ Processed data not found: {filepath}")
+                    return None
+                
+                df = pd.read_parquet(filepath)
+                
+                # Calculate technical indicators if not present
+                if 'rsi' not in df.columns:
+                    df = self._add_technical_indicators(df)
+                
+                symbol_data[symbol] = df
+            
+            # Align timestamps between symbols
+            if len(symbol_data) == 2:
+                nvda_data = symbol_data['NVDA']
+                msft_data = symbol_data['MSFT']
+                
+                aligned_data = self._align_timestamps(nvda_data, msft_data)
+                
+                self.logger.info(f"✅ Loaded processed data split '{data_split}': {len(aligned_data['trading_days'])} aligned timestamps")
+                
+                return {
+                    'nvda_features': aligned_data['nvda']['features'],
+                    'nvda_prices': aligned_data['nvda']['prices'],
+                    'msft_features': aligned_data['msft']['features'], 
+                    'msft_prices': aligned_data['msft']['prices'],
+                    'trading_days': aligned_data['trading_days'],
+                    'feature_names': aligned_data['feature_names'],
+                    'data_source': 'professional_pipeline',
+                    'data_split': data_split
+                }
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error loading processed data: {e}")
+            return None
+        
+        return None
     
     def get_data_summary(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Get summary statistics for loaded data"""

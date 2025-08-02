@@ -1,0 +1,136 @@
+# Professional Data Methodology Configuration
+# Based on institutional intraday RL desk standards
+
+data_horizon:
+  # 36 months back from T-1 close
+  start_date: "2022-08-01"  # Post-COVID bull market start
+  end_date: "auto"  # T-1 close (yesterday)
+  regimes_covered:
+    - "post_covid_bull_2022_h2"
+    - "rate_hike_chop_2023"
+    - "ai_melt_up_2024_2025"
+
+bar_resolution:
+  core_training: "1min"  # Primary OHLCV resolution
+  feature_windows: ["5min", "15min"]  # On-the-fly aggregation
+  
+data_splits:
+  # Time-ordered, leak-proof boundaries
+  train_pct: 70  # 2022-08 → 2024-04
+  val_pct: 15    # 2024-05 → 2024-12  
+  test_pct: 15   # 2025-01 → present-1day
+  shuffle_allowed: false  # Critical: NO shuffling across time boundaries
+
+walk_forward_validation:
+  train_window_months: 18
+  validation_window_months: 3
+  retrain_frequency_months: 3
+  num_folds: 6  # Average performance over 6 folds
+
+# Event filtering (removes ~1.7% of data)
+exclusion_filters:
+  earnings_exclusion:
+    enabled: true
+    days_before: 1
+    days_after: 1
+    symbols: ["NVDA", "MSFT"]
+    # Will fetch from Polygon calendar endpoint
+    
+  fomc_exclusion:
+    enabled: true
+    time_window: "14:00-15:00"  # ET
+    timezone: "US/Eastern"
+    
+  holiday_exclusion:
+    enabled: true
+    nyse_closure_threshold_hours: 6  # Skip if NYSE open < 6h
+    half_days: ["2022-11-25", "2022-12-23", "2023-07-03", "2023-11-24", "2023-12-22", "2024-07-03", "2024-11-29", "2024-12-24"]
+    
+  extreme_volatility_filter:
+    enabled: true
+    max_return_threshold: 0.05  # 5% max bar-to-bar return
+    lookback_periods: 20
+    
+# Asset quality guardrails  
+volume_price_guardrails:
+  min_median_volume_1min: 20000  # 20k shares minimum
+  min_price_threshold: 5.0       # $5 minimum price
+  price_lookback_days: 30        # For median calculation
+
+# Cross-validation strategy
+cross_asset_validation:
+  enabled: true
+  frequency: "quarterly"
+  strategy: "train_nvda_validate_msft"  # And vice versa
+
+# Storage configuration
+storage:
+  raw_data_location: "data/raw/parquet"
+  processed_data_location: "data/processed"
+  cold_storage: "HDD"
+  hot_storage: "SSD" 
+  rolling_window_size_months: 6  # Keep 6 months on SSD
+  
+# Performance benchmarking
+benchmarks:
+  primary:
+    name: "50_50_nvda_msft_buy_hold"
+    composition:
+      NVDA: 0.5
+      MSFT: 0.5
+    rebalance_frequency: "daily"
+    fee_model: "same_as_strategy"
+    
+# Risk limits (existing)
+risk_limits:
+  max_intraday_drawdown_pct: 2.0
+  max_position_size_per_symbol: 25000  # $25k
+  use_risk_guard: true
+  expected_dd_as_feature: true  # For model v4+
+
+# Training schedule
+training_cadence:
+  nightly_finetune:
+    enabled: true
+    steps: 25000
+    time: "05:00"  # ET
+    checkpoint_save: true
+    
+  weekly_retrain:
+    enabled: true  
+    steps: 200000
+    day: "sunday"
+    time: "20:00"  # ET
+    duration_hours_max: 8
+
+# CI/CD validation gates
+validation_gates:
+  model_performance:
+    max_prediction_latency_ms: 50
+    required_sharpe_ratio: 0.8
+    
+  data_quality:
+    max_nan_bars_last_50: 0
+    min_volume_compliance: 0.95
+    
+  deployment_gates:
+    all_tests_pass: true
+    slack_notification: true
+    block_on_failure: true
+
+# Polygon API configuration
+polygon:
+  rate_limits:
+    starter_plan_requests_per_minute: 5
+    daily_aggregate_calls: 1  # Use bulk endpoint
+    backfill_rate_limit_sleep_seconds: 2
+    token_bucket_capacity: 300  # requests per hour
+    
+  endpoints:
+    minute_aggregates: "v2/aggs/ticker/{ticker}/range/1/minute/{start}/{end}"
+    calendar: "v1/marketstatus/upcoming"
+    
+  storage_estimates:
+    raw_parquet_size_gb: 3.0
+    timescale_compressed_gb: 1.2
+    redis_live_stream_hours: 2

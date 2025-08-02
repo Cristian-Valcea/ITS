@@ -1,0 +1,103 @@
+# Risk Management Configuration - Institutional Standards
+# Addresses CRO and compliance requirements
+
+# Pre-trade risk limits
+position_limits:
+  # Basic position limits
+  max_notional_per_symbol: 25000    # $25k per symbol
+  max_total_notional: 50000         # $50k total exposure
+  
+  # Risk factor exposure limits (beta-weighted) 
+  risk_factor_limits:
+    market_beta_limit: 1.5          # Max 1.5x market beta exposure
+    sector_concentration_limit: 0.6  # Max 60% in any sector
+    correlation_limit: 0.8          # Max 80% correlation between positions
+    
+  # Intraday limits
+  max_intraday_drawdown_pct: 2.0
+  daily_loss_limit: 1000           # $1k daily loss limit
+  
+# Post-trade risk monitoring
+stress_testing:
+  var_calculation:
+    method: "historical_simulation"
+    confidence_level: 0.99
+    lookback_days: 252
+    
+  expected_shortfall:
+    confidence_level: 0.975
+    stress_scenarios:
+      - "3_sigma_market_shock"      # 3x intraday sigma shock
+      - "correlation_breakdown"     # NVDA/MSFT correlation → 0
+      - "flash_crash_simulation"    # 2010-style flash crash
+      
+  t0_stress_requirements:
+    var_limit_usd: 5000            # $5k VaR limit
+    es_limit_usd: 7500             # $7.5k Expected Shortfall limit
+    stress_frequency: "real_time"   # Calculate on every trade
+
+# Risk monitoring and alerts
+monitoring:
+  real_time_alerts:
+    position_breach: "immediate"
+    var_breach: "immediate" 
+    correlation_spike: "5_minutes"
+    drawdown_warning: "1_minute"
+    
+  escalation_matrix:
+    warning: ["risk_manager", "trader"]
+    critical: ["head_of_trading", "cro"]
+    emergency: ["pagerduty", "ceo"]
+
+# Compliance and audit
+compliance:
+  audit_trail:
+    immutable_storage: true
+    storage_backend: "s3_worm"      # Write-once-read-many
+    retention_years: 7
+    
+  position_reconciliation:
+    frequency: "every_trade"
+    tolerance_usd: 1.0              # $1 tolerance
+    
+  regulatory_reporting:
+    mifid_ii_compliance: true
+    transaction_reporting: true
+    
+# Risk factor models
+risk_models:
+  market_risk:
+    beta_calculation:
+      benchmark: "SPY"
+      lookback_days: 60
+      min_observations: 30
+      
+    volatility_estimation:
+      method: "garch_1_1"
+      halflife_days: 30
+      
+  concentration_risk:
+    correlation_matrix:
+      method: "exponential_weighted"
+      decay_factor: 0.94
+      min_periods: 252
+      
+# Emergency procedures
+emergency_protocols:
+  kill_switch:
+    triggers:
+      - "var_breach_3x"
+      - "drawdown_5pct"
+      - "correlation_anomaly"
+      - "manual_override"
+    
+    actions:
+      - "halt_all_trading"
+      - "flatten_positions"
+      - "alert_management"
+      - "preserve_state"
+      
+  position_flattening:
+    method: "market_orders"
+    max_execution_time_seconds: 30
+    slippage_tolerance: 0.001       # 10 bps max slippage

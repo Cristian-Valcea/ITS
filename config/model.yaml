@@ -1,0 +1,62 @@
+# Model Configuration - Institutional ML Standards
+# Addresses statistical rigor and compliance requirements
+
+model_architecture:
+  type: "RecurrentPPO"
+  observation_space: 26
+  action_space: 9
+  
+# Cross-validation with ensemble methodology  
+cross_validation:
+  walk_forward:
+    train_window_months: 18
+    validation_window_months: 3
+    num_folds: 6
+    
+  ensemble_strategy:
+    method: "fold_ensemble"  # Keep K fold-specific checkpoints
+    ensemble_weights: "performance_weighted"
+    cross_fold_variance_threshold: 0.15  # Alert if variance > 15%
+    
+# Training methodology
+training:
+  nightly_finetune:
+    steps: 25000
+    ensemble_update: true  # Update all fold checkpoints
+    
+  weekly_retrain:
+    steps: 200000
+    full_ensemble_rebuild: true
+
+# Performance evaluation with statistical rigor
+performance_metrics:
+  primary:
+    metric: "deflated_sharpe_ratio"  # Bailey et al. 2016
+    threshold: 0.8
+    p_value_threshold: 0.05
+    
+  stability_requirements:
+    rolling_sharpe_drawdown_max: 0.30  # 30% max 3-month rolling drawdown
+    turnover_penalty_weight: 0.02      # Embedded in metric calculation
+    
+  risk_adjusted:
+    vol_target: 0.15  # 15% annualized volatility target
+    max_leverage: 2.0
+    
+# Model explainability for audit
+explainability:
+  shap_analysis:
+    enabled: true
+    validation_set_only: true  # Never on training data
+    output_path: "model_explanations/"
+    
+  feature_importance:
+    method: "permutation_importance"
+    n_repeats: 10
+    
+# Lock-box evaluation protocol
+lockbox_evaluation:
+  access_control: true
+  authorized_users: ["head_of_quant", "cro", "model_validator"]
+  access_logging: true
+  final_evaluation_only: true

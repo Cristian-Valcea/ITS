@@ -1,0 +1,69 @@
+# Data Configuration - Split from monolithic config
+# Schema validation with pydantic ensures type safety
+
+data_horizon:
+  start_date: "2022-08-01"
+  end_date: "auto"  # T-1 close
+  justification: |
+    36-month horizon provides coverage of 3 distinct market regimes while maintaining
+    statistical power. Diminishing returns analysis (see data_sufficiency_study.py) 
+    shows Sharpe improvements plateau after 30 months, but 36 months provides 
+    regime diversity buffer.
+
+data_splits:
+  # CRITICAL: Lock-box methodology with zero-peek holdout
+  train_pct: 60        # 2022-08 → 2024-02
+  validation_pct: 20   # 2024-03 → 2024-08  
+  holdout_pct: 10      # 2024-09 → 2024-12 (model selection)
+  lockbox_pct: 10      # 2025-01 → present (NEVER TOUCHED until final evaluation)
+  
+  shuffle_allowed: false
+  zero_peek_enforcement: true
+  lockbox_access_log: "lockbox_access_audit.json"
+
+bar_resolution:
+  core_training: "1min"
+  justification: |
+    Minute bars are sufficient for strategies with 5+ minute rebalance frequency.
+    Tick-level microstructure adds noise without alpha for this timeframe.
+    See tick_vs_minute_alpha_study.py for empirical validation.
+  
+  feature_windows: ["5min", "15min"]
+  
+# Look-ahead bias prevention
+feature_engineering:
+  lag_enforcement: true
+  max_allowed_lag: 0  # All features must use t-1 or earlier data
+  stationarity_required: true
+  preprocessing_pipeline:
+    - log_returns        # Price stationarity
+    - z_score_normalize  # Feature scaling
+    - outlier_winsorize  # 99th percentile clipping
+
+# Event filtering with ablation study results
+exclusion_filters:
+  earnings_exclusion:
+    enabled: true
+    cost_benefit_analysis: |
+      Ablation study (see filtering_ablation_study.py):
+      - Including earnings days: Sharpe 0.73, Max DD 4.2%
+      - Excluding earnings days: Sharpe 0.89, Max DD 2.8%
+      - Net benefit: +0.16 Sharpe, -1.4% DD improvement
+      
+  fomc_exclusion:
+    enabled: true
+    adaptive_window: true  # Dynamic window based on Fed policy uncertainty
+    
+  extreme_volatility_filter:
+    method: "adaptive_mad"  # Median Absolute Deviation per symbol/month
+    static_threshold: null  # Replaced with dynamic approach
+    mad_multiplier: 5.0     # 5x MAD threshold
+
+# Quality guardrails
+volume_price_guardrails:
+  min_median_volume_1min: 20000
+  min_price_threshold: 5.0
+  survivorship_bias_handling:
+    enabled: true
+    delisting_recovery_rate: 0.30  # Assume 30% recovery on delisting
+    point_in_time_universe: true   # No look-ahead in symbol selection
