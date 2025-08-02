@@ -1,0 +1,168 @@
+# 🎯 V3 TUNED WARM-START CONFIGURATION
+# Fine-tune hold-bonus and ticket-cost weights for increased trading activity
+# Warm-start from v3_gold_standard_final_409600steps.zip for last 50K steps
+
+training_config:
+  # Warm-start configuration
+  warm_start: true
+  base_model_path: "train_runs/v3_gold_standard_400k_20250802_202736/v3_gold_standard_final_409600steps.zip"
+  total_timesteps: 50000  # Only retrain last 50K steps
+  algorithm: "RecurrentPPO"
+  environment: "DualTickerTradingEnvV3"
+  
+  # Keep same model architecture (for compatibility)
+  policy_kwargs:
+    net_arch: [256, 256]
+    lstm_hidden_size: 256
+    n_lstm_layers: 2
+    shared_lstm: false
+    enable_critic_lstm: true
+    
+  # Keep same training hyperparameters
+  learning_rate: 0.0003
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+
+# V3 Environment Configuration (MOSTLY UNCHANGED)
+environment_config:
+  initial_capital: 100000
+  lookback_window: 50
+  max_episode_steps: 1000
+  max_daily_drawdown_pct: 0.02
+  max_position_size: 500
+  transaction_cost_pct: 0.0001
+  
+  # Keep core V3 reward parameters
+  base_impact_bp: 68.0
+  impact_exponent: 0.5
+  risk_free_rate_annual: 0.05
+  
+  # 🎯 TUNED WEIGHTS FOR INCREASED TRADING
+  # Reduce hold bonus to discourage excessive holding
+  hold_bonus_weight: 0.0005  # Reduced from 0.01 to 0.0005 (20x reduction)
+  
+  # Reduce ticket cost to make trading cheaper
+  ticket_cost_per_trade: 0.20  # Reduced from 0.50 to 0.20 (60% reduction)
+  
+  # Keep other weights unchanged for stability
+  downside_penalty_weight: 2.0
+  kelly_bonus_weight: 0.5
+  position_decay_weight: 0.1
+  turnover_penalty_weight: 0.05
+  size_penalty_weight: 0.02
+  action_change_penalty_weight: 0.005
+  
+  # Logging
+  log_trades: true  # Enable trade logging for analysis
+  verbose: true
+
+# Data Configuration (SAME AS V3)
+data_config:
+  symbols: ["NVDA", "MSFT"]
+  start_date: "2022-01-03"
+  end_date: "2025-07-31"
+  bar_size: "1min"
+  validation_split: 0.15
+
+# Single Phase: Live Replay (Most Realistic)
+curriculum_phases:
+  # Only live replay phase for warm-start tuning
+  - name: "live_replay_tuned"
+    steps: [0, 50000]
+    description: "Live replay with tuned trading incentives"
+    alpha_mode: "live_replay"
+    data_filter: "recent"
+    replay_buffer_enabled: true
+    replay_buffer_size: 100000
+
+# Checkpointing and Monitoring
+checkpoint_config:
+  save_freq: 10000  # Save every 10K steps (more frequent for short run)
+  keep_checkpoints: 5
+  save_replay_buffer: false
+  
+monitoring_config:
+  log_interval: 500   # More frequent logging
+  eval_freq: 5000     # More frequent evaluation
+  eval_episodes: 10
+  tensorboard_log: true
+  
+# Hardware Configuration
+hardware_config:
+  device: "cuda"
+  n_envs: 1
+  expected_throughput: 350
+  
+# Output Configuration  
+output_config:
+  run_name: "v3_tuned_warmstart_50k"
+  base_dir: "train_runs"
+  save_model: true
+  save_logs: true
+  save_metrics: true
+
+# Risk Management (RELAXED FOR TUNING)
+risk_config:
+  max_drawdown_abort: 0.10  # More lenient for tuning
+  min_sharpe_threshold: -0.5  # Allow negative Sharpe during tuning
+  overtrading_detection: false  # Disable since we want more trading
+  
+# Validation Configuration
+validation_config:
+  test_start: "2025-02-01"
+  test_end: "2025-07-31"
+  min_sharpe_for_demo: -0.5  # Relaxed for tuning phase
+  max_dd_for_demo: 0.05
+
+# Tuning Objectives
+tuning_objectives:
+  target_trades_per_episode: 25  # Increase from current ~12
+  target_holding_percentage: 60  # Reduce from current ~80%
+  acceptable_sharpe_range: [0.3, 1.2]  # Allow some performance trade-off
+  max_acceptable_drawdown: 0.03
+
+# Comments and Notes
+comments: |
+  🎯 V3 TUNED WARM-START CONFIGURATION
+  
+  OBJECTIVE: Increase trading activity while preserving core performance
+  
+  TUNING CHANGES:
+  1. Hold bonus: 0.01 → 0.0005 (20x reduction)
+     - Makes holding less attractive when alpha ≈ 0
+     - Encourages more position changes
+  
+  2. Ticket cost: $0.50 → $0.20 (60% reduction)  
+     - Makes trading cheaper
+     - Lowers barrier to position changes
+  
+  WARM-START APPROACH:
+  - Load v3_gold_standard_final_409600steps.zip
+  - Retrain only 50K steps with new weights
+  - Preserves 409K steps of learning
+  - Fine-tunes trading behavior only
+  
+  EXPECTED OUTCOMES:
+  - Increased trades per episode: 12 → 25
+  - Reduced holding percentage: 80% → 60%
+  - Maintained profitability (slight Sharpe reduction acceptable)
+  - Better alpha signal utilization
+  
+  RISK MITIGATION:
+  - Short 50K step run (low computational cost)
+  - Warm-start preserves existing knowledge
+  - Can revert to original model if needed
+  - Gradual weight changes (not extreme)
+  
+  SUCCESS CRITERIA:
+  - More trading activity without excessive overtrading
+  - Maintained positive returns
+  - Sharpe ratio > 0.3 (some degradation acceptable)
+  - Max drawdown < 3%
