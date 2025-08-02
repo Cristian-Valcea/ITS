@@ -1,0 +1,164 @@
+# 🎯 CHUNK DRIVER V3 - INSTITUTIONAL GOLD STANDARD
+# End-to-end training in V3 environment with curriculum learning
+# 400K steps total: 8 chunks × 50K steps each
+
+training_config:
+  total_chunks: 8
+  total_timesteps_per_chunk: 50000
+  algorithm: "RecurrentPPO"
+  environment: "DualTickerTradingEnvV3"
+  
+  # Model architecture
+  policy_kwargs:
+    net_arch: [256, 256]
+    lstm_hidden_size: 256
+    n_lstm_layers: 2
+    shared_lstm: false
+    enable_critic_lstm: true
+    
+  # Training hyperparameters (optimized for V3)
+  learning_rate: 0.0003
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+
+# V3 Environment Configuration (CALIBRATED - DO NOT MODIFY)
+environment_config:
+  initial_capital: 100000
+  lookback_window: 50
+  max_episode_steps: 1000
+  max_daily_drawdown_pct: 0.02
+  max_position_size: 500
+  transaction_cost_pct: 0.0001
+  
+  # V3 reward parameters (proven calibrated)
+  base_impact_bp: 68.0
+  impact_exponent: 0.5
+  risk_free_rate_annual: 0.05
+  
+  # Logging
+  log_trades: false
+  verbose: true
+
+# Data Configuration
+data_config:
+  symbols: ["NVDA", "MSFT"]
+  start_date: "2022-01-03"
+  end_date: "2025-07-31"
+  bar_size: "1min"
+  validation_split: 0.15  # Last 15% for validation
+  
+# Curriculum Learning Schedule (INSTITUTIONAL APPROACH)
+curriculum_phases:
+  # Phase 1: Exploration with persistent alpha (0-50K steps)
+  - name: "exploration"
+    steps: [0, 50000]
+    description: "Persistent ±0.4 alpha for exploration"
+    alpha_mode: "persistent"
+    alpha_strength: 0.4
+    alpha_persistence: 1.0
+    data_filter: "none"
+    
+  # Phase 2: Piece-wise alpha on/off (50K-150K steps)  
+  - name: "piecewise_alpha"
+    steps: [50000, 150000]
+    description: "Piece-wise alpha on/off periods"
+    alpha_mode: "piecewise"
+    alpha_strength: 0.3
+    alpha_on_probability: 0.6
+    data_filter: "moderate"
+    
+  # Phase 3: Real returns unfiltered (150K-350K steps)
+  - name: "real_returns"
+    steps: [150000, 350000]
+    description: "Real market returns, unfiltered"
+    alpha_mode: "real"
+    alpha_strength: 0.0
+    data_filter: "none"
+    regime_coverage: "full"
+    
+  # Phase 4: Live feed replay with buffer (350K-400K steps)
+  - name: "live_replay"
+    steps: [350000, 400000]
+    description: "Live feed replay with replay buffer"
+    alpha_mode: "live_replay"
+    data_filter: "recent"
+    replay_buffer_enabled: true
+    replay_buffer_size: 100000
+
+# Checkpointing and Monitoring
+checkpoint_config:
+  save_freq: 25000  # Save every 25K steps
+  keep_checkpoints: 5
+  save_replay_buffer: false
+  
+monitoring_config:
+  log_interval: 1000
+  eval_freq: 10000
+  eval_episodes: 10
+  tensorboard_log: true
+  
+# Hardware Configuration
+hardware_config:
+  device: "cuda"  # RTX 3060
+  n_envs: 1  # Single environment for stability
+  expected_throughput: 350  # it/s target
+  
+# Output Configuration  
+output_config:
+  run_name: "v3_gold_standard_400k"
+  base_dir: "train_runs"
+  save_model: true
+  save_logs: true
+  save_metrics: true
+
+# Risk Management
+risk_config:
+  max_drawdown_abort: 0.05  # Abort if >5% drawdown during training
+  min_sharpe_threshold: 0.0  # Minimum Sharpe for continuation
+  overtraining_detection: true
+  
+# Validation Configuration
+validation_config:
+  test_start: "2025-02-01"  # 6-month hold-out
+  test_end: "2025-07-31"
+  min_sharpe_for_demo: 0.0  # Minimum for management demo
+  max_dd_for_demo: 0.02     # Maximum drawdown for demo
+
+# Comments and Notes
+comments: |
+  🎯 INSTITUTIONAL GOLD STANDARD TRAINING PLAN
+  
+  This configuration implements the proven institutional approach:
+  1. Single V3 environment for consistent reward distribution
+  2. Curriculum learning from exploration to live replay
+  3. Full regime coverage (bull 2023, sideways 2024, mixed 2025)
+  4. Replay buffer fine-tuning for microstructure sync
+  5. 400K steps optimized for RTX 3060 (~6 hours)
+  
+  Key Success Factors:
+  - V3 reward system prevents cost-blind trading
+  - Hold bonus incentivizes patience over overtrading
+  - Embedded impact costs with Kyle lambda model
+  - Risk-free baseline ensures profitable-only trading
+  - Action change penalties reduce strategy switching
+  
+  Expected Outcomes:
+  - Consistent profitability (>0% returns)
+  - Reduced overtrading (<50 trades/episode)
+  - Balanced strategy (>30% holding behavior)
+  - High win rate (>70%)
+  - Realistic risk management
+  
+  Timeline:
+  - T0+3h: Start training (after data fetch)
+  - T0+9h: Complete 400K steps
+  - T0+12h: Walk-forward validation
+  - T0+24h: Live paper trading
+  - T0+48h: Management demo ready

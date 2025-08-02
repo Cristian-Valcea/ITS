@@ -14,8 +14,9 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 import json
-from stable_baselines3 import RecurrentPPO
-from stable_baselines3.common.envs import DummyVecEnv
+from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import DummyVecEnv
+from sb3_contrib import RecurrentPPO
 
 try:
     from ..gym_env.dual_ticker_trading_env import DualTickerTradingEnv
@@ -60,13 +61,19 @@ class DualTickerModelAdapter:
         self.logger.info(f"📊 Loaded base model: {self.base_model_path}")
         self.logger.info(f"🎯 Base model algorithm: {self.base_metadata.get('algorithm', 'Unknown')}")
     
-    def _load_base_model(self) -> RecurrentPPO:
+    def _load_base_model(self):
         """Load the proven single-ticker model"""
         try:
-            # Load the RecurrentPPO model
-            model = RecurrentPPO.load(str(self.base_model_path))
-            self.logger.info(f"✅ Base model loaded successfully")
-            return model
+            # Try RecurrentPPO first (for models with LSTM)
+            try:
+                model = RecurrentPPO.load(str(self.base_model_path))
+                self.logger.info(f"✅ Base model loaded successfully (RecurrentPPO)")
+                return model
+            except:
+                # Fallback to regular PPO
+                model = PPO.load(str(self.base_model_path))
+                self.logger.info(f"✅ Base model loaded successfully (PPO)")
+                return model
         except Exception as e:
             raise ModelAdaptationError(f"Failed to load base model: {e}")
     
@@ -85,14 +92,14 @@ class DualTickerModelAdapter:
         
         # Return default metadata
         return {
-            'algorithm': 'RecurrentPPO',
+            'algorithm': 'PPO',
             'observation_space': {'shape': [13]},
             'action_space': {'n': 3}
         }
     
     def prepare_dual_ticker_model(self, 
                                  sample_env: Optional[DualTickerTradingEnv] = None,
-                                 model_config: Optional[Dict[str, Any]] = None) -> RecurrentPPO:
+                                 model_config: Optional[Dict[str, Any]] = None) -> PPO:
         """
         Adapt model architecture for dual-ticker trading
         
@@ -101,7 +108,7 @@ class DualTickerModelAdapter:
             model_config: Optional model configuration overrides
             
         Returns:
-            New RecurrentPPO model adapted for dual-ticker trading
+            New PPO model adapted for dual-ticker trading
         """
         
         self.logger.info("🔧 Starting dual-ticker model adaptation...")
@@ -113,10 +120,18 @@ class DualTickerModelAdapter:
         # Build model configuration
         final_config = self._build_model_config(model_config)
         
-        # Create new model with dual-ticker specs
+        # Create new model with dual-ticker specs (using RecurrentPPO to match base model)
+        # Ensure single environment for LSTM compatibility
+        from stable_baselines3.common.vec_env import DummyVecEnv
+        if not hasattr(sample_env, 'num_envs'):
+            # Wrap in DummyVecEnv with single environment
+            vec_env = DummyVecEnv([lambda: sample_env])
+        else:
+            vec_env = sample_env
+            
         new_model = RecurrentPPO(
             policy="MlpLstmPolicy",
-            env=sample_env,
+            env=vec_env,
             **final_config
         )
         
@@ -171,13 +186,13 @@ class DualTickerModelAdapter:
     def _build_model_config(self, config_override: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """Build model configuration from base model + overrides"""
         
-        # Start with proven hyperparameters from base model (50K training success)
+        # Start with proven hyperparameters from base model (match exactly)
         base_config = {
-            # Core PPO parameters (proven from single-ticker training)
-            'learning_rate': 0.0001,         # Conservative LR for transfer learning
-            'n_steps': 128,                  # Episode buffer size
-            'batch_size': 32,                # Mini-batch size for SGD
-            'n_epochs': 4,                   # Policy updates per rollout
+            # Core PPO parameters (exact match to base model)
+            'learning_rate': 0.0001,         # Same as base model
+            'n_steps': 2048,                 # Same as base model
+            'batch_size': 64,                # Same as base model
+            'n_epochs': 10,                  # Same as base model
             'gamma': 0.99,                   # Discount factor
             'gae_lambda': 0.95,              # GAE parameter
             'clip_range': 0.2,               # PPO clipping range
@@ -185,16 +200,15 @@ class DualTickerModelAdapter:
             'vf_coef': 0.5,                  # Value function coefficient
             'max_grad_norm': 0.5,            # Gradient clipping
             
-            # Enhanced policy architecture for dual-ticker
+            # Enhanced policy architecture for dual-ticker (exact match to base model)
             'policy_kwargs': {
                 'net_arch': [64, 64],         # Same as successful single-ticker model
                 'activation_fn': torch.nn.ReLU,
-                'lstm_hidden_size': 32,       # Memory for sequence learning
+                'lstm_hidden_size': 256,      # Exact match to base model
                 'n_lstm_layers': 1,           # Single LSTM layer (proven)
-                'shared_layers_vf': [64],     # Shared value function layers
                 'enable_critic_lstm': True,   # LSTM in critic for better value estimates
                 'lstm_kwargs': {
-                    'dropout': 0.1,           # Regularization for generalization
+                    'dropout': 0.0,           # No dropout to match base model
                     'batch_first': True
                 }
             },
@@ -234,7 +248,7 @@ class DualTickerModelAdapter:
         
         return base_config
     
-    def _transfer_weights_enhanced(self, new_model: RecurrentPPO) -> None:
+    def _transfer_weights_enhanced(self, new_model: PPO) -> None:
         """
         🔧 Enhanced weight transfer with neutral MSFT action head initialization
         
@@ -467,7 +481,7 @@ class DualTickerModelAdapter:
         except Exception as e:
             self.logger.warning(f"🔧 MSFT neutralization failed: {e}")
     
-    def _validate_adapted_model(self, model: RecurrentPPO, env: DualTickerTradingEnv) -> None:
+    def _validate_adapted_model(self, model: PPO, env: DualTickerTradingEnv) -> None:
         """Validate the adapted model works correctly"""
         
         self.logger.info("🔧 Validating adapted model...")
@@ -481,8 +495,14 @@ class DualTickerModelAdapter:
             action, _ = model.predict(obs, deterministic=True)
             assert 0 <= action <= 8, f"Invalid action: {action}"
             
-            # Test step execution
-            obs, reward, done, info = env.step(action)
+            # Test step execution (handle both Gym and Gymnasium APIs)
+            step_result = env.step(action)
+            if len(step_result) == 5:
+                # Gymnasium API: obs, reward, done, truncated, info
+                obs, reward, done, truncated, info = step_result
+            else:
+                # Old Gym API: obs, reward, done, info
+                obs, reward, done, info = step_result
             assert isinstance(reward, (int, float)), f"Invalid reward type: {type(reward)}"
             assert isinstance(done, bool), f"Invalid done type: {type(done)}"
             
@@ -492,14 +512,14 @@ class DualTickerModelAdapter:
             raise ModelAdaptationError(f"Model validation failed: {e}")
     
     def save_adapted_model(self, 
-                          model: RecurrentPPO, 
+                          model: PPO, 
                           output_path: str,
                           metadata: Optional[Dict[str, Any]] = None) -> str:
         """
         Save the adapted dual-ticker model with metadata
         
         Args:
-            model: Adapted RecurrentPPO model
+            model: Adapted PPO model
             output_path: Path to save the model
             metadata: Additional metadata to save
             
@@ -515,7 +535,7 @@ class DualTickerModelAdapter:
         
         # Create metadata
         adapted_metadata = {
-            'algorithm': 'RecurrentPPO',
+            'algorithm': 'PPO',
             'model_type': 'dual_ticker_adapted',
             'base_model_path': str(self.base_model_path),
             'adaptation_timestamp': pd.Timestamp.now().isoformat(),

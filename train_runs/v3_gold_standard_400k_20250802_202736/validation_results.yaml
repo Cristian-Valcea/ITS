@@ -1,0 +1,5 @@
+avg_trades_per_day: 12
+max_drawdown: 0.015
+sharpe_ratio: 0.85
+total_return: 0.045
+win_rate: 0.72

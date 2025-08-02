@@ -209,8 +209,9 @@ class DualTickerTradingEnvV3(gym.Env):
         nvda_price = current_prices['nvda']
         msft_price = current_prices['msft']
         
-        # Decode action into individual ticker actions
-        nvda_action, msft_action = self.action_map[action]
+        # Decode action into individual ticker actions (handle numpy arrays)
+        action_int = int(action) if hasattr(action, '__iter__') else action
+        nvda_action, msft_action = self.action_map[action_int]
         
         # Calculate trade sizes
         nvda_trade_shares = self.ticker_action_sizes[nvda_action]
