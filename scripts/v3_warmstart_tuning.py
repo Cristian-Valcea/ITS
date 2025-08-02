@@ -26,13 +26,12 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from stable_baselines3 import RecurrentPPO
+from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 from src.gym_env.dual_ticker_trading_env_v3_tuned import DualTickerTradingEnvV3Tuned
-from src.gym_env.dual_ticker_data_adapter import DualTickerDataAdapter
 
 # Configure logging
 logging.basicConfig(
@@ -80,29 +79,73 @@ class V3WarmStartTuner:
         """
         logger.info("📊 Loading training data...")
         
-        # Use same data configuration as original V3 training
-        data_config = self.config['data_config']
-        
-        # For this example, we'll use dummy data
-        # In practice, load from your data pipeline
-        n_timesteps = 50000  # Enough for 50K step training
-        
-        # Generate dummy features (26 dimensions)
-        features = np.random.randn(n_timesteps, 26).astype(np.float32)
-        
-        # Generate dummy prices (NVDA open, close, MSFT open, close)
-        base_prices = np.array([500.0, 500.0, 300.0, 300.0])  # NVDA, NVDA, MSFT, MSFT
-        price_changes = np.random.randn(n_timesteps, 4) * 0.02  # 2% volatility
-        prices = base_prices * (1 + price_changes.cumsum(axis=0))
-        
-        # Generate timestamps
-        timestamps = pd.date_range('2025-01-01', periods=n_timesteps, freq='1min')
-        
-        logger.info(f"✅ Data loaded: {n_timesteps:,} timesteps")
-        logger.info(f"   Features shape: {features.shape}")
-        logger.info(f"   Prices shape: {prices.shape}")
-        
-        return features, prices, timestamps.values
+        try:
+            # Try to load real data using the same approach as original V3 training
+            from src.gym_env.dual_ticker_data_adapter import DualTickerDataAdapter
+            from secrets_helper import SecretsHelper
+            
+            # Database config
+            db_password = SecretsHelper.get_timescaledb_password()
+            db_config = {
+                'host': 'localhost',
+                'port': 5432,
+                'database': 'trading_data',
+                'user': 'postgres',
+                'password': db_password
+            }
+            
+            # Create data adapter
+            data_adapter = DualTickerDataAdapter(db_config, live_trading_mode=False)
+            
+            # Load training data
+            data_config = self.config['data_config']
+            training_data = data_adapter.load_training_data(
+                start_date=data_config['start_date'],
+                end_date=data_config['end_date'],
+                symbols=data_config['symbols'],
+                bar_size=data_config['bar_size'],
+                data_split='train'
+            )
+            
+            # Prepare data for V3 environment (same as original)
+            nvda_features = training_data['nvda_features']
+            msft_features = training_data['msft_features']
+            nvda_prices = training_data['nvda_prices']
+            
+            # Combine features: [NVDA features, MSFT features]
+            features = np.concatenate([nvda_features, msft_features], axis=1)
+            prices = nvda_prices
+            timestamps = training_data['trading_days']
+            
+            logger.info(f"✅ Real data loaded: {len(features):,} timesteps")
+            logger.info(f"   Features shape: {features.shape}")
+            logger.info(f"   Prices shape: {prices.shape}")
+            
+            return features, prices, timestamps
+            
+        except Exception as e:
+            logger.warning(f"⚠️  Could not load real data: {str(e)}")
+            logger.info("📊 Falling back to synthetic data for tuning...")
+            
+            # Fallback to synthetic data
+            n_timesteps = 50000  # Enough for 50K step training
+            
+            # Generate realistic features (26 dimensions)
+            features = np.random.randn(n_timesteps, 26).astype(np.float32)
+            
+            # Generate realistic prices (NVDA open, close, MSFT open, close)
+            base_prices = np.array([500.0, 500.0, 300.0, 300.0])
+            price_changes = np.random.randn(n_timesteps, 4) * 0.015  # 1.5% volatility
+            prices = base_prices * (1 + price_changes.cumsum(axis=0))
+            
+            # Generate timestamps
+            timestamps = pd.date_range('2025-01-01', periods=n_timesteps, freq='1min')
+            
+            logger.info(f"✅ Synthetic data generated: {n_timesteps:,} timesteps")
+            logger.info(f"   Features shape: {features.shape}")
+            logger.info(f"   Prices shape: {prices.shape}")
+            
+            return features, prices, timestamps.values
     
     def _create_environment(self, features: np.ndarray, prices: np.ndarray, timestamps: np.ndarray):
         """

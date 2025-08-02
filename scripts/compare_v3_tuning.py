@@ -23,7 +23,7 @@ import logging
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from stable_baselines3 import RecurrentPPO
+from sb3_contrib import RecurrentPPO
 from src.gym_env.dual_ticker_trading_env_v3 import DualTickerTradingEnvV3
 from src.gym_env.dual_ticker_trading_env_v3_tuned import DualTickerTradingEnvV3Tuned
 
