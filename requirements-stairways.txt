@@ -1,0 +1,85 @@
+# STAIRWAYS TO HEAVEN v3.0 - REVIEWER-REQUIRED LIBRARY VERSIONS
+# 
+# HOUSE-KEEPING FIX #4: CUDA compatibility matrix for different GPU generations
+# Current configuration: PyTorch 2.7.1 with CUDA 12.6 support
+# 
+# For production deployment:
+# - CUDA 11.8+ required for PyTorch 2.x series
+# - Use fallback versions for older GPUs (see comments below)
+
+# =============================================================================
+# CORE ML LIBRARIES - CURRENT VERSIONS (CUDA 12.6+ compatible)
+# =============================================================================
+torch==2.7.1                    # CUDA 12.6+ compatible, production validated
+stable-baselines3==2.7.0        # Compatible with PyTorch 2.7.1
+gymnasium==1.2.0                # Latest stable gymnasium
+numpy==2.1.3                    # Compatible with PyTorch 2.7.1
+
+# =============================================================================
+# ALTERNATIVE FOR OLDER GPUs (CUDA < 11.8)
+# Uncomment these lines and comment out the versions above if deploying on:
+# - RTX 2060/2070/2080 series
+# - GTX 1080 Ti
+# - Tesla P100
+# - Any GPU with CUDA < 11.8
+# =============================================================================
+# torch==1.13.1+cu117            # CUDA 11.7 compatible
+# stable-baselines3==1.8.0       # Compatible with PyTorch 1.13
+# gymnasium==0.29.0              # Compatible with older stable-baselines3
+# numpy==1.24.0                  # Compatible with PyTorch 1.13
+
+# =============================================================================
+# DATA & DATABASE LIBRARIES
+# =============================================================================
+pandas==2.3.1                   # Data manipulation and analysis
+pyarrow==17.0.0                 # Parquet file support for fixtures
+sqlalchemy==2.0.35              # Database ORM and abstraction
+
+# =============================================================================
+# COLLECTIONS & UTILITIES
+# =============================================================================
+# deque is part of Python standard library (collections module)
+# No additional installation required for memory-bounded buffers
+
+# =============================================================================
+# DEVELOPMENT & TESTING
+# =============================================================================
+pytest==8.4.1                   # Unit testing framework
+pytest-cov==6.0.0               # Coverage reporting
+psutil==6.1.0                   # Memory monitoring for tests
+
+# =============================================================================
+# MONITORING & METRICS (Development Mode)
+# =============================================================================
+# Note: In production, these would be replaced with actual Prometheus integration
+# For now, using file-based metrics per house-keeping fix #3
+
+# =============================================================================
+# API FRAMEWORK (Future Integration)
+# =============================================================================
+fastapi==0.115.6               # API framework for inference service
+uvicorn==0.32.1                 # ASGI server
+
+# =============================================================================
+# DEPLOYMENT VALIDATION SCRIPT
+# =============================================================================
+# To validate your deployment environment, run:
+# python -c "
+# import torch
+# print(f'PyTorch: {torch.__version__}')
+# print(f'CUDA Available: {torch.cuda.is_available()}')
+# if torch.cuda.is_available():
+#     print(f'CUDA Version: {torch.version.cuda}')
+#     print(f'GPU Count: {torch.cuda.device_count()}')
+#     for i in range(torch.cuda.device_count()):
+#         print(f'GPU {i}: {torch.cuda.get_device_name(i)}')
+# "
+
+# =============================================================================
+# VERSION HISTORY
+# =============================================================================
+# v3.0 - Production-ready with house-keeping fixes
+# - Added CUDA compatibility matrix
+# - Fixed NaN/Infinity handling in controller
+# - Validated memory bounds and offline bootstrap
+# - All reviewer requirements integrated

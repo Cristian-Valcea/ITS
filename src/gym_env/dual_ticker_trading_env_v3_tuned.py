@@ -70,8 +70,8 @@ class DualTickerTradingEnvV3Tuned(gym.Env):
         risk_free_rate_annual: float = 0.05,
         
         # 🎯 TUNED REWARD WEIGHTS
-        hold_bonus_weight: float = 0.0005,  # REDUCED from 0.01
-        ticket_cost_per_trade: float = 0.20,  # REDUCED from 0.50
+        hold_bonus_weight: float = 0.001,  # MODERATE reduction from 0.01 (10x)
+        ticket_cost_per_trade: float = 0.50,  # UNCHANGED from original
         
         # Other reward weights (UNCHANGED)
         downside_penalty_weight: float = 2.0,

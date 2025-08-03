@@ -1,0 +1,44 @@
+🎯 INTRADAYTRADING SYSTEM - FINAL VALIDATION REPORT
+============================================================
+Generated: 2025-08-03 21:59:16
+
+📊 EXECUTIVE SUMMARY
+--------------------
+Status: ⚠️ PARTIAL VALIDATION
+Gates Passed: 2/5
+Final Hold Rate: 15.6%
+System Stability: ✅ STABLE
+
+🛡️ VALIDATION GATES (100-EPISODE ROLLING)
+----------------------------------------
+Hold Rate          15.6% 0.25 ≤ HR ≤ 0.60 ❌ FAIL
+Trades Per Day     19.92   8 ≤ T ≤ 25 ✅ PASS
+Max Drawdown    1.7989349         ≤ 2% ❌ FAIL
+Daily Sharpe       -0.36        ≥ 0.6 ❌ FAIL
+Invalid Actions     0.0%          = 0 ✅ PASS
+
+📈 SYSTEM PERFORMANCE
+--------------------
+Average Episode Length: 25 steps
+Total Episodes Evaluated: 100
+Total Actions Analyzed: 2,513
+
+Action Distribution:
+  Buy A         429 ( 17.1%)
+  Sell A        642 ( 25.5%)
+  Buy B         428 ( 17.0%)
+  Sell B        493 ( 19.6%)
+  Hold Both     521 ( 20.7%)
+
+🚀 RECOMMENDATIONS
+---------------
+⚠️ ADDITIONAL OPTIMIZATION RECOMMENDED
+Focus areas: hold_rate, max_drawdown, daily_sharpe
+Consider extended training or parameter adjustment
+
+📅 DEPLOYMENT TIMELINE
+--------------------
+T0 + 0.5 day: Final validation complete ✅
+T0 + 1.0 day: Paper trading setup
+T0 + 1.5 day: IBKR integration & monitoring
+Demo day:     Live dashboard presentation

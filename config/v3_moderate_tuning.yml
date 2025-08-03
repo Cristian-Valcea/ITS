@@ -1,0 +1,107 @@
+# 🎯 V3 MODERATE TUNING CONFIGURATION
+# Conservative parameter adjustments to avoid over-aggressive trading
+
+# Base configuration
+base_config: "config/v3_tuned_warmstart.yml"
+
+# Run identification
+run_name: "v3_moderate_tuning_50k"
+description: "Conservative V3 tuning with moderate parameter adjustments"
+
+# Model continuation
+base_model_path: "train_runs/v3_gold_standard_400k_20250802_202736/v3_gold_standard_final_409600steps.zip"
+continue_training: true
+starting_timesteps: 409600
+
+# Training parameters
+training:
+  total_timesteps: 50000  # Additional 50K steps
+  eval_freq: 5000
+  save_freq: 10000
+  n_eval_episodes: 10
+  
+  # Learning parameters (keep stable)
+  learning_rate: 0.0003
+  batch_size: 256
+  n_steps: 2048
+  
+  # Environment parameters
+  n_envs: 8
+  max_episode_steps: 1000
+
+# 🎯 MODERATE TUNING WEIGHTS (Conservative Approach)
+reward_tuning:
+  # Hold bonus: Moderate reduction (10x, not 20x)
+  hold_bonus_weight: 0.001  # Reduced from 0.01 (10x reduction)
+  
+  # Ticket cost: Keep original (maintain friction)
+  ticket_cost_per_trade: 0.50  # UNCHANGED from original
+  
+  # All other weights unchanged (preserve V3 core)
+  downside_penalty_weight: 2.0
+  kelly_bonus_weight: 0.5
+  position_decay_weight: 0.1
+  turnover_penalty_weight: 0.05
+  size_penalty_weight: 0.02
+  action_change_penalty_weight: 0.005
+
+# Environment configuration
+environment:
+  env_class: "DualTickerTradingEnvV3Tuned"
+  
+  # Data parameters
+  initial_capital: 100000
+  max_position_size: 500
+  transaction_cost_pct: 0.0001
+  max_daily_drawdown_pct: 0.02
+  
+  # Alpha signal parameters
+  alpha_mode: "live_replay"
+  alpha_strength: 0.1
+  alpha_persistence: 0.5
+  alpha_on_probability: 0.6
+  
+  # Logging
+  log_trades: false
+  verbose: false
+
+# Data configuration
+data:
+  # Use synthetic data for consistent tuning
+  use_synthetic: true
+  synthetic_timesteps: 50000
+  
+  # Real data fallback
+  tickers: ["NVDA", "MSFT"]
+  start_date: "2022-01-03"
+  end_date: "2025-07-31"
+  split: "train"
+
+# Output configuration
+output:
+  save_best_model: true
+  save_checkpoints: true
+  checkpoint_freq: 10000
+  
+  # Evaluation
+  eval_env_separate: true
+  eval_deterministic: true
+  
+  # Logging
+  tensorboard_log: true
+  monitor_training: true
+  monitor_evaluation: true
+
+# Expected behavioral changes
+expected_outcomes:
+  target_trades_per_day: 15-18  # Moderate increase from 12
+  target_holding_percentage: 70-75  # Slight decrease from 80%
+  episode_length_target: 600-900  # Maintain most episodes to completion
+  performance_target: "Maintain Sharpe > 0.6"
+  
+# Success criteria
+success_criteria:
+  min_episode_length: 400  # Episodes should not terminate too early
+  max_early_termination_rate: 30  # <30% early terminations acceptable
+  min_sharpe_equivalent: 0.6  # Maintain reasonable performance
+  target_activity_increase: 25  # 25% more trades than original

@@ -158,18 +158,20 @@ class V3TuningComparator:
         # Generate test data
         features, prices, timestamps = self._create_test_data(2000)
         
+        # Convert prices to pandas Series (V3 environment expects this)
+        price_series = pd.Series(prices[:, 1])  # Use NVDA close prices
+        
         # Create environments
         original_env = DualTickerTradingEnvV3(
             processed_feature_data=features,
-            processed_price_data=prices,
-            trading_days=timestamps,
+            price_data=price_series,
             log_trades=False,
             verbose=False
         )
         
         tuned_env = DualTickerTradingEnvV3Tuned(
             processed_feature_data=features,
-            processed_price_data=prices,
+            processed_price_data=prices,  # Tuned environment expects array format
             trading_days=timestamps,
             # Tuned weights
             hold_bonus_weight=0.0005,
@@ -338,7 +340,7 @@ def main():
     
     # Model paths
     original_model_path = "train_runs/v3_gold_standard_400k_20250802_202736/v3_gold_standard_final_409600steps.zip"
-    tuned_model_path = "train_runs/v3_tuned_warmstart_50k_*/v3_tuned_final_50000steps.zip"  # Update with actual path
+    tuned_model_path = "train_runs/v3_tuned_warmstart_50k_*/best_model.zip"  # Use best model from tuning
     
     # Check if models exist
     if not os.path.exists(original_model_path):

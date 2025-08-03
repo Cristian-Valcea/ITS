@@ -1,0 +1,87 @@
+{
+  "evaluation_date": "2025-08-02T22:18:54.149889",
+  "models_evaluated": 4,
+  "results": [
+    {
+      "model_name": "V3_Gold_Standard_409K",
+      "final_equity": 100000.0,
+      "total_return": 0.0,
+      "max_drawdown": 0.0,
+      "sharpe_ratio": 0,
+      "total_trades": 0,
+      "action_entropy": -0.0,
+      "days_simulated": 107,
+      "action_distribution": {
+        "4": 107
+      }
+    },
+    {
+      "model_name": "V3_100K_Latest",
+      "final_equity": 106798.37475000003,
+      "total_return": 6.798374750000032,
+      "max_drawdown": 7.879556447786157,
+      "sharpe_ratio": 0.15253043265273045,
+      "total_trades": 48,
+      "action_entropy": 1.7099706878354703,
+      "days_simulated": 107,
+      "action_distribution": {
+        "6": 29,
+        "4": 18,
+        "0": 31,
+        "7": 3,
+        "2": 1,
+        "1": 17,
+        "3": 5,
+        "5": 1,
+        "8": 2
+      }
+    },
+    {
+      "model_name": "Deployed_300K",
+      "final_equity": 114594.94407000003,
+      "total_return": 14.594944070000027,
+      "max_drawdown": 13.93538690085907,
+      "sharpe_ratio": 0.1973328886478633,
+      "total_trades": 70,
+      "action_entropy": 1.540985442104511,
+      "days_simulated": 107,
+      "action_distribution": {
+        "6": 44,
+        "4": 18,
+        "7": 13,
+        "0": 18,
+        "1": 12,
+        "5": 2
+      }
+    },
+    {
+      "model_name": "Deployed_251K",
+      "final_equity": 108268.12246999997,
+      "total_return": 8.268122469999973,
+      "max_drawdown": 8.728935960281845,
+      "sharpe_ratio": 0.17418821334159634,
+      "total_trades": 53,
+      "action_entropy": 1.5671980310937224,
+      "days_simulated": 107,
+      "action_distribution": {
+        "6": 32,
+        "4": 6,
+        "0": 41,
+        "7": 4,
+        "2": 1,
+        "1": 17,
+        "3": 3,
+        "5": 1,
+        "8": 2
+      }
+    }
+  ],
+  "summary": {
+    "best_return_model": "Deployed_300K",
+    "best_return_value": 14.594944070000027,
+    "best_sharpe_model": "Deployed_300K",
+    "best_sharpe_value": 0.1973328886478633,
+    "lowest_drawdown_model": "V3_Gold_Standard_409K",
+    "lowest_drawdown_value": 0.0
+  }
+}

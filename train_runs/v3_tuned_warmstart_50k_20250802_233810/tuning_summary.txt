@@ -1,0 +1,19 @@
+V3 TUNING RESULTS SUMMARY
+========================================
+
+Run Directory: train_runs/v3_tuned_warmstart_50k_20250802_233810
+Analysis Date: 2025-08-02 23:57:33.046508
+
+TRAINING RESULTS:
+  episodes: 352
+  avg_episode_length: 57.84090909090909
+  avg_reward: -722041696.9289838
+  reward_std: 2202110856.0841618
+  total_timesteps: 20360
+
+EVALUATION RESULTS:
+  episodes: 40
+  avg_episode_length: 163.3
+  avg_reward: -346195393.2256566
+  reward_std: 558389566.6459826
+

@@ -1,0 +1,74 @@
+{
+  "evaluation_date": "2025-08-02T19:42:59.392549",
+  "models_evaluated": 3,
+  "results": [
+    {
+      "model_name": "V3_100K_Latest",
+      "final_equity": 101325.10994,
+      "total_return": 1.3251099399999948,
+      "max_drawdown": 1.747685877945249,
+      "sharpe_ratio": 0.13542121956206699,
+      "total_trades": 4,
+      "action_entropy": 1.7140099758978125,
+      "days_simulated": 107,
+      "action_distribution": {
+        "6": 28,
+        "4": 19,
+        "0": 31,
+        "7": 3,
+        "2": 1,
+        "1": 17,
+        "3": 5,
+        "5": 1,
+        "8": 2
+      }
+    },
+    {
+      "model_name": "Deployed_300K",
+      "final_equity": 100000.0,
+      "total_return": 0.0,
+      "max_drawdown": 0.0,
+      "sharpe_ratio": 0,
+      "total_trades": 0,
+      "action_entropy": 1.5489769370161828,
+      "days_simulated": 107,
+      "action_distribution": {
+        "6": 43,
+        "4": 18,
+        "7": 13,
+        "0": 19,
+        "1": 12,
+        "5": 2
+      }
+    },
+    {
+      "model_name": "Deployed_251K",
+      "final_equity": 101325.10994,
+      "total_return": 1.3251099399999948,
+      "max_drawdown": 1.747685877945249,
+      "sharpe_ratio": 0.13542121956206699,
+      "total_trades": 4,
+      "action_entropy": 1.5671980310937224,
+      "days_simulated": 107,
+      "action_distribution": {
+        "6": 32,
+        "4": 6,
+        "0": 41,
+        "7": 4,
+        "2": 1,
+        "1": 17,
+        "3": 3,
+        "5": 1,
+        "8": 2
+      }
+    }
+  ],
+  "summary": {
+    "best_return_model": "V3_100K_Latest",
+    "best_return_value": 1.3251099399999948,
+    "best_sharpe_model": "V3_100K_Latest",
+    "best_sharpe_value": 0.13542121956206699,
+    "lowest_drawdown_model": "Deployed_300K",
+    "lowest_drawdown_value": 0.0
+  }
+}

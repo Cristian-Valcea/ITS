@@ -1,0 +1,173 @@
+{
+  "evaluation_date": "2025-08-02T22:59:03.518040",
+  "data_file": "raw/polygon_dual_ticker_20250802_131953.json",
+  "checkpoints_evaluated": 4,
+  "results": [
+    {
+      "checkpoint_name": "Gold_Standard_100K",
+      "training_steps": 102400,
+      "avg_return_pct": 0.0,
+      "std_return_pct": 0.0,
+      "avg_episode_reward": 1539.2675038051736,
+      "avg_sharpe_ratio": -2440045512395442.5,
+      "max_drawdown_pct": 0.0,
+      "avg_trades_per_episode": 0.0,
+      "total_trades": "0",
+      "positive_episodes": 0,
+      "episodes_run": 5,
+      "trading_activity": "Ultra-Conservative",
+      "risk_profile": "Zero Risk",
+      "performance_score": 0.0
+    },
+    {
+      "checkpoint_name": "Gold_Standard_200K",
+      "training_steps": 204800,
+      "avg_return_pct": 0.0,
+      "std_return_pct": 0.0,
+      "avg_episode_reward": 1539.2675038051736,
+      "avg_sharpe_ratio": -2440045512395442.5,
+      "max_drawdown_pct": 0.0,
+      "avg_trades_per_episode": 0.0,
+      "total_trades": "0",
+      "positive_episodes": 0,
+      "episodes_run": 5,
+      "trading_activity": "Ultra-Conservative",
+      "risk_profile": "Zero Risk",
+      "performance_score": 0.0
+    },
+    {
+      "checkpoint_name": "Gold_Standard_300K",
+      "training_steps": 307200,
+      "avg_return_pct": 0.0,
+      "std_return_pct": 0.0,
+      "avg_episode_reward": 1539.2675038051736,
+      "avg_sharpe_ratio": -2440045512395442.5,
+      "max_drawdown_pct": 0.0,
+      "avg_trades_per_episode": 0.0,
+      "total_trades": "0",
+      "positive_episodes": 0,
+      "episodes_run": 5,
+      "trading_activity": "Ultra-Conservative",
+      "risk_profile": "Zero Risk",
+      "performance_score": 0.0
+    },
+    {
+      "checkpoint_name": "Gold_Standard_409K",
+      "training_steps": 409600,
+      "avg_return_pct": 0.0,
+      "std_return_pct": 0.0,
+      "avg_episode_reward": 1539.2675038051736,
+      "avg_sharpe_ratio": -2440045512395442.5,
+      "max_drawdown_pct": 0.0,
+      "avg_trades_per_episode": 0.0,
+      "total_trades": "0",
+      "positive_episodes": 0,
+      "episodes_run": 5,
+      "trading_activity": "Ultra-Conservative",
+      "risk_profile": "Zero Risk",
+      "performance_score": 0.0
+    }
+  ],
+  "leaders": {
+    "best_return": {
+      "checkpoint_name": "Gold_Standard_100K",
+      "training_steps": 102400,
+      "avg_return_pct": 0.0,
+      "std_return_pct": 0.0,
+      "avg_episode_reward": 1539.2675038051736,
+      "avg_sharpe_ratio": -2440045512395442.5,
+      "max_drawdown_pct": 0.0,
+      "avg_trades_per_episode": 0.0,
+      "total_trades": "0",
+      "positive_episodes": 0,
+      "episodes_run": 5,
+      "trading_activity": "Ultra-Conservative",
+      "risk_profile": "Zero Risk",
+      "performance_score": 0.0
+    },
+    "best_sharpe": {
+      "checkpoint_name": "Gold_Standard_100K",
+      "training_steps": 102400,
+      "avg_return_pct": 0.0,
+      "std_return_pct": 0.0,
+      "avg_episode_reward": 1539.2675038051736,
+      "avg_sharpe_ratio": -2440045512395442.5,
+      "max_drawdown_pct": 0.0,
+      "avg_trades_per_episode": 0.0,
+      "total_trades": "0",
+      "positive_episodes": 0,
+      "episodes_run": 5,
+      "trading_activity": "Ultra-Conservative",
+      "risk_profile": "Zero Risk",
+      "performance_score": 0.0
+    },
+    "lowest_risk": {
+      "checkpoint_name": "Gold_Standard_100K",
+      "training_steps": 102400,
+      "avg_return_pct": 0.0,
+      "std_return_pct": 0.0,
+      "avg_episode_reward": 1539.2675038051736,
+      "avg_sharpe_ratio": -2440045512395442.5,
+      "max_drawdown_pct": 0.0,
+      "avg_trades_per_episode": 0.0,
+      "total_trades": "0",
+      "positive_episodes": 0,
+      "episodes_run": 5,
+      "trading_activity": "Ultra-Conservative",
+      "risk_profile": "Zero Risk",
+      "performance_score": 0.0
+    },
+    "best_score": {
+      "checkpoint_name": "Gold_Standard_100K",
+      "training_steps": 102400,
+      "avg_return_pct": 0.0,
+      "std_return_pct": 0.0,
+      "avg_episode_reward": 1539.2675038051736,
+      "avg_sharpe_ratio": -2440045512395442.5,
+      "max_drawdown_pct": 0.0,
+      "avg_trades_per_episode": 0.0,
+      "total_trades": "0",
+      "positive_episodes": 0,
+      "episodes_run": 5,
+      "trading_activity": "Ultra-Conservative",
+      "risk_profile": "Zero Risk",
+      "performance_score": 0.0
+    },
+    "most_active": {
+      "checkpoint_name": "Gold_Standard_100K",
+      "training_steps": 102400,
+      "avg_return_pct": 0.0,
+      "std_return_pct": 0.0,
+      "avg_episode_reward": 1539.2675038051736,
+      "avg_sharpe_ratio": -2440045512395442.5,
+      "max_drawdown_pct": 0.0,
+      "avg_trades_per_episode": 0.0,
+      "total_trades": "0",
+      "positive_episodes": 0,
+      "episodes_run": 5,
+      "trading_activity": "Ultra-Conservative",
+      "risk_profile": "Zero Risk",
+      "performance_score": 0.0
+    }
+  },
+  "trends": {
+    "returns": [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "risk": [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "activity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  }
+}

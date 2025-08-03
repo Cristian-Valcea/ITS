@@ -1,0 +1,267 @@
+{
+  "evaluation_timestamp": "2025-08-03T19:59:01.466872",
+  "data_source": "fixtures",
+  "models_evaluated": 4,
+  "summary": {
+    "total_models": 4,
+    "successful_evaluations": 4,
+    "failed_evaluations": 0,
+    "avg_return": -1154124040.7661142,
+    "best_return": -153555223.15071803,
+    "worst_return": -3983586035.0938234,
+    "return_improvement": 3830030811.943105,
+    "avg_hold_rate": 1.0,
+    "avg_hold_error": 0.275,
+    "best_hold_error": 0.25,
+    "hold_rate_improvement": -0.050000000000000044,
+    "avg_controller_effectiveness": 0.2142857142857142,
+    "best_controller_effectiveness": 0.2857142857142857,
+    "effectiveness_improvement": -0.14285714285714302,
+    "avg_sharpe_ratio": -1.1192184192326942,
+    "best_sharpe_ratio": -0.5627128988708576,
+    "best_return_model": "cycle_04_hold_70%",
+    "best_sharpe_model": "cycle_01_hold_75%",
+    "best_hold_rate_model": "cycle_01_hold_75%",
+    "learning_progression": "True",
+    "hold_rate_learning": "False",
+    "controller_learning": "False"
+  },
+  "model_results": {
+    "cycle_01_hold_75%": {
+      "cycle_name": "cycle_01_hold_75%",
+      "model_path": "train_runs/stairways_8cycle_20250803_193928/cycle_01_hold_75%/model_checkpoint_cycle_01_hold_75%.zip",
+      "target_hold_rate": 0.75,
+      "avg_return": -3983586035.0938234,
+      "std_return": 7079251325.298045,
+      "sharpe_ratio": -0.5627128988708576,
+      "avg_hold_rate": 1.0,
+      "hold_rate_error": 0.25,
+      "controller_effectiveness": 0.2857142857142857,
+      "n_episodes": 5,
+      "episode_results": [
+        {
+          "episode": 0,
+          "return": -1609345208.3317647,
+          "length": 39,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.75,
+          "hold_rate_error": 0.25
+        },
+        {
+          "episode": 1,
+          "return": -170470415.87049326,
+          "length": 2,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.75,
+          "hold_rate_error": 0.25
+        },
+        {
+          "episode": 2,
+          "return": -18091532573.06827,
+          "length": 402,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.75,
+          "hold_rate_error": 0.25
+        },
+        {
+          "episode": 3,
+          "return": -30261772.376014452,
+          "length": 2,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.75,
+          "hold_rate_error": 0.25
+        },
+        {
+          "episode": 4,
+          "return": -16320205.822569827,
+          "length": 2,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.75,
+          "hold_rate_error": 0.25
+        }
+      ]
+    },
+    "cycle_02_hold_75%": {
+      "cycle_name": "cycle_02_hold_75%",
+      "model_path": "train_runs/stairways_8cycle_20250803_193928/cycle_02_hold_75%/model_checkpoint_cycle_02_hold_75%.zip",
+      "target_hold_rate": 0.75,
+      "avg_return": -178744364.95185152,
+      "std_return": 144959440.43386236,
+      "sharpe_ratio": -1.2330646725516543,
+      "avg_hold_rate": 1.0,
+      "hold_rate_error": 0.25,
+      "controller_effectiveness": 0.2857142857142857,
+      "n_episodes": 5,
+      "episode_results": [
+        {
+          "episode": 0,
+          "return": -389926731.2673807,
+          "length": 8,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.75,
+          "hold_rate_error": 0.25
+        },
+        {
+          "episode": 1,
+          "return": -261466566.5888149,
+          "length": 8,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.75,
+          "hold_rate_error": 0.25
+        },
+        {
+          "episode": 2,
+          "return": -22648852.028142594,
+          "length": 3,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.75,
+          "hold_rate_error": 0.25
+        },
+        {
+          "episode": 3,
+          "return": -209247496.57225844,
+          "length": 2,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.75,
+          "hold_rate_error": 0.25
+        },
+        {
+          "episode": 4,
+          "return": -10432178.302660812,
+          "length": 2,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.75,
+          "hold_rate_error": 0.25
+        }
+      ]
+    },
+    "cycle_03_hold_70%": {
+      "cycle_name": "cycle_03_hold_70%",
+      "model_path": "train_runs/stairways_8cycle_20250803_193928/cycle_03_hold_70%/model_checkpoint_cycle_03_hold_70%.zip",
+      "target_hold_rate": 0.7,
+      "avg_return": -300610539.8680645,
+      "std_return": 433610458.4534106,
+      "sharpe_ratio": -0.6932732686851548,
+      "avg_hold_rate": 1.0,
+      "hold_rate_error": 0.30000000000000004,
+      "controller_effectiveness": 0.14285714285714268,
+      "n_episodes": 5,
+      "episode_results": [
+        {
+          "episode": 0,
+          "return": -208427314.80495876,
+          "length": 9,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.7,
+          "hold_rate_error": 0.30000000000000004
+        },
+        {
+          "episode": 1,
+          "return": -99900069.83980261,
+          "length": 6,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.7,
+          "hold_rate_error": 0.30000000000000004
+        },
+        {
+          "episode": 2,
+          "return": -20009197.56711866,
+          "length": 3,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.7,
+          "hold_rate_error": 0.30000000000000004
+        },
+        {
+          "episode": 3,
+          "return": -18094360.27449825,
+          "length": 3,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.7,
+          "hold_rate_error": 0.30000000000000004
+        },
+        {
+          "episode": 4,
+          "return": -1156621756.8539443,
+          "length": 5,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.7,
+          "hold_rate_error": 0.30000000000000004
+        }
+      ]
+    },
+    "cycle_04_hold_70%": {
+      "cycle_name": "cycle_04_hold_70%",
+      "model_path": "train_runs/stairways_8cycle_20250803_193928/cycle_04_hold_70%/model_checkpoint_cycle_04_hold_70%.zip",
+      "target_hold_rate": 0.7,
+      "avg_return": -153555223.15071803,
+      "std_return": 77247941.97259864,
+      "sharpe_ratio": -1.9878228368231101,
+      "avg_hold_rate": 1.0,
+      "hold_rate_error": 0.30000000000000004,
+      "controller_effectiveness": 0.14285714285714268,
+      "n_episodes": 5,
+      "episode_results": [
+        {
+          "episode": 0,
+          "return": -192493156.7079682,
+          "length": 3,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.7,
+          "hold_rate_error": 0.30000000000000004
+        },
+        {
+          "episode": 1,
+          "return": -257305603.413713,
+          "length": 2,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.7,
+          "hold_rate_error": 0.30000000000000004
+        },
+        {
+          "episode": 2,
+          "return": -21492678.37566321,
+          "length": 4,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.7,
+          "hold_rate_error": 0.30000000000000004
+        },
+        {
+          "episode": 3,
+          "return": -153671399.51471856,
+          "length": 5,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.7,
+          "hold_rate_error": 0.30000000000000004
+        },
+        {
+          "episode": 4,
+          "return": -142813277.74152708,
+          "length": 2,
+          "hold_rate": 1.0,
+          "avg_action": 1.0,
+          "target_hold_rate": 0.7,
+          "hold_rate_error": 0.30000000000000004
+        }
+      ]
+    }
+  }
+}
