@@ -1,0 +1,88 @@
+{
+  "File Existence": {
+    "minimal_launcher.py": {
+      "exists": true,
+      "size": 3965
+    },
+    "real_trading_deployment.py": {
+      "exists": true,
+      "size": 20520
+    },
+    "TRADING_SYSTEM_GUIDE.md": {
+      "exists": true,
+      "size": 9833
+    },
+    "models/chunk7_final_358400steps.zip": {
+      "exists": false,
+      "size": 0
+    },
+    "src/brokers/ib_gateway.py": {
+      "exists": true,
+      "size": 20192
+    },
+    "src/agents/trainer_agent.py": {
+      "exists": true,
+      "size": 2014
+    }
+  },
+  "Python Imports": {
+    "ib_insync": true,
+    "stable_baselines3": true,
+    "gymnasium": true,
+    "flask": true,
+    "numpy": true,
+    "pandas": true
+  },
+  "Web Interfaces": {
+    "5000": {
+      "accessible": false,
+      "error": "HTTPConnectionPool(host='localhost', port=5000): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7b9543e51630>: Failed to establish a new connection: [Errno 111] Connection refused'))"
+    },
+    "9000": {
+      "accessible": true,
+      "status_code": 200,
+      "content_length": 2776
+    },
+    "8000": {
+      "accessible": false,
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7b9543e526b0>: Failed to establish a new connection: [Errno 111] Connection refused'))"
+    },
+    "3000": {
+      "accessible": true,
+      "status_code": 200,
+      "content_length": 53283
+    }
+  },
+  "AI Models": {
+    "models/chunk7_final_358400steps.zip": {
+      "exists": false
+    },
+    "models/stairways_v3.zip": {
+      "exists": false
+    },
+    "models/latest_model.zip": {
+      "exists": false
+    }
+  },
+  "IBKR Connection": {
+    "connected": true,
+    "mode": "simulation"
+  },
+  "Script Execution": {
+    "minimal_launcher.py": {
+      "returncode": 1,
+      "stdout_length": 146,
+      "stderr_length": 145,
+      "success": false
+    },
+    "real_trading_deployment.py": {
+      "timeout": true
+    },
+    "src/brokers/ib_gateway.py --test connect": {
+      "returncode": 0,
+      "stdout_length": 250,
+      "stderr_length": 56,
+      "success": true
+    }
+  }
+}

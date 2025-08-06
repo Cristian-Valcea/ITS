@@ -1,0 +1,44 @@
+🔍 PHASE 1C: DATA LEAKAGE AUDIT REPORT (FIXED)
+=======================================================
+
+Timestamp: 20250804_144355
+Output Directory: diagnostic_runs/phase1c_leakage_audit
+
+📊 DATA PREPARATION:
+  Original timesteps: 462
+  Shifted timesteps: 462
+  Feature count: 26
+  Modifications applied:
+    ✓ +1 step shift on derived features
+    ✓ ±0.5 trading day episode offset shuffling
+    ✓ NaN/Inf value cleaning
+    ✓ No Monitor wrapper to avoid JSON issues
+
+🧪 SANITY TEST RESULTS:
+  ✓ No crashes detected
+  Original mean reward: 0.000
+  Shifted mean reward: 0.000
+  Reward difference: 0.0%
+  Sanity passed: True
+
+📈 EPISODE COUNTS:
+  Original episodes: 10
+  Shifted episodes: 10
+
+📋 DIAGNOSTIC CRITERIA:
+  Success threshold: Reward difference ≤10%
+  Feature importance stability: ≤50% change in top-5
+  No pipeline crashes or data errors
+
+🔧 FIXES APPLIED:
+  ✓ Removed Monitor wrapper (avoids JSON serialization)
+  ✓ Added NaN/Inf cleaning (avoids invalid values)
+  ✓ Reduced episode length (avoids memory issues)
+  ✓ Manual reward tracking (avoids complex objects)
+  ✓ Simple CSV output (avoids JSON encoding)
+
+📁 DELIVERABLES:
+  ✓ original_features.parquet
+  ✓ shifted_features.parquet
+  ✓ sanity_results_20250804_144355.csv
+  → feature_importance_comparison.html (next step)

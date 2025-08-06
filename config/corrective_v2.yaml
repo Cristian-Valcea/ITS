@@ -1,0 +1,97 @@
+# Corrective V2 Configuration - Stronger Incentives
+# Fix episode length while preserving excellent reward gains (-12.6)
+
+ppo:
+  # Base parameters (unchanged)
+  n_steps:        512           
+  batch_size:     128           
+  n_epochs:       4             
+  gamma:          0.99          
+  gae_lambda:     0.95          
+
+  # Learning parameters (unchanged)
+  learning_rate:  5e-5          
+  clip_range:     0.2           
+  ent_coef:       0.03          
+  vf_coef:        0.5           
+  max_grad_norm:  0.5           
+  target_kl:      0.015         
+
+  # Exploration / schedule (unchanged)
+  lr_schedule:    constant      
+  clip_schedule:  constant      
+
+training:
+  total_timesteps: 10000        # Quick 10K burst
+  seed:             0           
+  envs:             1           
+  log_interval:     5           
+  save_interval:    500         
+  eval_interval:    500         
+  eval_episodes:    5
+
+# Environment Configuration
+environment:
+  symbols:          ['NVDA', 'MSFT']
+  initial_capital:  10000.0
+  lookback_window:  50
+  max_episode_steps: 390        
+  transaction_cost_pct: 0.001
+  max_drawdown_pct: 0.60        # 60% → 55% at 5K steps
+  max_position_ratio: 0.8       # NEW: Prevent YOLO sizing
+
+  # Data configuration
+  start_date: '2022-01-03'
+  end_date: '2024-01-31'
+  bar_size: '2min'
+  data_split: 'train'
+
+# Corrective V2 Reward System - Much Stronger Incentives
+reward_system:
+  type: 'refined_wrapper'  # Use RefinedRewardSystem wrapper
+  
+  # RefinedRewardSystem parameters (preserve profitable weights)
+  parameters:
+    pnl_epsilon: 750.0
+    holding_alpha: 0.05
+    penalty_beta: 0.1
+    exploration_coef: 0.05
+    
+    # V2 Enhanced incentive structure
+    early_exit_tax: 5.0         # Restored higher tax for <60
+    min_episode_length: 60      # Primary threshold at 60
+    secondary_tax: 3.0          # Secondary tax for 60-69
+    secondary_threshold: 70     # Secondary threshold
+    
+    # V2 Much stronger positive incentives
+    time_bonus: 0.05            # Increased from 0.02 (2.5x stronger)
+    time_bonus_threshold: 50    # Earlier threshold (was 60)
+    
+    # V2 Dual completion bonuses
+    completion_bonus: 1.0       # First milestone at 60
+    completion_threshold: 60    # First threshold
+    major_completion_bonus: 3.0 # Major bonus at 80
+    major_threshold: 80         # Major threshold
+
+# V2 Success gates
+success_gates:
+  # 5K checkpoint
+  checkpoint_5k:
+    episode_length_min: 70
+    tax_rate_max: 40
+    reward_min: -15
+    drawdown_max: 55
+  
+  # 10K final
+  final_10k:
+    episode_length_min: 80
+    tax_rate_max: 25
+    reward_min: -15
+    drawdown_max: 55
+
+# Abort conditions
+abort_conditions:
+  episode_length_min: 60
+  tax_rate_max: 80
+  reward_min: -25
+  drawdown_max: 70

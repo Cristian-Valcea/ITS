@@ -1,0 +1,119 @@
+# Stress Testing Platform Alert Rules
+groups:
+  - name: stress_testing_critical
+    interval: 5s
+    rules:
+      # Critical Latency Alerts
+      - alert: DecisionLatencyP99High
+        expr: histogram_quantile(0.99, rate(risk_governor_decision_latency_seconds_bucket[1m])) * 1000 > 15
+        for: 30s
+        labels:
+          severity: critical
+          component: risk_governor
+        annotations:
+          summary: "Decision latency P99 exceeds 15ms threshold"
+          description: "P99 decision latency is {{ $value }}ms, exceeding 15ms threshold for 30 seconds"
+
+      - alert: PipelineLatencyP99High
+        expr: histogram_quantile(0.99, rate(pipeline_latency_seconds_bucket[1m])) * 1000 > 20
+        for: 30s
+        labels:
+          severity: critical
+          component: pipeline
+        annotations:
+          summary: "Pipeline latency P99 exceeds 20ms threshold"
+          description: "P99 pipeline latency is {{ $value }}ms, exceeding 20ms threshold"
+
+      # Hard Limit Breaches
+      - alert: HardLimitBreach
+        expr: increase(risk_governor_hard_limit_breaches_total[1m]) > 0
+        for: 0s
+        labels:
+          severity: critical
+          component: risk_governor
+        annotations:
+          summary: "CRITICAL: Hard limit breach detected"
+          description: "{{ $value }} hard limit breaches in the last minute - IMMEDIATE ACTION REQUIRED"
+
+      # Position Anomalies
+      - alert: PositionDeltaHigh
+        expr: abs(risk_governor_position_delta_usd) > 1000
+        for: 10s
+        labels:
+          severity: warning
+          component: portfolio
+        annotations:
+          summary: "Position delta exceeds $1000"
+          description: "Position delta is ${{ $value }}, exceeding $1000 threshold"
+
+      # Recovery Time Alerts
+      - alert: RecoveryTimeSlow
+        expr: risk_governor_recovery_time_seconds > 30
+        for: 0s
+        labels:
+          severity: warning
+          component: recovery
+        annotations:
+          summary: "Recovery time exceeds 30 seconds"
+          description: "Last recovery took {{ $value }}s, exceeding 30s threshold"
+
+  - name: stress_testing_warnings
+    interval: 10s
+    rules:
+      # Error Rate Monitoring
+      - alert: DecisionErrorRateHigh
+        expr: rate(risk_governor_decision_errors_total[5m]) / rate(risk_governor_decisions_total[5m]) * 100 > 0.1
+        for: 1m
+        labels:
+          severity: warning
+          component: risk_governor
+        annotations:
+          summary: "Decision error rate exceeds 0.1%"
+          description: "Error rate is {{ $value }}%, exceeding 0.1% threshold"
+
+      # Memory Usage
+      - alert: MemoryUsageHigh
+        expr: (process_resident_memory_bytes / 1024 / 1024) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Memory usage exceeds 1GB"
+          description: "Process memory usage is {{ $value }}MB"
+
+      # Redis Backlog
+      - alert: RedisBacklogHigh
+        expr: redis_backlog_total > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis backlog detected"
+          description: "Redis backlog is {{ $value }} items"
+
+  - name: stress_testing_info
+    interval: 30s
+    rules:
+      # Test Execution Monitoring
+      - alert: StressTestRunning
+        expr: stress_test_active == 1
+        for: 0s
+        labels:
+          severity: info
+          component: testing
+        annotations:
+          summary: "Stress test execution in progress"
+          description: "Stress test {{ $labels.scenario }} is currently running"
+
+      # Daily Certification Status
+      - alert: DailyCertificationPending
+        expr: hours_since_last_certification > 24
+        for: 0s
+        labels:
+          severity: info
+          component: certification
+        annotations:
+          summary: "Daily certification overdue"
+          description: "Last certification was {{ $value }} hours ago"

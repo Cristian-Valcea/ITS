@@ -1,0 +1,26 @@
+{
+  "0.3": {
+    "mean_episode_length": 28.2,
+    "mean_episode_reward": -2.55,
+    "total_episodes": 500,
+    "final_avg_reward": -1.884
+  },
+  "0.4": {
+    "mean_episode_length": 35.8,
+    "mean_episode_reward": -3.12,
+    "total_episodes": 400,
+    "final_avg_reward": -2.1
+  },
+  "0.5": {
+    "mean_episode_length": 45.2,
+    "mean_episode_reward": -4.8,
+    "total_episodes": 320,
+    "final_avg_reward": -2.8
+  },
+  "0.75": {
+    "mean_episode_length": 68.3,
+    "mean_episode_reward": -14.5,
+    "total_episodes": 48,
+    "final_avg_reward": 48.0
+  }
+}

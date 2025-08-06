@@ -1,0 +1,29 @@
+🔍 PHASE 1C: DATA LEAKAGE AUDIT REPORT
+==================================================
+
+Timestamp: 20250804_142802
+Output Directory: diagnostic_runs/test_phase1c_fix
+
+📊 DATA PREPARATION:
+  Original timesteps: 71,965
+  Shifted timesteps: 71,965
+  Feature count: 26
+  Modifications applied:
+    ✓ +1 step shift on derived features
+    ✓ ±0.5 trading day episode offset shuffling
+
+🧪 SANITY TEST RESULTS:
+  ❌ Crashes detected during testing
+  Error: not enough values to unpack (expected 2, got 1)
+
+📋 DIAGNOSTIC CRITERIA:
+  Success threshold: Reward difference ≤10%
+  Feature importance stability: ≤50% change in top-5
+  No pipeline crashes or data errors
+
+📁 DELIVERABLES:
+  ✓ original_features.parquet
+  ✓ shifted_features.parquet
+  ✓ original_monitor.csv
+  ✓ shifted_monitor.csv
+  → feature_importance_comparison.html (next step)

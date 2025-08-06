@@ -1,0 +1,113 @@
+# Stairways V4 - 200K Progressive Real Data Training Configuration
+# Fixes the 48K failure with proper learning iterations (390 updates vs 23)
+
+ppo:
+  # Data & rollout - CRITICAL FIX
+  n_steps:        512           # collect 512 steps per update → 200,000/512 ≈ 390 updates
+  batch_size:     128           # mini-batch size for each epoch
+  n_epochs:       4             # passes over each batch
+  gamma:          0.99          # discount factor, typical for trading
+  gae_lambda:     0.95          # GAE smoothing
+
+  # Optimization
+  learning_rate:  3e-4          # start at 0.0003; can anneal linearly to 0
+  clip_range:     0.2           # PPO clipping parameter
+  ent_coef:       0.01          # encourage exploration early on
+  vf_coef:        0.5           # value function loss weight
+  max_grad_norm:  0.5           # gradient clipping
+
+  # Exploration / schedule
+  lr_schedule:    linear        # linearly decay LR to zero
+  clip_schedule:  linear        # linearly decay clip range
+
+training:
+  total_timesteps: 200000       # 200K env steps - 8.7x more learning than failed 48K
+  seed:             42
+  envs:             1           # single env for real data consistency
+  log_interval:     10          # report every 10 updates
+  save_interval:    50          # checkpoint every 50 updates (~25K steps)
+  eval_interval:    20          # run validation every 20 updates (~10K steps)
+  eval_episodes:    10
+
+# Progressive Stairways V4 Training Phases
+phases:
+  phase_1_warmup:
+    timesteps:      50000       # 50K steps - broad exploration
+    ent_coef:       0.02        # high exploration
+    learning_rate:  5e-4        # higher learning rate
+    target:         "hold_rate < 80%"
+    description:    "Warm-up exploration phase"
+    # Relaxed termination for learning
+    max_drawdown_pct: 0.15      # 15% drawdown allowed in warmup (very permissive)
+    max_episode_steps: 390      # Full trading day episodes
+    
+  phase_2_core:
+    timesteps:      120000      # 120K steps - core learning
+    ent_coef:       0.005       # reduced exploration
+    learning_rate:  "linear_decay(3e-4, 1e-4)"
+    target:         "sharpe > 0.5, hold_rate 40-70%"
+    description:    "Core trading strategy development"
+    
+  phase_3_refinement:
+    timesteps:      30000       # 30K steps - fine-tuning
+    ent_coef:       0.001       # minimal exploration
+    learning_rate:  1e-4        # low learning rate
+    target:         "sharpe > 0.8, drawdown < 5%"
+    description:    "Strategy refinement and validation"
+
+# Environment Configuration
+environment:
+  symbols:          ['NVDA', 'MSFT']
+  initial_capital:  10000.0
+  lookback_window:  50
+  max_episode_steps: 390        # Full trading day (6.5h * 60min)
+  transaction_cost_pct: 0.001
+  
+  # Relaxed termination conditions for learning
+  max_drawdown_pct: 0.15        # Allow 15% loss before termination (very permissive for learning)
+  drawdown_penalty_coef: 0.2    # Much softer penalties for exploration
+  
+  # Real data configuration
+  data_source:      'timescaledb'
+  start_date:       '2022-01-03'
+  end_date:         '2024-12-31'
+  bar_size:         '1min'
+  market_hours_only: true
+
+# Output Configuration
+output:
+  model_dir:        models/v4_200k_stairways/
+  tensorboard_dir:  tensorboard_logs/v4_200k_stairways/
+  checkpoint_dir:   train_runs/stairways_v4_200k/
+  monitor:          true        # record episode rewards, lengths
+  
+# Validation Gates (Stairways methodology)
+validation_gates:
+  min_sharpe:       0.3         # minimum Sharpe ratio
+  max_drawdown:     0.10        # maximum 10% drawdown
+  min_win_rate:     0.45        # minimum 45% win rate
+  hold_rate_range:  [0.35, 0.75] # target hold rate range
+  min_trades_per_episode: 5     # minimum trading activity
+
+# Rollback Configuration
+rollback:
+  enabled:          true
+  trigger_conditions:
+    - "sharpe < 0.2"
+    - "hold_rate > 0.9"
+    - "avg_return < -0.02"
+  rollback_checkpoints: 3       # keep last 3 checkpoints
+  
+# Monitoring & Alerts
+monitoring:
+  metrics:
+    - sharpe_ratio
+    - max_drawdown
+    - hold_rate
+    - win_rate
+    - avg_return
+    - trades_per_episode
+  alert_thresholds:
+    hold_rate_too_high: 0.85
+    sharpe_too_low: 0.2
+    drawdown_too_high: 0.08

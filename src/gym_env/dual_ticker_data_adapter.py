@@ -123,7 +123,7 @@ class DualTickerDataAdapter:
             SELECT 
                 timestamp,
                 open, high, low, close, volume
-            FROM dual_ticker_bars 
+            FROM minute_bars 
             WHERE symbol = %s 
             AND timestamp >= %s 
             AND timestamp <= %s

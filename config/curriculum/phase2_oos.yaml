@@ -1,0 +1,116 @@
+# Phase 2 Out-of-Sample Training Configuration
+# Team A - Curriculum Training & Validation (50K steps OOS)
+
+ppo:
+  # Base parameters  
+  n_steps:        512           
+  batch_size:     128           
+  n_epochs:       4             
+  gamma:          0.99          
+  gae_lambda:     0.95          
+
+  # Learning parameters
+  learning_rate:  3e-5          # Slightly lower for OOS stability
+  clip_range:     0.2           
+  ent_coef:       0.02          # Reduced for more focused learning
+  vf_coef:        0.5           
+  max_grad_norm:  0.5           
+  target_kl:      0.015         
+
+  # Exploration / schedule
+  lr_schedule:    constant      
+  clip_schedule:  constant      
+
+training:
+  total_timesteps: 50000        # Phase 2 OOS requirement
+  seed:             0           # Will be overridden by command line
+  envs:             1           
+  log_interval:     10          
+  save_interval:    2500        # Save more frequently for analysis
+  eval_interval:    2500        
+  eval_episodes:    10          # More eval episodes for robust metrics
+
+# Environment Configuration - Dual Ticker Production Setup
+environment:
+  symbols:          ['NVDA', 'MSFT']
+  initial_capital:  10000.0
+  lookback_window:  50
+  max_episode_steps: 390        # Full trading day
+  transaction_cost_pct: 0.001
+  max_drawdown_pct: 0.50        # Conservative for OOS
+
+  # OOS Data Configuration
+  # Train: 2022-2023, Test: 2024 (will be overridden by command line)
+  start_date: '2022-01-03'
+  end_date: '2023-12-31'
+  test_start_date: '2024-01-01'  # OOS test period
+  test_end_date: '2024-12-31'
+  bar_size: '2min'
+  data_split: 'train'
+
+# Phase 2 Reward System - Production Ready
+reward_system:
+  type: 'refined_wrapper'  # RefinedRewardSystem with governor integration
+  
+  # RefinedRewardSystem parameters (tuned from Phase 1)
+  parameters:
+    pnl_epsilon: 1000.0           # Adjusted for dual-ticker
+    holding_alpha: 0.03           # Optimized from previous cycles  
+    penalty_beta: 0.08            # Balanced turnover penalty
+    exploration_coef: 0.03        # Reduced for OOS stability
+    
+    # Early exit prevention (Phase 2 requirement)
+    early_exit_tax: 5.0           # Specified in plan
+    min_episode_length: 75        # Threshold for tax
+    
+    # Positive incentives from corrective learning
+    time_bonus: 0.015             # Scaled for OOS
+    time_bonus_threshold: 65      
+    completion_bonus: 1.5         # Completion reward
+    completion_threshold: 85      
+
+# OOS Success Criteria
+success_criteria:
+  target_sharpe: 0.3              # Sharpe ratio ≥ 0.3
+  target_episode_reward: 0.1      # ep_rew_mean ≥ 0.1
+  min_episode_length: 80          # Average episode length ≥ 80
+  max_drawdown_triggers: 0.60     # <60% drawdown trigger rate
+
+# Risk Governor Integration
+risk_integration:
+  enable_governor: true           # Use --use-governor flag
+  governor_mode: 'training'       # Training mode with shim
+  position_limits:
+    max_notional: 1000           # $1000 max per asset (from CLAUDE.md)
+    daily_loss_limit: 50         # $50 daily loss limit
+    total_drawdown_limit: 100    # $100 total drawdown limit
+
+# Model Configuration
+model:
+  policy_type: "MlpPolicy"
+  net_arch: [128, 128]           # Proven architecture from Stairways V3
+  activation_fn: "tanh"
+  normalize_images: false
+  
+  # Feature configuration for dual-ticker (26 features total)
+  # 12 features × 2 assets + 2 positions = 26
+  feature_dim: 26
+
+# Monitoring & Logging
+monitoring:
+  tensorboard_log: "./tensorboard_logs/"
+  enable_progress_bar: true
+  monitor_wrapper: true
+  
+  # Detailed logging for Phase 2 analysis
+  log_level: "INFO"
+  save_replay_buffer: false      # Save space for multiple runs
+  
+  # Metrics for evaluation
+  track_metrics:
+    - "episode_reward"
+    - "episode_length" 
+    - "sharpe_ratio"
+    - "max_drawdown"
+    - "turnover"
+    - "holding_time"

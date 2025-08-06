@@ -1,0 +1,65 @@
+# Phase 1A: Freeze-Early Training Configuration
+# Train checkpoints at 5K, 10K, 15K steps with current RefinedRewardSystem
+
+ppo:
+  # Optimized for quick training to checkpoints
+  n_steps:        512           # collect 512 steps per update
+  batch_size:     128           # mini-batch size for each epoch
+  n_epochs:       4             # passes over each batch
+  gamma:          0.99          # discount factor
+  gae_lambda:     0.95          # GAE smoothing
+
+  # Optimization
+  learning_rate:  0.0001        # Conservative learning rate for stability
+  clip_range:     0.2           # PPO clipping parameter
+  ent_coef:       0.03          # Higher exploration for early training
+  vf_coef:        0.5           # value function loss weight
+  max_grad_norm:  0.5           # gradient clipping
+
+  # Exploration / schedule
+  lr_schedule:    constant      # Keep constant for short training
+  clip_schedule:  constant      # Keep constant for short training
+
+training:
+  total_timesteps: 15000        # Will be overridden by script (5K, 10K, 15K)
+  seed:             0           # Fixed seed for reproducibility
+  envs:             1           # single env for consistency
+  log_interval:     5           # report every 5 updates
+  save_interval:    10          # checkpoint every 10 updates
+  eval_interval:    10          # run validation every 10 updates
+  eval_episodes:    5
+
+# Environment Configuration
+environment:
+  symbols:          ['NVDA', 'MSFT']
+  initial_capital:  10000.0
+  lookback_window:  50
+  max_episode_steps: 390        # Full trading day (6.5h * 60min)
+  transaction_cost_pct: 0.001
+  
+  # 30% DD cap as specified in roadmap
+  max_drawdown_pct: 0.30        # 30% drawdown cap
+  drawdown_penalty_coef: 0.5    # Moderate penalties
+  
+  # Training data (2022-2024, excluding Feb 2024 for eval)
+  data_source:      'timescaledb'
+  start_date:       '2022-01-03'
+  end_date:         '2024-01-31'  # Exclude Feb 2024 for evaluation
+  bar_size:         '1min'
+  market_hours_only: true
+
+# Reward System Configuration
+reward_system:
+  type: "RefinedRewardSystem"   # Current shim approach
+  parameters:
+    pnl_epsilon: 750.0
+    holding_alpha: 0.05
+    penalty_beta: 0.10
+    exploration_coef: 0.05
+
+# Output Configuration
+output:
+  model_dir:        diagnostic_runs/phase1a_freeze_early/models/
+  tensorboard_dir:  diagnostic_runs/phase1a_freeze_early/tensorboard/
+  checkpoint_dir:   diagnostic_runs/phase1a_freeze_early/checkpoints/
+  monitor:          true        # record episode rewards, lengths

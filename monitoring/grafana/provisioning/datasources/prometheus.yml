@@ -1,0 +1,29 @@
+# Grafana Datasource Configuration
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://localhost:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      httpMethod: POST
+      queryTimeout: 60s
+      timeInterval: 5s
+    secureJsonData: {}
+
+  - name: TimescaleDB
+    type: postgres
+    access: proxy
+    url: localhost:5432
+    database: trading_data
+    user: postgres
+    secureJsonData:
+      password: your_password_here
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 10
+      maxIdleConns: 2
+      connMaxLifetime: 14400

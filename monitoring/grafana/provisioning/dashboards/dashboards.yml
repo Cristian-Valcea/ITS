@@ -1,0 +1,13 @@
+# Dashboard Provisioning Configuration
+apiVersion: 1
+
+providers:
+  - name: 'stress_testing_dashboards'
+    orgId: 1
+    folder: 'Stress Testing'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

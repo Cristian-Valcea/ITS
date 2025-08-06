@@ -1,0 +1,177 @@
+{
+  "checkpoint_path": "/home/cristian/IntradayTrading/ITS/diagnostic_runs/phase1a_freeze_early/checkpoints/checkpoint_5k.zip",
+  "evaluation_period": "2024-02-01 to 2024-02-29",
+  "total_steps": 5000,
+  "total_episodes": 19,
+  "duration_seconds": 4.766521,
+  "mean_reward": "26.586512",
+  "std_reward": "33.869656",
+  "min_reward": "-5.135613",
+  "max_reward": "105.23179",
+  "median_reward": "3.1766238",
+  "mean_episode_length": 259.6842105263158,
+  "std_episode_length": 140.3203300090561,
+  "min_episode_length": "33",
+  "max_episode_length": "390",
+  "passes_reward_threshold": "True",
+  "above_floor_threshold": "True",
+  "min_episode_length_met": "True",
+  "episode_rewards": [
+    60.724552154541016,
+    65.56378173828125,
+    -0.2899314761161804,
+    37.25865936279297,
+    89.22042083740234,
+    -0.20218798518180847,
+    36.95208740234375,
+    52.449798583984375,
+    -3.003967761993408,
+    -3.7903244495391846,
+    37.74207305908203,
+    -5.135612964630127,
+    105.2317886352539,
+    0.9358610510826111,
+    34.64285659790039,
+    3.176623821258545,
+    -2.1972317695617676,
+    -0.9804848432540894,
+    -3.1549558639526367
+  ],
+  "episode_lengths": [
+    390.0,
+    390.0,
+    62.0,
+    390.0,
+    390.0,
+    33.0,
+    390.0,
+    390.0,
+    132.0,
+    143.0,
+    390.0,
+    134.0,
+    390.0,
+    71.0,
+    390.0,
+    386.0,
+    159.0,
+    162.0,
+    142.0
+  ],
+  "episode_data": [
+    {
+      "episode_reward": "60.724552",
+      "episode_length": 390,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "65.56378",
+      "episode_length": 390,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "-0.28993148",
+      "episode_length": 62,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "37.25866",
+      "episode_length": 390,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "89.22042",
+      "episode_length": 390,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "-0.20218799",
+      "episode_length": 33,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "36.952087",
+      "episode_length": 390,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "52.4498",
+      "episode_length": 390,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "-3.0039678",
+      "episode_length": 132,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "-3.7903244",
+      "episode_length": 143,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "37.742073",
+      "episode_length": 390,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "-5.135613",
+      "episode_length": 134,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "105.23179",
+      "episode_length": 390,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "0.93586105",
+      "episode_length": 71,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "34.642857",
+      "episode_length": 390,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "3.1766238",
+      "episode_length": 386,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "-2.1972318",
+      "episode_length": 159,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "-0.98048484",
+      "episode_length": 162,
+      "actions": [],
+      "positions": []
+    },
+    {
+      "episode_reward": "-3.1549559",
+      "episode_length": 142,
+      "actions": [],
+      "positions": []
+    }
+  ]
+}

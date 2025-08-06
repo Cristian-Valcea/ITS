@@ -1,0 +1,317 @@
+# Automated Reward System Audit - CI Workflow
+# Team B Implementation for Phase 6
+# Quarterly automated audits of reward system components
+
+name: Quarterly Reward System Audit
+
+# Trigger: Quarterly on the 1st day of Jan, Apr, Jul, Oct at 2 AM UTC
+on:
+  schedule:
+    - cron: '0 2 1 1,4,7,10 *'  # Quarterly: Jan 1, Apr 1, Jul 1, Oct 1 at 2 AM UTC
+  
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      audit_type:
+        description: 'Type of audit to run'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - reward_components
+          - risk_metrics
+          - performance_analysis
+      
+      lookback_days:
+        description: 'Days to look back for analysis'
+        required: false
+        default: '90'
+        type: string
+
+env:
+  PYTHON_VERSION: '3.10'
+  AUDIT_RESULTS_DIR: 'results/quarterly_audits'
+  NOTIFICATION_CHANNEL: '#stairways-ops'
+
+jobs:
+  reward_system_audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for comprehensive analysis
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: Install Dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pandas numpy matplotlib seaborn plotly
+    
+    - name: Create Audit Directory
+      run: |
+        mkdir -p ${{ env.AUDIT_RESULTS_DIR }}
+        echo "AUDIT_TIMESTAMP=$(date -u +%Y%m%d_%H%M%S)" >> $GITHUB_ENV
+        echo "AUDIT_DIR=${{ env.AUDIT_RESULTS_DIR }}/audit_${{ env.AUDIT_TIMESTAMP }}" >> $GITHUB_ENV
+    
+    - name: Run Reward Component Analysis
+      run: |
+        python scripts/audit_rewards.py \
+          --audit-type reward_components \
+          --output-dir ${{ env.AUDIT_DIR }} \
+          --lookback-days ${{ github.event.inputs.lookback_days || '90' }} \
+          --generate-plots \
+          --verbose
+    
+    - name: Run Risk Metrics Audit
+      run: |
+        python scripts/audit_rewards.py \
+          --audit-type risk_metrics \
+          --output-dir ${{ env.AUDIT_DIR }} \
+          --lookback-days ${{ github.event.inputs.lookback_days || '90' }} \
+          --include-drawdown-analysis \
+          --verbose
+    
+    - name: Run Performance Analysis
+      run: |
+        python scripts/audit_rewards.py \
+          --audit-type performance_analysis \
+          --output-dir ${{ env.AUDIT_DIR }} \
+          --lookback-days ${{ github.event.inputs.lookback_days || '90' }} \
+          --compare-baselines \
+          --verbose
+    
+    - name: Generate Comprehensive Report
+      run: |
+        python scripts/generate_audit_report.py \
+          --audit-dir ${{ env.AUDIT_DIR }} \
+          --report-format html \
+          --include-recommendations \
+          --output ${{ env.AUDIT_DIR }}/quarterly_audit_report.html
+    
+    - name: Upload Audit Results
+      uses: actions/upload-artifact@v3
+      with:
+        name: quarterly-audit-${{ env.AUDIT_TIMESTAMP }}
+        path: ${{ env.AUDIT_DIR }}
+        retention-days: 90
+    
+    - name: Check Audit Results
+      id: audit_check
+      run: |
+        # Check if any critical issues were found
+        if [ -f "${{ env.AUDIT_DIR }}/audit_summary.json" ]; then
+          CRITICAL_ISSUES=$(python -c "
+          import json
+          with open('${{ env.AUDIT_DIR }}/audit_summary.json', 'r') as f:
+              data = json.load(f)
+          print(data.get('critical_issues_count', 0))
+          ")
+          echo "CRITICAL_ISSUES=$CRITICAL_ISSUES" >> $GITHUB_OUTPUT
+          
+          WARNING_ISSUES=$(python -c "
+          import json
+          with open('${{ env.AUDIT_DIR }}/audit_summary.json', 'r') as f:
+              data = json.load(f)
+          print(data.get('warning_issues_count', 0))
+          ")
+          echo "WARNING_ISSUES=$WARNING_ISSUES" >> $GITHUB_OUTPUT
+        else
+          echo "CRITICAL_ISSUES=0" >> $GITHUB_OUTPUT
+          echo "WARNING_ISSUES=0" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Send Slack Notification - Success
+      if: success() && steps.audit_check.outputs.CRITICAL_ISSUES == '0'
+      uses: 8398a7/action-slack@v3
+      with:
+        status: success
+        channel: ${{ env.NOTIFICATION_CHANNEL }}
+        text: |
+          ✅ **Quarterly Reward System Audit Completed Successfully**
+          
+          📊 **Audit Summary:**
+          • Timestamp: ${{ env.AUDIT_TIMESTAMP }}
+          • Lookback Period: ${{ github.event.inputs.lookback_days || '90' }} days
+          • Critical Issues: ${{ steps.audit_check.outputs.CRITICAL_ISSUES }}
+          • Warning Issues: ${{ steps.audit_check.outputs.WARNING_ISSUES }}
+          
+          📁 **Results:** Available in artifacts for 90 days
+          🔗 **Report:** quarterly_audit_report.html
+          
+          *Next audit scheduled for next quarter*
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    
+    - name: Send Slack Notification - Issues Found
+      if: success() && steps.audit_check.outputs.CRITICAL_ISSUES != '0'
+      uses: 8398a7/action-slack@v3
+      with:
+        status: warning
+        channel: ${{ env.NOTIFICATION_CHANNEL }}
+        text: |
+          ⚠️ **Quarterly Reward System Audit - Issues Detected**
+          
+          🚨 **ATTENTION REQUIRED:**
+          • Critical Issues: ${{ steps.audit_check.outputs.CRITICAL_ISSUES }}
+          • Warning Issues: ${{ steps.audit_check.outputs.WARNING_ISSUES }}
+          
+          📊 **Audit Details:**
+          • Timestamp: ${{ env.AUDIT_TIMESTAMP }}
+          • Lookback Period: ${{ github.event.inputs.lookback_days || '90' }} days
+          
+          📋 **Action Required:**
+          1. Review audit report: quarterly_audit_report.html
+          2. Address critical issues before next trading session
+          3. Update reward system parameters if needed
+          
+          🔗 **Artifacts:** Available for download in Actions tab
+          
+          @channel Please review immediately.
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    
+    - name: Send Slack Notification - Failure
+      if: failure()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        channel: ${{ env.NOTIFICATION_CHANNEL }}
+        text: |
+          ❌ **Quarterly Reward System Audit Failed**
+          
+          🚨 **Audit Execution Failed:**
+          • Timestamp: ${{ env.AUDIT_TIMESTAMP }}
+          • Workflow: ${{ github.workflow }}
+          • Run ID: ${{ github.run_id }}
+          
+          🔧 **Action Required:**
+          1. Check workflow logs for error details
+          2. Fix audit script issues
+          3. Re-run audit manually if needed
+          
+          🔗 **Logs:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          
+          @dev-ops Please investigate immediately.
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    
+    - name: Create Issue on Critical Problems
+      if: success() && steps.audit_check.outputs.CRITICAL_ISSUES != '0'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const criticalIssues = ${{ steps.audit_check.outputs.CRITICAL_ISSUES }};
+          const warningIssues = ${{ steps.audit_check.outputs.WARNING_ISSUES }};
+          const auditTimestamp = '${{ env.AUDIT_TIMESTAMP }}';
+          
+          const issueBody = `
+          ## 🚨 Critical Issues Found in Quarterly Reward System Audit
+          
+          **Audit Timestamp:** ${auditTimestamp}
+          **Critical Issues:** ${criticalIssues}
+          **Warning Issues:** ${warningIssues}
+          
+          ### 📋 Required Actions:
+          
+          - [ ] Review detailed audit report (quarterly_audit_report.html)
+          - [ ] Analyze critical reward system issues
+          - [ ] Update reward parameters if necessary
+          - [ ] Test fixes in paper trading environment
+          - [ ] Deploy fixes to production
+          - [ ] Re-run audit to verify fixes
+          
+          ### 📊 Audit Artifacts:
+          
+          Audit results are available in the GitHub Actions artifacts for 90 days.
+          
+          ### ⏰ Timeline:
+          
+          **Critical issues must be resolved within 24 hours of this audit.**
+          
+          ### 👥 Assignees:
+          
+          - Risk Committee: Review and approve fixes
+          - Dev-Ops: Implement technical fixes
+          - SRE: Monitor system stability after fixes
+          
+          ---
+          *This issue was automatically created by the quarterly reward system audit workflow.*
+          `;
+          
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `🚨 Critical Reward System Issues - Audit ${auditTimestamp}`,
+            body: issueBody,
+            labels: ['critical', 'reward-system', 'audit', 'automated'],
+            assignees: ['alex', 'lisa', 'mina', 'samir']  # Risk Committee + DevOps/SRE
+          });
+
+  # Email notification job (runs after main audit)
+  email_notification:
+    needs: reward_system_audit
+    runs-on: ubuntu-latest
+    if: always()  # Run regardless of audit success/failure
+    
+    steps:
+    - name: Send Email Summary
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: ${{ secrets.SMTP_SERVER }}
+        server_port: ${{ secrets.SMTP_PORT }}
+        username: ${{ secrets.SMTP_USERNAME }}
+        password: ${{ secrets.SMTP_PASSWORD }}
+        subject: "Quarterly Reward System Audit - ${{ env.AUDIT_TIMESTAMP }}"
+        to: ${{ secrets.AUDIT_EMAIL_RECIPIENTS }}  # Risk Committee emails
+        from: "Stairways Trading System <noreply@stairways.trading>"
+        html_body: |
+          <h2>🎯 Quarterly Reward System Audit Summary</h2>
+          
+          <p><strong>Audit Timestamp:</strong> ${{ env.AUDIT_TIMESTAMP }}</p>
+          <p><strong>Status:</strong> ${{ needs.reward_system_audit.result }}</p>
+          
+          <h3>📊 Key Metrics:</h3>
+          <ul>
+            <li>Critical Issues: ${{ needs.reward_system_audit.outputs.CRITICAL_ISSUES || 'N/A' }}</li>
+            <li>Warning Issues: ${{ needs.reward_system_audit.outputs.WARNING_ISSUES || 'N/A' }}</li>
+            <li>Lookback Period: ${{ github.event.inputs.lookback_days || '90' }} days</li>
+          </ul>
+          
+          <h3>🔗 Resources:</h3>
+          <ul>
+            <li><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Workflow Run</a></li>
+            <li>Audit artifacts available for download in GitHub Actions</li>
+            <li>Detailed report: quarterly_audit_report.html</li>
+          </ul>
+          
+          <h3>📋 Next Steps:</h3>
+          <p>
+          ${{ needs.reward_system_audit.result == 'success' && 
+             needs.reward_system_audit.outputs.CRITICAL_ISSUES == '0' && 
+             'No action required. System operating within normal parameters.' || 
+             'Review audit results and address any identified issues.' }}
+          </p>
+          
+          <hr>
+          <p><em>This is an automated quarterly audit. Next audit scheduled for next quarter.</em></p>
+
+# Workflow configuration
+concurrency:
+  group: reward-audit
+  cancel-in-progress: false  # Don't cancel running audits
+
+# Security
+permissions:
+  contents: read
+  issues: write
+  actions: read

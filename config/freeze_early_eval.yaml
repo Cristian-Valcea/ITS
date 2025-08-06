@@ -1,0 +1,49 @@
+# Phase 1A: Freeze-Early Evaluation Configuration
+# Evaluate checkpoints on Feb 2024 data with LR=0, entropy=0
+
+training:
+  total_timesteps: 5000         # 5K evaluation steps
+  learning_rate: 0.0            # Frozen for evaluation
+  ent_coef: 0.0                 # No exploration
+  eval_only: true               # Evaluation mode only
+  seed: 0                       # Fixed seed for reproducibility
+
+# Environment Configuration
+environment:
+  symbols:          ['NVDA', 'MSFT']
+  initial_capital:  10000.0
+  lookback_window:  50
+  max_episode_steps: 390        # Full trading day
+  transaction_cost_pct: 0.001
+  
+  # Same risk limits as training
+  max_drawdown_pct: 0.30        # 30% drawdown cap
+  drawdown_penalty_coef: 0.5
+  
+  # Feb 2024 data (never seen before)
+  data_source:      'timescaledb'
+  start_date:       '2024-02-01'
+  end_date:         '2024-02-29'  # Feb 2024 only
+  bar_size:         '1min'
+  market_hours_only: true
+
+# Reward System Configuration (same as training)
+reward_system:
+  type: "RefinedRewardSystem"
+  parameters:
+    pnl_epsilon: 750.0
+    holding_alpha: 0.05
+    penalty_beta: 0.10
+    exploration_coef: 0.05
+
+# Success Criteria (Management Enhanced)
+validation:
+  min_reward_all_checkpoints: 0.5    # ALL must pass
+  min_reward_floor: 0.3              # NONE can fall below
+  required_episode_length: 40        # Minimum episode length
+  
+# Output Configuration
+output:
+  results_dir:      diagnostic_runs/phase1a_freeze_early/eval_results/
+  monitor:          true
+  save_episode_data: true       # Save detailed episode data for analysis

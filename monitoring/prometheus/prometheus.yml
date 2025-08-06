@@ -1,0 +1,66 @@
+# Prometheus Configuration for Stress Testing Platform
+global:
+  scrape_interval: 5s      # Scrape targets every 5 seconds
+  evaluation_interval: 5s  # Evaluate rules every 5 seconds
+  external_labels:
+    environment: 'stress_testing'
+    cluster: 'intraday_trading'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - localhost:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - "rules/*.yml"
+
+# Scrape configuration
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 15s
+
+  # Stress Testing Platform Metrics
+  - job_name: 'stress_testing_platform'
+    static_configs:
+      - targets: ['localhost:8000']
+    scrape_interval: 1s  # High frequency for latency monitoring
+    metrics_path: '/metrics'
+    honor_labels: true
+
+  # Trading System Metrics (if available)
+  - job_name: 'trading_system'
+    static_configs:
+      - targets: ['localhost:8001']  # Main trading system
+    scrape_interval: 5s
+    metrics_path: '/metrics'
+
+  # TimescaleDB Metrics (via postgres_exporter)
+  - job_name: 'timescaledb'
+    static_configs:
+      - targets: ['localhost:9187']
+    scrape_interval: 10s
+
+  # Redis Metrics (via redis_exporter)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['localhost:9121']
+    scrape_interval: 10s
+
+  # Node/System Metrics
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets: ['localhost:9100']
+    scrape_interval: 10s
+
+# Storage configuration
+storage:
+  tsdb:
+    path: /prometheus/data
+    retention.time: 30d
+    retention.size: 10GB

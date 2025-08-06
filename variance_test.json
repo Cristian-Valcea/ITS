@@ -1,0 +1,23 @@
+{
+  "timestamp": "2025-08-06T10:48:56.524152+00:00",
+  "seed_variance_analysis": {
+    "overall_success": false,
+    "overall_reward_cv": Infinity,
+    "variance_threshold": 0.3,
+    "splits_analyzed": 0,
+    "total_successful_jobs": 1,
+    "total_failed_jobs": 0
+  },
+  "split_results": {},
+  "job_summary": {
+    "completed": [
+      {
+        "seed": 0,
+        "split": "unknown",
+        "duration_min": 0,
+        "run_path": "test_runs/mock_training_run"
+      }
+    ],
+    "failed": []
+  }
+}

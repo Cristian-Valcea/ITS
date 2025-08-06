@@ -1,0 +1,61 @@
+# Controlled Phase 2 Pilot Config
+# 20K steps: 10K @ 75% DD warmup + 10K @ 65% DD with early-exit tax
+
+ppo:
+  # Same parameters as Phase 1 for consistency
+  n_steps:        512           
+  batch_size:     128           
+  n_epochs:       4             
+  gamma:          0.99          
+  gae_lambda:     0.95          
+
+  # Keep Phase 1 optimal parameters
+  learning_rate:  5e-5          
+  clip_range:     0.2           
+  ent_coef:       0.03          
+  vf_coef:        0.5           
+  max_grad_norm:  0.5           
+  target_kl:      0.015         
+
+  # Exploration / schedule
+  lr_schedule:    constant      
+  clip_schedule:  constant      
+
+training:
+  total_timesteps: 20000        # Pilot: 20K steps total
+  seed:             0           # Fixed seed for consistency
+  envs:             1           
+  log_interval:     5           
+  save_interval:    10          
+  eval_interval:    10          
+  eval_episodes:    5
+
+# Environment Configuration - Start with 75% DD
+environment:
+  symbols:          ['NVDA', 'MSFT']
+  initial_capital:  10000.0
+  lookback_window:  50
+  max_episode_steps: 390        
+  transaction_cost_pct: 0.001
+  max_drawdown_pct: 0.75        # Will transition to 0.65 after 10K steps
+
+  # Data configuration
+  start_date: '2022-01-03'
+  end_date: '2024-01-31'
+  bar_size: '2min'
+  data_split: 'train'
+
+# Reward system configuration with early-exit tax
+reward_system:
+  type: 'refined_wrapper'  # Use RefinedRewardSystem wrapper
+  
+  # RefinedRewardSystem parameters
+  parameters:
+    pnl_epsilon: 750.0
+    holding_alpha: 0.05
+    penalty_beta: 0.1
+    exploration_coef: 0.05
+    
+    # Early-exit tax parameters
+    early_exit_tax: 5.0         # Penalty for episodes < 80 steps
+    min_episode_length: 80      # Threshold for early-exit tax

@@ -1,0 +1,24 @@
+{
+  "cleanup_date": "2025-08-06T11:16:31.853412",
+  "dry_run": true,
+  "working_model_preserved": "train_runs/v3_gold_standard_400k_20250802_202736",
+  "essential_files_preserved": [
+    "recap2025-08-05.md",
+    "working_ai_trader.py",
+    "verify_ibkr_setup.py",
+    "src/brokers/ib_gateway.py"
+  ],
+  "essential_dirs_preserved": [
+    "src",
+    "config",
+    "data/processed",
+    "train_runs/v3_gold_standard_400k_20250802_202736"
+  ],
+  "cleanup_stats": {
+    "log_files_removed": 0,
+    "old_models_removed": 0,
+    "space_freed_mb": 0,
+    "files_kept": 0,
+    "dirs_kept": 0
+  }
+}

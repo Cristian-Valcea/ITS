@@ -1,0 +1,19 @@
+{
+  "success": "True",
+  "sharpe_ratio": 3.475319195657463,
+  "ep_rew_mean": 0.24177966101694914,
+  "episode_count": 118,
+  "evaluation_period": "2024-01-01",
+  "timestamp": "2025-08-06T10:48:26.349961+00:00",
+  "sharpe_success": "True",
+  "reward_success": "True",
+  "sharpe_threshold": 0.3,
+  "reward_threshold": 0.1,
+  "ep_rew_std": 0.06957049048014398,
+  "ep_len_mean": 94.73728813559322,
+  "win_rate_pct": 100.0,
+  "total_episodes": 120,
+  "test_episodes": 118,
+  "train_run_path": "test_runs/mock_training_run",
+  "monitor_file": "test_runs/mock_training_run/monitor.csv"
+}

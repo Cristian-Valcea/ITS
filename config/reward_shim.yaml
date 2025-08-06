@@ -1,0 +1,68 @@
+# Phase 1B Variant B: RefinedRewardSystem as Wrapper (Current Shim Approach)
+# Uses RefinedRewardSystem wrapped around V3Enhanced environment
+
+ppo:
+  # Same parameters as freeze_early for consistency
+  n_steps:        512           
+  batch_size:     128           
+  n_epochs:       4             
+  gamma:          0.99          
+  gae_lambda:     0.95          
+
+  # Optimization
+  learning_rate:  0.0001        
+  clip_range:     0.2           
+  ent_coef:       0.03          
+  vf_coef:        0.5           
+  max_grad_norm:  0.5           
+
+  # Exploration / schedule
+  lr_schedule:    constant      
+  clip_schedule:  constant      
+
+training:
+  total_timesteps: 50000        # Will be overridden by script
+  seed:             0           # Fixed seed for A/B/C comparison
+  envs:             1           
+  log_interval:     5           
+  save_interval:    10          
+  eval_interval:    10          
+  eval_episodes:    5
+
+# Environment Configuration
+environment:
+  symbols:          ['NVDA', 'MSFT']
+  initial_capital:  10000.0
+  lookback_window:  50
+  max_episode_steps: 390        
+  transaction_cost_pct: 0.001
+  max_drawdown_pct: 0.30        # 30% DD cap
+
+  # Data configuration
+  data_source:      'timescaledb'
+  start_date:       '2022-01-03'
+  end_date:         '2024-01-31'
+  bar_size:         '1min'
+  market_hours_only: true
+  data_split:       'train'
+
+# Reward System Configuration
+reward_system:
+  type: "refined_wrapper"       # Use RefinedRewardSystem as wrapper
+  
+  # RefinedRewardSystem parameters (same as freeze_early)
+  parameters:
+    pnl_epsilon: 750.0          # Normalization denominator
+    holding_alpha: 0.05         # Holding bonus coefficient
+    holding_lookback: 5         # Steps to look back for holding bonus
+    penalty_beta: 0.1           # Penalty smoothing factor
+    exploration_coef: 0.05      # Exploration bonus coefficient
+    exploration_decay: 0.999    # Exploration decay per step
+
+# Speed-bump monitoring
+monitoring:
+  enabled: true
+  sharpe_window: 1000           
+  abort_threshold: -0.5         
+  check_interval: 1000          
+  min_steps_before_abort: 30000

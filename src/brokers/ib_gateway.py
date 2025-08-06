@@ -11,6 +11,19 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 import json
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    from pathlib import Path
+    
+    # Load .env from project root
+    project_root = Path(__file__).parent.parent.parent
+    env_file = project_root / '.env'
+    load_dotenv(env_file)
+    
+except ImportError:
+    pass  # dotenv not available, use system environment variables
+
 try:
     from ib_insync import IB, Stock, MarketOrder, LimitOrder, Contract
     IB_AVAILABLE = True
@@ -24,21 +37,26 @@ class IBGatewayClient:
     """Interactive Brokers Gateway client for paper trading"""
     
     def __init__(self, host: str = None, port: int = None, client_id: int = None):
+        # Debug environment variables
+        logger.info(f"Environment check: IBKR_HOST_IP={os.getenv('IBKR_HOST_IP')}")
+        
         # Use environment variables with fallbacks
         self.host = host or os.getenv('IBKR_HOST_IP', '127.0.0.1')
         self.port = port or int(os.getenv('IBKR_PORT', '7497'))
         self.client_id = client_id or int(os.getenv('IBKR_CLIENT_ID', '1'))
+        
+        # Debug: Log the configuration being used
+        logger.info(f"IBKR Configuration: host={self.host}, port={self.port}, client_id={self.client_id}")
         self.ib = None
         self.connected = False
         self.simulation_mode = not IB_AVAILABLE
         
-        # Paper trading credentials
+        # Paper trading credentials (optional - not needed for TWS connection)
         self.username = os.getenv('IB_USERNAME')
         self.password = os.getenv('IB_PASSWORD')
         
-        if not self.simulation_mode and (not self.username or not self.password):
-            logger.warning("IB credentials not found - switching to simulation mode")
-            self.simulation_mode = True
+        # Don't force simulation mode just because credentials are missing
+        # IBKR Paper Trading Workstation doesn't require username/password for API connection
         
         # Supported symbols for dual-ticker system
         self.supported_symbols = ['NVDA', 'MSFT']
@@ -57,10 +75,27 @@ class IBGatewayClient:
         
         try:
             self.ib = IB()
-            self.ib.connect(self.host, self.port, clientId=self.client_id)
-            self.connected = True
+            logger.info(f"🔌 Attempting connection to {self.host}:{self.port} (Client ID: {self.client_id})")
             
+            # Connect with extended timeout for initial handshake
+            self.ib.connect(self.host, self.port, clientId=self.client_id, timeout=60)
+            
+            # Wait a moment for connection to stabilize
+            self.ib.sleep(1)
+            
+            if not self.ib.isConnected():
+                raise ConnectionError("Connection established but not confirmed")
+            
+            self.connected = True
             logger.info(f"✅ Connected to IB Gateway at {self.host}:{self.port}")
+            logger.info(f"📊 Server version: {self.ib.client.serverVersion()}")
+            
+            # Test basic functionality
+            try:
+                accounts = self.ib.managedAccounts()
+                logger.info(f"👤 Managed accounts: {accounts}")
+            except Exception as e:
+                logger.warning(f"⚠️  Could not get accounts: {e}")
             
             # Initialize contracts for supported symbols
             self._initialize_contracts()
@@ -68,11 +103,54 @@ class IBGatewayClient:
             return True
             
         except Exception as e:
-            logger.error(f"❌ Failed to connect to IB Gateway: {e}")
+            error_type = type(e).__name__
+            logger.error(f"❌ Failed to connect to IB Gateway: {error_type}: {e}")
+            
+            # Provide specific guidance based on error type
+            if "TimeoutError" in error_type:
+                logger.error("💡 Timeout suggests IBKR API is not properly configured")
+                logger.error("   Check: API enabled, trusted IPs, port 7497")
+            elif "ConnectionRefusedError" in error_type:
+                logger.error("💡 Connection refused suggests IBKR is not running")
+                logger.error("   Check: IBKR Workstation running, correct port")
+            
             logger.info("🎭 Switching to simulation mode")
             self.simulation_mode = True
             self.connected = True
             return True
+    
+    def test_real_connection(self) -> bool:
+        """Test real IBKR connection without falling back to simulation"""
+        try:
+            test_ib = IB()
+            logger.info(f"🧪 Testing real connection to {self.host}:{self.port}")
+            
+            # Try connection with timeout
+            test_ib.connect(self.host, self.port, clientId=self.client_id + 100, timeout=15)
+            
+            if test_ib.isConnected():
+                logger.info("✅ Real IBKR connection successful!")
+                
+                # Get basic info
+                try:
+                    accounts = test_ib.managedAccounts()
+                    logger.info(f"👤 Accounts: {accounts}")
+                    
+                    server_version = test_ib.client.serverVersion()
+                    logger.info(f"📊 Server version: {server_version}")
+                    
+                except Exception as e:
+                    logger.warning(f"⚠️  Info retrieval failed: {e}")
+                
+                test_ib.disconnect()
+                return True
+            else:
+                logger.error("❌ Connection not confirmed")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Real connection test failed: {type(e).__name__}: {e}")
+            return False
     
     def disconnect(self):
         """Disconnect from IB Gateway"""
@@ -465,10 +543,10 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='IB Gateway Client')
-    parser.add_argument('--host', default='127.0.0.1', help='IB Gateway host')
-    parser.add_argument('--port', type=int, default=7497, help='IB Gateway port')
-    parser.add_argument('--client-id', type=int, default=1, help='Client ID')
-    parser.add_argument('--test', choices=['connect', 'account', 'positions', 'order'], 
+    parser.add_argument('--host', default=None, help='IB Gateway host (uses IBKR_HOST_IP env var if not specified)')
+    parser.add_argument('--port', type=int, default=None, help='IB Gateway port (uses IBKR_PORT env var if not specified)')
+    parser.add_argument('--client-id', type=int, default=None, help='Client ID (uses IBKR_CLIENT_ID env var if not specified)')
+    parser.add_argument('--test', choices=['connect', 'real-test', 'account', 'positions', 'order'], 
                        default='connect', help='Test to run')
     parser.add_argument('--symbol', choices=['NVDA', 'MSFT'], default='NVDA',
                        help='Symbol for order test')
@@ -493,6 +571,15 @@ def main():
         if args.test == 'connect':
             health = client.health_check()
             print(json.dumps(health, indent=2))
+        
+        elif args.test == 'real-test':
+            print("🧪 Testing real IBKR connection (no simulation fallback)...")
+            real_success = client.test_real_connection()
+            if real_success:
+                print("🎉 Real IBKR connection is working!")
+            else:
+                print("❌ Real IBKR connection failed - check configuration")
+                return 1
         
         elif args.test == 'account':
             account_info = client.get_account_info()
